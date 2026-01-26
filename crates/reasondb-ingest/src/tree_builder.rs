@@ -48,17 +48,20 @@ impl TreeBuilder {
     }
 
     /// Build a tree from chunks
+    ///
+    /// The `table_id` must reference an existing table in the database.
     pub fn build(
         &self,
         document_title: &str,
+        table_id: &str,
         chunks: Vec<TextChunk>,
     ) -> Result<(Document, Vec<PageNode>)> {
         if chunks.is_empty() {
-            return Ok(self.create_empty_document(document_title));
+            return Ok(self.create_empty_document(document_title, table_id));
         }
 
-        // Create document
-        let mut document = Document::new(document_title.to_string());
+        // Create document in the specified table
+        let mut document = Document::new(document_title.to_string(), table_id);
         let document_id = document.id.clone();
 
         // Build the tree structure
@@ -207,8 +210,8 @@ impl TreeBuilder {
     }
 
     /// Create an empty document with just a root node
-    fn create_empty_document(&self, title: &str) -> (Document, Vec<PageNode>) {
-        let mut document = Document::new(title.to_string());
+    fn create_empty_document(&self, title: &str, table_id: &str) -> (Document, Vec<PageNode>) {
+        let mut document = Document::new(title.to_string(), table_id);
         let root_node = PageNode::new_root(document.id.clone(), title.to_string());
 
         document.root_node_id = root_node.id.clone();
@@ -219,20 +222,24 @@ impl TreeBuilder {
     }
 
     /// Build tree from pre-detected ToC headings
+    /// Build tree from pre-detected ToC headings
+    ///
+    /// The `table_id` must reference an existing table in the database.
     pub fn build_from_toc(
         &self,
         document_title: &str,
+        table_id: &str,
         toc_headings: &[DetectedHeading],
         full_text: &str,
     ) -> Result<(Document, Vec<PageNode>)> {
         if toc_headings.is_empty() {
-            return Ok(self.create_empty_document(document_title));
+            return Ok(self.create_empty_document(document_title, table_id));
         }
 
         // Split text by ToC headings
         let chunks = self.split_by_headings(toc_headings, full_text);
 
-        self.build(document_title, chunks)
+        self.build(document_title, table_id, chunks)
     }
 
     /// Split text according to ToC headings
@@ -360,9 +367,10 @@ mod tests {
             },
         ];
 
-        let (doc, nodes) = builder.build("Test Document", chunks).unwrap();
+        let (doc, nodes) = builder.build("Test Document", "test-table", chunks).unwrap();
 
         assert_eq!(doc.title, "Test Document");
+        assert_eq!(doc.table_id, "test-table");
         assert!(nodes.len() >= 3); // At least root + 3 chunks
 
         // Check that we have a root node
@@ -373,7 +381,7 @@ mod tests {
     #[test]
     fn test_empty_document() {
         let builder = TreeBuilder::new();
-        let (doc, nodes) = builder.build("Empty", vec![]).unwrap();
+        let (doc, nodes) = builder.build("Empty", "test-table", vec![]).unwrap();
 
         assert_eq!(doc.title, "Empty");
         assert_eq!(doc.total_nodes, 1);

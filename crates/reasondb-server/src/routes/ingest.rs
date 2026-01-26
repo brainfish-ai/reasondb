@@ -79,9 +79,24 @@ pub struct IngestTextRequest {
     /// Document content (plain text or Markdown)
     #[schema(example = "# Introduction\n\nThis document covers...")]
     pub content: String,
+    /// Table ID to assign the document to (REQUIRED - table must exist)
+    #[schema(example = "tbl_legal")]
+    pub table_id: String,
     /// Whether to generate LLM summaries (default: true)
     #[serde(default)]
     pub generate_summaries: Option<bool>,
+    /// Document tags for filtering
+    #[serde(default)]
+    #[schema(example = json!(["nda", "confidential"]))]
+    pub tags: Option<Vec<String>>,
+    /// Document author
+    #[serde(default)]
+    #[schema(example = "Legal Team")]
+    pub author: Option<String>,
+    /// Custom metadata (key-value pairs)
+    #[serde(default)]
+    #[schema(example = json!({"contract_type": "nda", "value_usd": 50000}))]
+    pub metadata: Option<std::collections::HashMap<String, serde_json::Value>>,
 }
 
 /// Request for URL ingestion
@@ -90,6 +105,9 @@ pub struct IngestUrlRequest {
     /// URL to ingest (web page, YouTube video, etc.)
     #[schema(example = "https://en.wikipedia.org/wiki/Machine_learning")]
     pub url: String,
+    /// Table ID to assign the document to (REQUIRED - table must exist)
+    #[schema(example = "tbl_research")]
+    pub table_id: String,
     /// Whether to generate LLM summaries (default: true)
     #[serde(default)]
     pub generate_summaries: Option<bool>,
@@ -114,8 +132,9 @@ pub async fn ingest_file<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     State(state): State<Arc<AppState<R>>>,
     mut multipart: Multipart,
 ) -> ApiResult<Json<IngestResponse>> {
-    // Get the file from multipart
+    // Get the file and table_id from multipart
     let mut file_data: Option<(String, Vec<u8>)> = None;
+    let mut table_id: Option<String> = None;
 
     while let Some(field) = multipart
         .next_field()
@@ -143,12 +162,24 @@ pub async fn ingest_file<R: ReasoningEngine + Clone + Send + Sync + 'static>(
             }
 
             file_data = Some((filename, data.to_vec()));
+        } else if name == "table_id" {
+            let text = field
+                .text()
+                .await
+                .map_err(|e| ApiError::BadRequest(format!("Failed to read table_id: {}", e)))?;
+            table_id = Some(text);
         }
     }
 
     let (filename, data) = file_data.ok_or_else(|| ApiError::BadRequest("No file provided".to_string()))?;
+    let table_id = table_id.ok_or_else(|| ApiError::BadRequest("table_id is required".to_string()))?;
 
-    info!("Ingesting file: {} ({} bytes)", filename, data.len());
+    // Verify the table exists
+    state.store.get_table(&table_id)
+        .map_err(ApiError::from)?
+        .ok_or_else(|| ApiError::NotFound(format!("Table '{}' not found", table_id)))?;
+
+    info!("Ingesting file: {} ({} bytes) into table: {}", filename, data.len(), table_id);
 
     // Write to temp file
     let temp_file = NamedTempFile::new()
@@ -178,7 +209,7 @@ pub async fn ingest_file<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         .with_config(config);
 
     let result = pipeline
-        .ingest_and_store(&temp_path, &state.store)
+        .ingest_and_store(&temp_path, &table_id, &state.store)
         .await
         .map_err(ApiError::from)?;
 
@@ -200,6 +231,7 @@ pub async fn ingest_file<R: ReasoningEngine + Clone + Send + Sync + 'static>(
 ///
 /// Ingest plain text or Markdown content directly. The content will be
 /// chunked, organized into a tree structure, and optionally summarized.
+/// You can optionally assign it to a table and add metadata/tags.
 #[utoipa::path(
     post,
     path = "/v1/ingest/text",
@@ -223,7 +255,17 @@ pub async fn ingest_text<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         return Err(ApiError::ValidationError("Content is required".to_string()));
     }
 
-    info!("Ingesting text: {} ({} chars)", request.title, request.content.len());
+    if request.table_id.is_empty() {
+        return Err(ApiError::ValidationError("Table ID is required".to_string()));
+    }
+
+    // Verify the table exists
+    state.store.get_table(&request.table_id)
+        .map_err(ApiError::from)?
+        .ok_or_else(|| ApiError::NotFound(format!("Table '{}' not found", request.table_id)))?;
+
+    info!("Ingesting text: {} ({} chars) into table: {}", 
+          request.title, request.content.len(), request.table_id);
 
     let generate_summaries = request.generate_summaries.unwrap_or(state.config.generate_summaries);
 
@@ -236,10 +278,34 @@ pub async fn ingest_text<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     let pipeline = IngestPipeline::new((*state.reasoner).clone())
         .with_config(config);
 
-    let result = pipeline
-        .ingest_text_and_store(&request.title, &request.content, &state.store)
+    let mut result = pipeline
+        .ingest_text_and_store(&request.title, &request.table_id, &request.content, &state.store)
         .await
         .map_err(ApiError::from)?;
+
+    // Apply tags, author, and metadata if provided
+    let mut doc = result.document.clone();
+    let mut needs_update = false;
+
+    if let Some(tags) = &request.tags {
+        doc.tags = tags.clone();
+        needs_update = true;
+    }
+
+    if let Some(author) = &request.author {
+        doc.author = Some(author.clone());
+        needs_update = true;
+    }
+
+    if let Some(metadata) = &request.metadata {
+        doc.metadata = metadata.clone();
+        needs_update = true;
+    }
+
+    if needs_update {
+        state.store.update_document(&doc).map_err(ApiError::from)?;
+        result.document = doc;
+    }
 
     Ok(Json(IngestResponse {
         document_id: result.document.id.clone(),
@@ -273,11 +339,20 @@ pub async fn ingest_url<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         return Err(ApiError::ValidationError("URL is required".to_string()));
     }
 
+    if request.table_id.is_empty() {
+        return Err(ApiError::ValidationError("Table ID is required".to_string()));
+    }
+
     // Validate URL
     url::Url::parse(&request.url)
         .map_err(|e| ApiError::ValidationError(format!("Invalid URL: {}", e)))?;
 
-    info!("Ingesting URL: {}", request.url);
+    // Verify the table exists
+    state.store.get_table(&request.table_id)
+        .map_err(ApiError::from)?
+        .ok_or_else(|| ApiError::NotFound(format!("Table '{}' not found", request.table_id)))?;
+
+    info!("Ingesting URL: {} into table: {}", request.url, request.table_id);
 
     let generate_summaries = request.generate_summaries.unwrap_or(state.config.generate_summaries);
 
@@ -291,7 +366,7 @@ pub async fn ingest_url<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         .with_config(config);
 
     let result = pipeline
-        .ingest_url_and_store(&request.url, &state.store)
+        .ingest_url_and_store(&request.url, &request.table_id, &state.store)
         .await
         .map_err(ApiError::from)?;
 

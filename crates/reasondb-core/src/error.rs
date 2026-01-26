@@ -23,6 +23,10 @@ pub enum ReasonError {
     #[error("Document not found: {0}")]
     DocumentNotFound(String),
 
+    /// Table not found
+    #[error("Table not found: {0}")]
+    TableNotFound(String),
+
     /// Invalid operation
     #[error("Invalid operation: {0}")]
     InvalidOperation(String),
@@ -50,6 +54,18 @@ pub enum StorageError {
     /// Table operation error
     #[error("Table error: {0}")]
     TableError(String),
+
+    /// Table already exists (by ID)
+    #[error("Table already exists: {0}")]
+    TableAlreadyExists(String),
+
+    /// Table name already exists (by slug)
+    #[error("Table name already exists: {0}")]
+    TableNameExists(String),
+
+    /// Table not empty (has documents)
+    #[error("Table not empty: {0}")]
+    TableNotEmpty(String),
 
     /// I/O error
     #[error("I/O error: {0}")]

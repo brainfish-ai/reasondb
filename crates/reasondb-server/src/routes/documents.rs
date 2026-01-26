@@ -1,14 +1,15 @@
 //! Document management endpoints
 //!
-//! List, get, and delete documents.
+//! List, get, update, and delete documents.
 
 use axum::{
     extract::{Path, State},
     Json,
 };
 use reasondb_core::llm::ReasoningEngine;
-use serde::Serialize;
-use std::sync::Arc;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::{collections::HashMap, sync::Arc};
 use tracing::{debug, info};
 use utoipa::ToSchema;
 
@@ -41,9 +42,48 @@ pub struct DocumentSummary {
     /// Original file size in bytes
     #[schema(example = 2048576)]
     pub file_size: Option<u64>,
+    /// Table ID the document belongs to
+    #[schema(example = "tbl_legal")]
+    pub table_id: Option<String>,
+    /// Document tags
+    pub tags: Vec<String>,
+    /// Document author
+    pub author: Option<String>,
     /// Creation timestamp (ISO 8601)
     #[schema(example = "2024-01-15T10:30:00Z")]
     pub created_at: String,
+}
+
+/// Request to update document metadata
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UpdateDocumentRequest {
+    /// Updated title (optional)
+    #[schema(example = "NDA Agreement - Updated")]
+    pub title: Option<String>,
+
+    /// Table ID to assign to (optional)
+    #[schema(example = "tbl_archived")]
+    pub table_id: Option<String>,
+
+    /// Document tags (replaces existing tags)
+    #[schema(example = json!(["nda", "archived"]))]
+    pub tags: Option<Vec<String>>,
+
+    /// Document author
+    #[schema(example = "Legal Team")]
+    pub author: Option<String>,
+
+    /// Metadata to merge (optional)
+    #[serde(default)]
+    pub metadata: Option<HashMap<String, Value>>,
+}
+
+/// Request to move a document to a different table
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct MoveDocumentRequest {
+    /// Target table ID
+    #[schema(example = "tbl_archived")]
+    pub table_id: String,
 }
 
 /// Full document details
@@ -160,6 +200,9 @@ pub async fn list_documents<R: ReasoningEngine + Send + Sync + 'static>(
             source_path: doc.source_path,
             mime_type: doc.mime_type,
             file_size: doc.file_size,
+            table_id: Some(doc.table_id),
+            tags: doc.tags,
+            author: doc.author,
             created_at: doc.created_at.to_rfc3339(),
         })
         .collect();

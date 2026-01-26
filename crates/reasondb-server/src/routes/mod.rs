@@ -5,9 +5,10 @@
 pub mod documents;
 pub mod ingest;
 pub mod search;
+pub mod tables;
 
 use axum::{
-    routing::{delete, get, post},
+    routing::{delete, get, patch, post},
     Router,
 };
 use reasondb_core::llm::ReasoningEngine;
@@ -29,6 +30,13 @@ pub fn create_routes<R: ReasoningEngine + Clone + Send + Sync + 'static>(
 /// V1 API routes
 fn v1_routes<R: ReasoningEngine + Clone + Send + Sync + 'static>(state: Arc<AppState<R>>) -> Router {
     Router::new()
+        // Tables
+        .route("/tables", post(tables::create_table::<R>))
+        .route("/tables", get(tables::list_tables::<R>))
+        .route("/tables/:id", get(tables::get_table::<R>))
+        .route("/tables/:id", patch(tables::update_table::<R>))
+        .route("/tables/:id", delete(tables::delete_table::<R>))
+        .route("/tables/:id/documents", get(tables::get_table_documents::<R>))
         // Ingestion
         .route("/ingest/file", post(ingest::ingest_file::<R>))
         .route("/ingest/text", post(ingest::ingest_text::<R>))

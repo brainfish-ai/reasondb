@@ -120,7 +120,9 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
     ///
     /// Supports: PDF, Word, PowerPoint, Excel, Images (OCR), Audio (transcription),
     /// HTML, CSV, JSON, XML, EPUB, ZIP files
-    pub async fn ingest_file<P: AsRef<Path>>(&self, path: P) -> Result<IngestResult> {
+    ///
+    /// The `table_id` must reference an existing table in the database.
+    pub async fn ingest_file<P: AsRef<Path>>(&self, path: P, table_id: &str) -> Result<IngestResult> {
         let path = path.as_ref();
         let start = std::time::Instant::now();
         let mut stats = IngestStats::default();
@@ -142,7 +144,7 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
 
         // Process the markdown content
         let result = self
-            .process_markdown(&extraction.title, &extraction.markdown, &mut stats)
+            .process_markdown(&extraction.title, table_id, &extraction.markdown, &mut stats)
             .await?;
 
         stats.total_time_ms = start.elapsed().as_millis() as u64;
@@ -159,7 +161,9 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
     }
 
     /// Ingest from a URL (YouTube videos, web pages, etc.)
-    pub async fn ingest_url(&self, url: &str) -> Result<IngestResult> {
+    ///
+    /// The `table_id` must reference an existing table in the database.
+    pub async fn ingest_url(&self, url: &str, table_id: &str) -> Result<IngestResult> {
         let start = std::time::Instant::now();
         let mut stats = IngestStats::default();
 
@@ -178,7 +182,7 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
 
         // Process the markdown content
         let result = self
-            .process_markdown(&extraction.title, &extraction.markdown, &mut stats)
+            .process_markdown(&extraction.title, table_id, &extraction.markdown, &mut stats)
             .await?;
 
         stats.total_time_ms = start.elapsed().as_millis() as u64;
@@ -198,6 +202,7 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
     async fn process_markdown(
         &self,
         title: &str,
+        table_id: &str,
         markdown: &str,
         stats: &mut IngestStats,
     ) -> Result<(Document, Vec<PageNode>)> {
@@ -213,7 +218,7 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
         );
 
         // Build tree
-        let (document, mut nodes) = self.tree_builder.build(title, chunks)?;
+        let (document, mut nodes) = self.tree_builder.build(title, table_id, chunks)?;
         stats.nodes_created = nodes.len();
 
         // Generate summaries
@@ -247,14 +252,17 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
     }
 
     /// Ingest from raw text (or markdown)
-    pub async fn ingest_text(&self, title: &str, text: &str) -> Result<IngestResult> {
+    /// Ingest plain text or markdown content.
+    ///
+    /// The `table_id` must reference an existing table in the database.
+    pub async fn ingest_text(&self, title: &str, table_id: &str, text: &str) -> Result<IngestResult> {
         let start = std::time::Instant::now();
         let mut stats = IngestStats::default();
 
         info!("Starting text ingestion: {}", title);
         stats.chars_extracted = text.chars().count();
 
-        let result = self.process_markdown(title, text, &mut stats).await?;
+        let result = self.process_markdown(title, table_id, text, &mut stats).await?;
 
         stats.total_time_ms = start.elapsed().as_millis() as u64;
 
@@ -265,13 +273,16 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
         })
     }
 
-    /// Ingest and store in database
+    /// Ingest file and store in database
+    ///
+    /// The `table_id` must reference an existing table in the database.
     pub async fn ingest_and_store<P: AsRef<Path>>(
         &self,
         path: P,
+        table_id: &str,
         store: &NodeStore,
     ) -> Result<IngestResult> {
-        let result = self.ingest_file(path).await?;
+        let result = self.ingest_file(path, table_id).await?;
 
         if self.config.store_in_db {
             // Store document
@@ -297,13 +308,16 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
     }
 
     /// Ingest text and store in database
+    ///
+    /// The `table_id` must reference an existing table in the database.
     pub async fn ingest_text_and_store(
         &self,
         title: &str,
+        table_id: &str,
         text: &str,
         store: &NodeStore,
     ) -> Result<IngestResult> {
-        let result = self.ingest_text(title, text).await?;
+        let result = self.ingest_text(title, table_id, text).await?;
 
         if self.config.store_in_db {
             store
@@ -327,12 +341,15 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
     }
 
     /// Ingest URL and store in database
+    ///
+    /// The `table_id` must reference an existing table in the database.
     pub async fn ingest_url_and_store(
         &self,
         url: &str,
+        table_id: &str,
         store: &NodeStore,
     ) -> Result<IngestResult> {
-        let result = self.ingest_url(url).await?;
+        let result = self.ingest_url(url, table_id).await?;
 
         if self.config.store_in_db {
             store
@@ -487,9 +504,10 @@ Chapter 3: Conclusion
 In conclusion, our findings suggest significant results.
 "#;
 
-        let result = pipeline.ingest_text("Test Document", text).await.unwrap();
+        let result = pipeline.ingest_text("Test Document", "test-table", text).await.unwrap();
 
         assert_eq!(result.document.title, "Test Document");
+        assert_eq!(result.document.table_id, "test-table");
         assert!(result.nodes.len() > 1);
         assert!(result.stats.chunks_created > 0);
     }

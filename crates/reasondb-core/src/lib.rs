@@ -3,26 +3,35 @@
 //! Core library for ReasonDB - a reasoning-native database for AI agents.
 //!
 //! This crate provides:
-//! - Data models (`PageNode`, `Document`)
+//! - Data models (`Table`, `Document`, `PageNode`)
 //! - Storage engine (`NodeStore`)
 //! - Reasoning engine trait (`ReasoningEngine`)
 //! - Search engine with beam search
+//! - Filtering with `SearchFilter`
 //!
 //! ## Example
 //!
 //! ```rust,no_run
-//! use reasondb_core::{NodeStore, PageNode, Document};
+//! use reasondb_core::{NodeStore, PageNode, Document, Table, SearchFilter};
 //!
 //! # async fn example() -> anyhow::Result<()> {
 //! // Open a database
 //! let store = NodeStore::open("./my_database")?;
 //!
-//! // Create a document with nodes
-//! let doc = Document::new("My Document".to_string());
+//! // Create a table first (required for documents)
+//! let table = Table::new("Legal Contracts".to_string());
+//! store.insert_table(&table)?;
+//!
+//! // Create a document in the table
+//! let mut doc = Document::new("NDA Agreement".to_string(), &table.id);
+//! doc.tags = vec!["nda".to_string(), "confidential".to_string()];
 //! store.insert_document(&doc)?;
 //!
-//! // Query nodes
-//! let node = store.get_node("node_id")?;
+//! // Filter documents
+//! let filter = SearchFilter::new()
+//!     .with_table_id(&table.id)
+//!     .with_tags(vec!["nda"]);
+//! let docs = store.find_documents(&filter)?;
 //! # Ok(())
 //! # }
 //! ```
@@ -37,5 +46,5 @@ pub mod store;
 pub use engine::{SearchConfig, SearchEngine, SearchResult};
 pub use error::{ReasonError, Result};
 pub use llm::{LLMProvider, MockReasoner, Reasoner, ReasoningEngine};
-pub use model::{Document, NodeId, NodeMetadata, PageNode};
-pub use store::NodeStore;
+pub use model::{Document, DocumentId, NodeId, NodeMetadata, PageNode, SearchFilter, Table, TableId};
+pub use store::{NodeStore, StoreStats};

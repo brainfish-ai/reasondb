@@ -93,6 +93,7 @@ impl From<reasondb_core::error::ReasonError> for ApiError {
         match err {
             ReasonError::NodeNotFound(id) => ApiError::NotFound(format!("Node not found: {}", id)),
             ReasonError::DocumentNotFound(id) => ApiError::NotFound(format!("Document not found: {}", id)),
+            ReasonError::TableNotFound(id) => ApiError::NotFound(format!("Table not found: {}", id)),
             ReasonError::InvalidOperation(msg) => ApiError::BadRequest(msg),
             ReasonError::Storage(e) => ApiError::StorageError(e.to_string()),
             ReasonError::Serialization(msg) => ApiError::Internal(format!("Serialization: {}", msg)),

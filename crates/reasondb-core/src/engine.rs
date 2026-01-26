@@ -355,15 +355,19 @@ pub struct SearchResponse {
 mod tests {
     use super::*;
     use crate::llm::MockReasoner;
-    use crate::model::Document;
+    use crate::model::{Document, Table};
     use tempfile::tempdir;
 
     async fn setup_test_tree() -> (Arc<NodeStore>, String) {
         let dir = tempdir().unwrap();
         let store = Arc::new(NodeStore::open(dir.path().join("test.db")).unwrap());
 
-        // Create a document
-        let doc = Document::new("Test Document".to_string());
+        // Create a table first (required for documents)
+        let table = Table::new("Test Table".to_string());
+        store.insert_table(&table).unwrap();
+
+        // Create a document in the table
+        let doc = Document::new("Test Document".to_string(), &table.id);
         store.insert_document(&doc).unwrap();
 
         // Create a tree structure:

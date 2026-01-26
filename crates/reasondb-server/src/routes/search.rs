@@ -6,6 +6,7 @@ use axum::{extract::State, Json};
 use reasondb_core::{
     engine::{SearchConfig, SearchEngine},
     llm::ReasoningEngine,
+    SearchFilter,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -29,6 +30,26 @@ pub struct SearchRequest {
     #[schema(example = "doc_abc123")]
     pub document_id: Option<String>,
 
+    /// Optional table ID to restrict search to
+    #[serde(default)]
+    #[schema(example = "tbl_legal")]
+    pub table_id: Option<String>,
+
+    /// Filter by document tags (any match)
+    #[serde(default)]
+    #[schema(example = json!(["nda", "confidential"]))]
+    pub tags: Option<Vec<String>>,
+
+    /// Filter by document author
+    #[serde(default)]
+    #[schema(example = "Legal Team")]
+    pub author: Option<String>,
+
+    /// Filter by document metadata
+    #[serde(default)]
+    #[schema(example = json!({"contract_type": "nda"}))]
+    pub metadata: Option<std::collections::HashMap<String, serde_json::Value>>,
+
     /// Maximum tree depth to traverse (default: 10)
     #[serde(default)]
     #[schema(example = 10)]
@@ -43,6 +64,11 @@ pub struct SearchRequest {
     #[serde(default)]
     #[schema(example = 0.3)]
     pub min_confidence: Option<f32>,
+
+    /// Maximum results to return (default: 10)
+    #[serde(default)]
+    #[schema(example = 10)]
+    pub limit: Option<usize>,
 }
 
 /// Search response
@@ -164,8 +190,30 @@ pub async fn search<R: ReasoningEngine + Send + Sync + 'static>(
             .await
             .map_err(|e| ApiError::SearchError(e.to_string()))?
     } else {
-        // Search all documents - need to iterate over all docs
-        let documents = state.store.list_documents()
+        // Build filter from request
+        let mut filter = SearchFilter::new();
+
+        if let Some(table_id) = &request.table_id {
+            filter = filter.with_table_id(table_id);
+        }
+
+        if let Some(tags) = &request.tags {
+            let tags_ref: Vec<&str> = tags.iter().map(|s| s.as_str()).collect();
+            filter = filter.with_tags(tags_ref);
+        }
+
+        if let Some(author) = &request.author {
+            filter = filter.with_author(author);
+        }
+
+        if let Some(metadata) = &request.metadata {
+            for (key, value) in metadata {
+                filter = filter.with_metadata(key, value.clone());
+            }
+        }
+
+        // Get matching documents
+        let documents = state.store.find_documents(&filter)
             .map_err(|e| ApiError::StorageError(e.to_string()))?;
 
         let mut all_results = Vec::new();
@@ -175,6 +223,11 @@ pub async fn search<R: ReasoningEngine + Send + Sync + 'static>(
                 .await
                 .map_err(|e| ApiError::SearchError(e.to_string()))?;
             all_results.extend(doc_response.results);
+        }
+
+        // Apply limit
+        if let Some(limit) = request.limit {
+            all_results.truncate(limit);
         }
 
         reasondb_core::engine::SearchResponse {
