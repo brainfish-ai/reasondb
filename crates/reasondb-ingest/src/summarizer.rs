@@ -1,0 +1,342 @@
+//! LLM-based summarization for document nodes
+//!
+//! Generates summaries for each node in the document tree,
+//! working bottom-up from leaves to root.
+
+use std::collections::HashMap;
+use tracing::{debug, info};
+
+use reasondb_core::llm::{ReasoningEngine, SummarizationContext};
+use reasondb_core::model::PageNode;
+
+use crate::error::{IngestError, Result};
+
+/// Configuration for summarization
+#[derive(Debug, Clone)]
+pub struct SummarizerConfig {
+    /// Maximum content length to send to LLM
+    pub max_content_length: usize,
+    /// Whether to include child summaries in parent summarization
+    pub include_child_summaries: bool,
+    /// Maximum concurrent summarization requests
+    pub max_concurrent: usize,
+}
+
+impl Default for SummarizerConfig {
+    fn default() -> Self {
+        Self {
+            max_content_length: 8000,
+            include_child_summaries: true,
+            max_concurrent: 5,
+        }
+    }
+}
+
+/// Summarizer that uses an LLM to generate node summaries
+pub struct NodeSummarizer<'a, R: ReasoningEngine> {
+    reasoner: &'a R,
+    config: SummarizerConfig,
+}
+
+impl<'a, R: ReasoningEngine> NodeSummarizer<'a, R> {
+    /// Create a new summarizer with the given reasoning engine
+    pub fn new(reasoner: &'a R) -> Self {
+        Self {
+            reasoner,
+            config: SummarizerConfig::default(),
+        }
+    }
+
+    /// Set custom configuration
+    pub fn with_config(mut self, config: SummarizerConfig) -> Self {
+        self.config = config;
+        self
+    }
+
+    /// Summarize all nodes in a document tree (bottom-up)
+    pub async fn summarize_tree(&self, nodes: &mut [PageNode]) -> Result<()> {
+        info!("Summarizing {} nodes", nodes.len());
+
+        // Build a map for quick lookup
+        let node_map: HashMap<String, usize> = nodes
+            .iter()
+            .enumerate()
+            .map(|(i, n)| (n.id.clone(), i))
+            .collect();
+
+        // Find max depth
+        let max_depth = nodes.iter().map(|n| n.depth).max().unwrap_or(0);
+
+        // Process bottom-up (leaves first)
+        for depth in (0..=max_depth).rev() {
+            let nodes_at_depth: Vec<usize> = nodes
+                .iter()
+                .enumerate()
+                .filter(|(_, n)| n.depth == depth)
+                .map(|(i, _)| i)
+                .collect();
+
+            debug!(
+                "Summarizing {} nodes at depth {}",
+                nodes_at_depth.len(),
+                depth
+            );
+
+            for idx in nodes_at_depth {
+                let summary = self.summarize_node(&nodes[idx], nodes, &node_map).await?;
+                nodes[idx].summary = summary;
+            }
+        }
+
+        info!("Completed summarization");
+        Ok(())
+    }
+
+    /// Summarize a single node
+    async fn summarize_node(
+        &self,
+        node: &PageNode,
+        all_nodes: &[PageNode],
+        node_map: &HashMap<String, usize>,
+    ) -> Result<String> {
+        // Get parent summary if available
+        let parent_summary = node.parent_id.as_ref().and_then(|pid| {
+            node_map.get(pid).map(|&idx| all_nodes[idx].summary.clone())
+        });
+
+        let context = SummarizationContext {
+            title: Some(node.title.clone()),
+            parent_summary,
+            depth: node.depth,
+            is_leaf: node.is_leaf(),
+        };
+
+        // Build content to summarize
+        let content = if node.is_leaf() {
+            // Leaf node: use actual content
+            node.content.clone().unwrap_or_default()
+        } else if self.config.include_child_summaries {
+            // Non-leaf: combine child summaries
+            self.combine_child_summaries(node, all_nodes, node_map)
+        } else {
+            // Just use title
+            node.title.clone()
+        };
+
+        if content.is_empty() {
+            return Ok(format!("Section: {}", node.title));
+        }
+
+        // Truncate if needed
+        let truncated: String = content.chars().take(self.config.max_content_length).collect();
+
+        // Call LLM for summarization
+        self.reasoner
+            .summarize(&truncated, &context)
+            .await
+            .map_err(|e| IngestError::Summarization(e.to_string()))
+    }
+
+    /// Combine child summaries for a parent node
+    fn combine_child_summaries(
+        &self,
+        node: &PageNode,
+        all_nodes: &[PageNode],
+        node_map: &HashMap<String, usize>,
+    ) -> String {
+        let mut parts = Vec::new();
+
+        for child_id in &node.children_ids {
+            if let Some(&idx) = node_map.get(child_id) {
+                let child = &all_nodes[idx];
+                if !child.summary.is_empty() {
+                    parts.push(format!("- {}: {}", child.title, child.summary));
+                } else {
+                    parts.push(format!("- {}", child.title));
+                }
+            }
+        }
+
+        if parts.is_empty() {
+            node.title.clone()
+        } else {
+            format!("Contains sections:\n{}", parts.join("\n"))
+        }
+    }
+}
+
+/// A mock summarizer for testing (doesn't use LLM)
+pub struct MockSummarizer;
+
+impl MockSummarizer {
+    /// Generate mock summaries for all nodes
+    pub fn summarize_tree(nodes: &mut [PageNode]) {
+        for node in nodes {
+            node.summary = if node.is_leaf() {
+                // For leaves, use first 100 chars of content
+                node.content
+                    .as_ref()
+                    .map(|c| {
+                        let preview: String = c.chars().take(100).collect();
+                        format!("Content preview: {}...", preview)
+                    })
+                    .unwrap_or_else(|| format!("Section: {}", node.title))
+            } else {
+                // For non-leaves, list children
+                if node.children_ids.is_empty() {
+                    format!("Section: {}", node.title)
+                } else {
+                    format!(
+                        "Section containing {} sub-sections",
+                        node.children_ids.len()
+                    )
+                }
+            };
+        }
+    }
+}
+
+/// Batch summarization for efficiency
+pub struct BatchSummarizer<'a, R: ReasoningEngine> {
+    reasoner: &'a R,
+    batch_size: usize,
+}
+
+impl<'a, R: ReasoningEngine> BatchSummarizer<'a, R> {
+    /// Create a new batch summarizer
+    pub fn new(reasoner: &'a R, batch_size: usize) -> Self {
+        Self {
+            reasoner,
+            batch_size,
+        }
+    }
+
+    /// Summarize nodes in batches
+    pub async fn summarize_batch(&self, nodes: &mut [PageNode]) -> Result<()> {
+        // Group nodes by depth
+        let max_depth = nodes.iter().map(|n| n.depth).max().unwrap_or(0);
+
+        // Build lookup map
+        let node_map: HashMap<String, usize> = nodes
+            .iter()
+            .enumerate()
+            .map(|(i, n)| (n.id.clone(), i))
+            .collect();
+
+        // Process bottom-up
+        for depth in (0..=max_depth).rev() {
+            let indices: Vec<usize> = nodes
+                .iter()
+                .enumerate()
+                .filter(|(_, n)| n.depth == depth)
+                .map(|(i, _)| i)
+                .collect();
+
+            // Process in batches
+            for batch_indices in indices.chunks(self.batch_size) {
+                // Collect batch items
+                let mut batch_items: Vec<(usize, String, SummarizationContext)> = Vec::new();
+
+                for &idx in batch_indices {
+                    let node = &nodes[idx];
+                    let content = self.get_content_for_node(node, nodes, &node_map);
+                    let parent_summary = node.parent_id.as_ref().and_then(|pid| {
+                        node_map.get(pid).map(|&i| nodes[i].summary.clone())
+                    });
+                    let context = SummarizationContext {
+                        title: Some(node.title.clone()),
+                        parent_summary,
+                        depth: node.depth,
+                        is_leaf: node.is_leaf(),
+                    };
+                    batch_items.push((idx, content, context));
+                }
+
+                // Process batch (sequentially for now, could be parallel)
+                for (idx, content, context) in batch_items {
+                    if !content.is_empty() {
+                        let summary = self
+                            .reasoner
+                            .summarize(&content, &context)
+                            .await
+                            .map_err(|e| IngestError::Summarization(e.to_string()))?;
+                        nodes[idx].summary = summary;
+                    } else {
+                        nodes[idx].summary = format!("Section: {}", nodes[idx].title);
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Get content for a node (leaf content or child summaries)
+    fn get_content_for_node(
+        &self,
+        node: &PageNode,
+        all_nodes: &[PageNode],
+        node_map: &HashMap<String, usize>,
+    ) -> String {
+        if node.is_leaf() {
+            node.content.clone().unwrap_or_default()
+        } else {
+            let mut parts = Vec::new();
+            for child_id in &node.children_ids {
+                if let Some(&idx) = node_map.get(child_id) {
+                    let child = &all_nodes[idx];
+                    if !child.summary.is_empty() {
+                        parts.push(format!("- {}: {}", child.title, child.summary));
+                    }
+                }
+            }
+            parts.join("\n")
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_test_nodes() -> Vec<PageNode> {
+        let mut root = PageNode::new_root("doc1".to_string(), "Document".to_string());
+        root.id = "root".to_string();
+        root.children_ids = vec!["ch1".to_string(), "ch2".to_string()];
+
+        let mut ch1 = PageNode::new_leaf(
+            "doc1".to_string(),
+            "Chapter 1".to_string(),
+            "This is chapter 1 content about introduction.".to_string(),
+            String::new(),
+            1,
+        );
+        ch1.id = "ch1".to_string();
+        ch1.parent_id = Some("root".to_string());
+
+        let mut ch2 = PageNode::new_leaf(
+            "doc1".to_string(),
+            "Chapter 2".to_string(),
+            "This is chapter 2 content about methods.".to_string(),
+            String::new(),
+            1,
+        );
+        ch2.id = "ch2".to_string();
+        ch2.parent_id = Some("root".to_string());
+
+        vec![root, ch1, ch2]
+    }
+
+    #[test]
+    fn test_mock_summarizer() {
+        let mut nodes = create_test_nodes();
+        MockSummarizer::summarize_tree(&mut nodes);
+
+        // Root should have children count
+        assert!(nodes[0].summary.contains("2 sub-sections"));
+
+        // Leaves should have content preview
+        assert!(nodes[1].summary.contains("Content preview"));
+        assert!(nodes[2].summary.contains("Content preview"));
+    }
+}
