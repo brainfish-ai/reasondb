@@ -8,6 +8,9 @@ ReasonDB is a reasoning-native database optimized for AI agent workflows. Unlike
 
 - **Hierarchical Document Storage**: Documents stored as navigable trees, not flat chunks
 - **LLM-Guided Retrieval**: AI reasons through the tree structure, not just similarity search
+- **Document Relationships**: Link documents with references, citations, and follow-ups
+- **RQL Query Language**: SQL-like syntax with SEARCH, REASON, and RELATED TO clauses
+- **BM25 Full-Text Search**: Fast keyword search using Tantivy
 - **Parallel Branch Exploration**: Concurrent traversal using Rust's async runtime
 - **Multi-Format Support**: PDFs, Markdown, HTML, and more (via MarkItDown)
 - **Multi-Provider LLM Support**: OpenAI, Anthropic Claude, Google Gemini, Cohere
@@ -98,6 +101,34 @@ curl http://localhost:4444/v1/documents
 curl http://localhost:4444/v1/documents/{id}/tree
 ```
 
+#### Query with RQL
+
+```bash
+curl -X POST http://localhost:4444/v1/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "SELECT * FROM legal WHERE author = '\''Alice'\'' SEARCH '\''contract'\'' LIMIT 10"}'
+```
+
+#### Create Document Relationship
+
+```bash
+curl -X POST http://localhost:4444/v1/relations \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from_document_id": "doc_contract",
+    "to_document_id": "doc_amendment",
+    "relation_type": "references",
+    "note": "Amendment to Section 5"
+  }'
+```
+
+#### Query Related Documents
+
+```bash
+curl -X POST http://localhost:4444/v1/query \
+  -d '{"query": "SELECT * FROM contracts RELATED TO '\''doc_contract'\''"}'
+```
+
 ## 📦 Project Structure
 
 ```
@@ -162,7 +193,11 @@ reasondb/
 - [x] **Phase 2**: Reasoning engine (LLM trait, beam search) ✅
 - [x] **Phase 3**: Ingestion pipeline (chunking, summarization) ✅
 - [x] **Phase 4**: HTTP API (axum server, OpenAPI docs) ✅
-- [ ] **Phase 5**: Optimizations (caching, hybrid retrieval, embeddings)
+- [x] **Phase 5A**: Tables & document organization ✅
+- [x] **Phase 5B**: RQL query language (SEARCH, REASON, GROUP BY) ✅
+- [x] **Phase 5C**: BM25 full-text search (Tantivy) ✅
+- [x] **Phase 5D**: Performance (caching, parallel LLM calls) ✅
+- [x] **Phase 5E**: Document relationships ✅
 - [ ] **Phase 6**: Production features (auth, rate limiting, clustering)
 
 ## 🔧 Configuration
