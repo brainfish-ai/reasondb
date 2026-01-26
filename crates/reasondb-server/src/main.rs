@@ -27,7 +27,7 @@ struct Args {
     port: u16,
 
     /// Database file path
-    #[arg(short, long, default_value = "reasondb.redb", env = "REASONDB_PATH")]
+    #[arg(short, long, default_value = "data/reasondb.redb", env = "REASONDB_PATH")]
     database: String,
 
     /// OpenAI API key (enables LLM features)
@@ -68,13 +68,23 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Starting ReasonDB server v{}", env!("CARGO_PKG_VERSION"));
 
+    // Create data directory if it doesn't exist
+    let data_dir = std::path::Path::new(&args.database).parent().unwrap_or(std::path::Path::new("."));
+    if !data_dir.exists() && data_dir != std::path::Path::new(".") {
+        std::fs::create_dir_all(data_dir)?;
+    }
+
     // Open database
     info!("Opening database: {}", args.database);
     let store = NodeStore::open(&args.database)?;
 
-    // Open or create text index for BM25 search
-    let text_index_path = format!("{}.idx", args.database);
-    info!("Opening text index: {}", text_index_path);
+    // Open or create text index for BM25 search (in same directory as database)
+    let db_path = std::path::Path::new(&args.database);
+    let db_name = db_path.file_stem().unwrap_or_default().to_string_lossy();
+    let text_index_path = db_path.parent()
+        .unwrap_or(std::path::Path::new("."))
+        .join(format!("{}_search_index", db_name));
+    info!("Opening text index: {}", text_index_path.display());
     let text_index = TextIndex::open(&text_index_path)?;
 
     // Create server config
