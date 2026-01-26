@@ -1,7 +1,7 @@
 //! Document ingestion pipeline
 //!
 //! Orchestrates the complete document ingestion process:
-//! 1. Extract text from PDF
+//! 1. Extract text/markdown from documents (via MarkItDown or native extractors)
 //! 2. Chunk into semantic segments
 //! 3. Build hierarchical tree
 //! 4. Generate summaries
@@ -14,9 +14,9 @@ use reasondb_core::llm::ReasoningEngine;
 use reasondb_core::model::{Document, PageNode};
 use reasondb_core::NodeStore;
 
-use crate::chunker::{ChunkerConfig, SemanticChunker, TocExtractor};
+use crate::chunker::{ChunkerConfig, SemanticChunker};
 use crate::error::{IngestError, Result};
-use crate::pdf::{PdfExtraction, PdfExtractor};
+use crate::extractor::{DocumentType, SmartExtractor};
 use crate::summarizer::{MockSummarizer, NodeSummarizer, SummarizerConfig};
 use crate::tree_builder::TreeBuilder;
 
@@ -84,7 +84,7 @@ pub struct IngestStats {
 /// The main ingestion pipeline
 pub struct IngestPipeline<R: ReasoningEngine> {
     config: PipelineConfig,
-    pdf_extractor: PdfExtractor,
+    extractor: SmartExtractor,
     chunker: SemanticChunker,
     tree_builder: TreeBuilder,
     reasoner: Option<R>,
@@ -95,7 +95,7 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
     pub fn new(reasoner: R) -> Self {
         Self {
             config: PipelineConfig::default(),
-            pdf_extractor: PdfExtractor::new(),
+            extractor: SmartExtractor::new(),
             chunker: SemanticChunker::default(),
             tree_builder: TreeBuilder::new(),
             reasoner: Some(reasoner),
@@ -109,43 +109,40 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
                 generate_summaries: false,
                 ..Default::default()
             },
-            pdf_extractor: PdfExtractor::new(),
+            extractor: SmartExtractor::new(),
             chunker: SemanticChunker::default(),
             tree_builder: TreeBuilder::new(),
             reasoner: None,
         }
     }
 
-    /// Set custom configuration
-    pub fn with_config(mut self, config: PipelineConfig) -> Self {
-        self.config = config.clone();
-        self.chunker = SemanticChunker::new(config.chunker);
-        self
-    }
-
-    /// Ingest a PDF file
-    pub async fn ingest_pdf<P: AsRef<Path>>(&self, path: P) -> Result<IngestResult> {
+    /// Ingest any supported file using MarkItDown (if available) or native extractors
+    ///
+    /// Supports: PDF, Word, PowerPoint, Excel, Images (OCR), Audio (transcription),
+    /// HTML, CSV, JSON, XML, EPUB, ZIP files
+    pub async fn ingest_file<P: AsRef<Path>>(&self, path: P) -> Result<IngestResult> {
         let path = path.as_ref();
         let start = std::time::Instant::now();
         let mut stats = IngestStats::default();
 
-        info!("Starting ingestion of: {}", path.display());
+        let doc_type = DocumentType::from_path(path);
+        info!("Starting ingestion of {} file: {}", doc_type.name(), path.display());
 
-        // Step 1: Extract text from PDF
+        // Extract document content
         let extraction_start = std::time::Instant::now();
-        let extraction = self.pdf_extractor.extract(path)?;
+        let extraction = self.extractor.extract(path)?;
         stats.extraction_time_ms = extraction_start.elapsed().as_millis() as u64;
-        stats.pages_extracted = extraction.page_count;
-        stats.chars_extracted = extraction.total_chars;
+        stats.chars_extracted = extraction.char_count;
+        stats.pages_extracted = 1; // MarkItDown doesn't give page counts
 
         debug!(
-            "Extracted {} pages, {} chars in {}ms",
-            stats.pages_extracted, stats.chars_extracted, stats.extraction_time_ms
+            "Extracted {} chars in {}ms",
+            stats.chars_extracted, stats.extraction_time_ms
         );
 
-        // Step 2-5: Process the extraction
+        // Process the markdown content
         let result = self
-            .process_extraction(extraction, &mut stats)
+            .process_markdown(&extraction.title, &extraction.markdown, &mut stats)
             .await?;
 
         stats.total_time_ms = start.elapsed().as_millis() as u64;
@@ -161,31 +158,34 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
         })
     }
 
-    /// Ingest from raw text
-    pub async fn ingest_text(&self, title: &str, text: &str) -> Result<IngestResult> {
+    /// Ingest from a URL (YouTube videos, web pages, etc.)
+    pub async fn ingest_url(&self, url: &str) -> Result<IngestResult> {
         let start = std::time::Instant::now();
         let mut stats = IngestStats::default();
 
-        info!("Starting text ingestion: {}", title);
+        info!("Starting ingestion of URL: {}", url);
 
-        // Create a fake extraction
-        let extraction = PdfExtraction {
-            title: title.to_string(),
-            pages: vec![crate::pdf::ExtractedPage {
-                page_number: 1,
-                text: text.to_string(),
-                char_count: text.chars().count(),
-            }],
-            total_chars: text.chars().count(),
-            page_count: 1,
-        };
+        // Extract from URL
+        let extraction_start = std::time::Instant::now();
+        let extraction = self.extractor.extract_url(url)?;
+        stats.extraction_time_ms = extraction_start.elapsed().as_millis() as u64;
+        stats.chars_extracted = extraction.char_count;
 
-        stats.pages_extracted = 1;
-        stats.chars_extracted = extraction.total_chars;
+        debug!(
+            "Extracted {} chars in {}ms",
+            stats.chars_extracted, stats.extraction_time_ms
+        );
 
-        let result = self.process_extraction(extraction, &mut stats).await?;
+        // Process the markdown content
+        let result = self
+            .process_markdown(&extraction.title, &extraction.markdown, &mut stats)
+            .await?;
 
         stats.total_time_ms = start.elapsed().as_millis() as u64;
+        info!(
+            "Ingestion complete: {} nodes in {}ms",
+            stats.nodes_created, stats.total_time_ms
+        );
 
         Ok(IngestResult {
             document: result.0,
@@ -194,26 +194,16 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
         })
     }
 
-    /// Process an extraction into a document tree
-    async fn process_extraction(
+    /// Process extracted markdown content into a document tree
+    async fn process_markdown(
         &self,
-        extraction: PdfExtraction,
+        title: &str,
+        markdown: &str,
         stats: &mut IngestStats,
     ) -> Result<(Document, Vec<PageNode>)> {
-        // Step 2: Try ToC detection
-        let toc = if self.config.use_toc_detection {
-            TocExtractor::extract(&extraction.pages)
-        } else {
-            None
-        };
-
-        if let Some(ref toc_headings) = toc {
-            debug!("Found ToC with {} entries", toc_headings.len());
-        }
-
-        // Step 3: Chunk the document
+        // Chunk the markdown
         let chunking_start = std::time::Instant::now();
-        let chunks = self.chunker.chunk_pages(&extraction.pages)?;
+        let chunks = self.chunker.chunk_text(markdown)?;
         stats.chunking_time_ms = chunking_start.elapsed().as_millis() as u64;
         stats.chunks_created = chunks.len();
 
@@ -222,11 +212,11 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
             stats.chunks_created, stats.chunking_time_ms
         );
 
-        // Step 4: Build tree
-        let (document, mut nodes) = self.tree_builder.build(&extraction.title, chunks)?;
+        // Build tree
+        let (document, mut nodes) = self.tree_builder.build(title, chunks)?;
         stats.nodes_created = nodes.len();
 
-        // Step 5: Generate summaries
+        // Generate summaries
         if self.config.generate_summaries {
             let summarization_start = std::time::Instant::now();
 
@@ -235,7 +225,6 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
                 summarizer.summarize_tree(&mut nodes).await?;
                 stats.summaries_generated = nodes.len();
             } else {
-                // Use mock summarizer
                 MockSummarizer::summarize_tree(&mut nodes);
                 stats.summaries_generated = nodes.len();
             }
@@ -250,13 +239,39 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
         Ok((document, nodes))
     }
 
+    /// Set custom configuration
+    pub fn with_config(mut self, config: PipelineConfig) -> Self {
+        self.config = config.clone();
+        self.chunker = SemanticChunker::new(config.chunker);
+        self
+    }
+
+    /// Ingest from raw text (or markdown)
+    pub async fn ingest_text(&self, title: &str, text: &str) -> Result<IngestResult> {
+        let start = std::time::Instant::now();
+        let mut stats = IngestStats::default();
+
+        info!("Starting text ingestion: {}", title);
+        stats.chars_extracted = text.chars().count();
+
+        let result = self.process_markdown(title, text, &mut stats).await?;
+
+        stats.total_time_ms = start.elapsed().as_millis() as u64;
+
+        Ok(IngestResult {
+            document: result.0,
+            nodes: result.1,
+            stats,
+        })
+    }
+
     /// Ingest and store in database
     pub async fn ingest_and_store<P: AsRef<Path>>(
         &self,
         path: P,
         store: &NodeStore,
     ) -> Result<IngestResult> {
-        let result = self.ingest_pdf(path).await?;
+        let result = self.ingest_file(path).await?;
 
         if self.config.store_in_db {
             // Store document
@@ -377,7 +392,7 @@ impl<R: ReasoningEngine> PipelineBuilder<R> {
     {
         IngestPipeline {
             config: self.config.clone(),
-            pdf_extractor: PdfExtractor::new(),
+            extractor: SmartExtractor::new(),
             chunker: SemanticChunker::new(self.config.chunker),
             tree_builder: TreeBuilder::new(),
             reasoner: self.reasoner,
