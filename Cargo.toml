@@ -37,5 +37,8 @@ chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+# HTTP client (for LLM APIs)
+reqwest = { version = "0.12", features = ["json"] }
+
 # Testing
 tempfile = "3.9"

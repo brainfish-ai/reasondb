@@ -28,6 +28,9 @@ uuid.workspace = true
 chrono.workspace = true
 tracing.workspace = true
 
+# HTTP client
+reqwest.workspace = true
+
 [dev-dependencies]
 tempfile.workspace = true
 tokio = { workspace = true, features = ["test-util", "macros"] }
