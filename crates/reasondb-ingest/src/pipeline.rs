@@ -295,6 +295,65 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
 
         Ok(result)
     }
+
+    /// Ingest text and store in database
+    pub async fn ingest_text_and_store(
+        &self,
+        title: &str,
+        text: &str,
+        store: &NodeStore,
+    ) -> Result<IngestResult> {
+        let result = self.ingest_text(title, text).await?;
+
+        if self.config.store_in_db {
+            store
+                .insert_document(&result.document)
+                .map_err(IngestError::Storage)?;
+
+            for node in &result.nodes {
+                store
+                    .insert_node(node)
+                    .map_err(IngestError::Storage)?;
+            }
+
+            info!(
+                "Stored document {} with {} nodes",
+                result.document.id,
+                result.nodes.len()
+            );
+        }
+
+        Ok(result)
+    }
+
+    /// Ingest URL and store in database
+    pub async fn ingest_url_and_store(
+        &self,
+        url: &str,
+        store: &NodeStore,
+    ) -> Result<IngestResult> {
+        let result = self.ingest_url(url).await?;
+
+        if self.config.store_in_db {
+            store
+                .insert_document(&result.document)
+                .map_err(IngestError::Storage)?;
+
+            for node in &result.nodes {
+                store
+                    .insert_node(node)
+                    .map_err(IngestError::Storage)?;
+            }
+
+            info!(
+                "Stored document {} with {} nodes",
+                result.document.id,
+                result.nodes.len()
+            );
+        }
+
+        Ok(result)
+    }
 }
 
 /// A no-op reasoner for when LLM is not needed

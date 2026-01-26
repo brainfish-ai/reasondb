@@ -28,6 +28,7 @@ use crate::error::Result;
 /// // Use in tests...
 /// # }
 /// ```
+#[derive(Clone)]
 pub struct MockReasoner {
     /// Always select the first N candidates
     select_first_n: usize,

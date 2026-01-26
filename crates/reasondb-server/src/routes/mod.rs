@@ -1,0 +1,51 @@
+//! API route definitions
+//!
+//! All routes are versioned under `/v1/`.
+
+pub mod documents;
+pub mod ingest;
+pub mod search;
+
+use axum::{
+    routing::{delete, get, post},
+    Router,
+};
+use reasondb_core::llm::ReasoningEngine;
+use std::sync::Arc;
+
+use crate::state::AppState;
+
+/// Create all API routes
+pub fn create_routes<R: ReasoningEngine + Clone + Send + Sync + 'static>(
+    state: Arc<AppState<R>>,
+) -> Router {
+    Router::new()
+        // Health check
+        .route("/health", get(health_check))
+        // API v1
+        .nest("/v1", v1_routes(state))
+}
+
+/// V1 API routes
+fn v1_routes<R: ReasoningEngine + Clone + Send + Sync + 'static>(state: Arc<AppState<R>>) -> Router {
+    Router::new()
+        // Ingestion
+        .route("/ingest/file", post(ingest::ingest_file::<R>))
+        .route("/ingest/text", post(ingest::ingest_text::<R>))
+        .route("/ingest/url", post(ingest::ingest_url::<R>))
+        // Search
+        .route("/search", post(search::search::<R>))
+        // Documents
+        .route("/documents", get(documents::list_documents::<R>))
+        .route("/documents/:id", get(documents::get_document::<R>))
+        .route("/documents/:id", delete(documents::delete_document::<R>))
+        .route("/documents/:id/nodes", get(documents::get_document_nodes::<R>))
+        .route("/documents/:id/tree", get(documents::get_document_tree::<R>))
+        // State
+        .with_state(state)
+}
+
+/// Health check endpoint
+async fn health_check() -> &'static str {
+    "OK"
+}

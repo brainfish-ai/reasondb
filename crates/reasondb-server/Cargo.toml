@@ -6,9 +6,18 @@ authors.workspace = true
 license.workspace = true
 description = "HTTP API server for ReasonDB"
 
+[[bin]]
+name = "reasondb"
+path = "src/main.rs"
+
 [dependencies]
 reasondb-core = { path = "../reasondb-core" }
 reasondb-ingest = { path = "../reasondb-ingest" }
+
+# Web framework
+axum = { version = "0.7", features = ["multipart", "macros"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace", "limit"] }
 
 # Async
 tokio.workspace = true
@@ -23,3 +32,16 @@ anyhow.workspace = true
 
 # Utilities
 tracing.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+uuid.workspace = true
+chrono.workspace = true
+
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+
+# File handling
+tempfile = "3"
+url = { workspace = true }
+
+[dev-dependencies]
+axum-test = "15"

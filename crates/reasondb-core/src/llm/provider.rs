@@ -108,6 +108,7 @@ impl LLMProvider {
 /// // Using Gemini
 /// let reasoner = Reasoner::new(LLMProvider::gemini("your-api-key"));
 /// ```
+#[derive(Clone)]
 pub struct Reasoner {
     provider: LLMProvider,
     config: ReasoningConfig,
