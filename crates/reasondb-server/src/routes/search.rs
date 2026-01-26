@@ -10,39 +10,45 @@ use reasondb_core::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{debug, info};
+use utoipa::ToSchema;
 
 use crate::{
-    error::{ApiError, ApiResult},
+    error::{ApiError, ApiResult, ErrorResponse},
     state::AppState,
 };
 
 /// Search request
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct SearchRequest {
-    /// The query to search for
+    /// The natural language query to search for
+    #[schema(example = "What are the key benefits of machine learning?")]
     pub query: String,
 
-    /// Optional document ID to search within
+    /// Optional document ID to search within (searches all if not provided)
     #[serde(default)]
+    #[schema(example = "doc_abc123")]
     pub document_id: Option<String>,
 
-    /// Maximum depth to traverse
+    /// Maximum tree depth to traverse (default: 10)
     #[serde(default)]
+    #[schema(example = 10)]
     pub max_depth: Option<usize>,
 
-    /// Beam width for parallel exploration
+    /// Beam width for parallel exploration (default: 3)
     #[serde(default)]
+    #[schema(example = 3)]
     pub beam_width: Option<usize>,
 
-    /// Minimum confidence to continue traversal
+    /// Minimum confidence to continue traversal (default: 0.3)
     #[serde(default)]
+    #[schema(example = 0.3)]
     pub min_confidence: Option<f32>,
 }
 
 /// Search response
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct SearchResponse {
-    /// Search results
+    /// Search results ordered by relevance
     pub results: Vec<SearchResult>,
 
     /// Search statistics
@@ -50,45 +56,79 @@ pub struct SearchResponse {
 }
 
 /// Individual search result
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct SearchResult {
     /// Node ID where content was found
+    #[schema(example = "node_xyz789")]
     pub node_id: String,
 
-    /// Document ID
+    /// Document ID containing this result
+    #[schema(example = "doc_abc123")]
     pub document_id: String,
 
-    /// Path from root to this node
+    /// Path from root to this node (breadcrumbs)
     pub path: Vec<PathNode>,
 
-    /// The relevant content
+    /// The relevant content at this node
+    #[schema(example = "Machine learning enables computers to learn from data...")]
     pub content: String,
 
-    /// LLM's extracted answer
+    /// LLM's extracted answer (if applicable)
+    #[schema(example = "The key benefits include automation, pattern recognition, and predictive capabilities.")]
     pub answer: Option<String>,
 
-    /// Confidence score
+    /// Confidence score (0.0 to 1.0)
+    #[schema(example = 0.85)]
     pub confidence: f32,
 }
 
 /// Node in the traversal path
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct PathNode {
+    /// Node ID
+    #[schema(example = "node_abc")]
     pub node_id: String,
+    /// Node title
+    #[schema(example = "Chapter 3: Machine Learning")]
     pub title: String,
+    /// LLM's reasoning for selecting this path
+    #[schema(example = "This chapter covers ML fundamentals relevant to the query")]
     pub reasoning: String,
 }
 
 /// Search statistics
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct SearchStats {
+    /// Total nodes visited during traversal
+    #[schema(example = 15)]
     pub nodes_visited: usize,
+    /// Nodes pruned (not explored due to low confidence)
+    #[schema(example = 8)]
     pub nodes_pruned: usize,
+    /// Number of LLM API calls made
+    #[schema(example = 7)]
     pub llm_calls: usize,
+    /// Total search time in milliseconds
+    #[schema(example = 1250)]
     pub total_time_ms: u64,
 }
 
-/// POST /v1/search - Search documents
+/// Search documents using LLM-guided tree traversal
+///
+/// Performs an intelligent search across documents using an LLM to navigate
+/// the hierarchical tree structure. The LLM evaluates each node's summary
+/// to decide which branches to explore, mimicking human reasoning.
+#[utoipa::path(
+    post,
+    path = "/v1/search",
+    tag = "search",
+    request_body = SearchRequest,
+    responses(
+        (status = 200, description = "Search completed successfully", body = SearchResponse),
+        (status = 422, description = "Validation failed", body = ErrorResponse),
+        (status = 500, description = "Search failed", body = ErrorResponse),
+    )
+)]
 pub async fn search<R: ReasoningEngine + Send + Sync + 'static>(
     State(state): State<Arc<AppState<R>>>,
     Json(request): Json<SearchRequest>,

@@ -43,5 +43,9 @@ clap = { version = "4", features = ["derive", "env"] }
 tempfile = "3"
 url = { workspace = true }
 
+# OpenAPI documentation
+utoipa = { version = "5", features = ["axum_extras"] }
+utoipa-swagger-ui = { version = "8", features = ["axum"] }
+
 [dev-dependencies]
 axum-test = "15"

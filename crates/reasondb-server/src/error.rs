@@ -9,6 +9,7 @@ use axum::{
 };
 use serde::Serialize;
 use thiserror::Error;
+use utoipa::ToSchema;
 
 /// API error type
 #[derive(Debug, Error)]
@@ -39,15 +40,23 @@ pub enum ApiError {
 }
 
 /// Error response body
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({"error": {"code": "NOT_FOUND", "message": "Resource not found: doc123"}}))]
 pub struct ErrorResponse {
+    /// Error details
     pub error: ErrorDetail,
 }
 
-#[derive(Debug, Serialize)]
+/// Error details
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ErrorDetail {
+    /// Error code (e.g., "NOT_FOUND", "VALIDATION_ERROR")
+    #[schema(example = "NOT_FOUND")]
     pub code: String,
+    /// Human-readable error message
+    #[schema(example = "Document not found: doc123")]
     pub message: String,
+    /// Additional error details (optional)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<serde_json::Value>,
 }

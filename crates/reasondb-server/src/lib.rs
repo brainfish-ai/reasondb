@@ -19,6 +19,10 @@
 //! - `GET /v1/documents/:id/nodes` - Get all nodes
 //! - `GET /v1/documents/:id/tree` - Get as tree structure
 //!
+//! ## Documentation
+//! - `GET /swagger-ui` - Interactive API documentation
+//! - `GET /api-docs/openapi.json` - OpenAPI specification
+//!
 //! # Example
 //!
 //! ```no_run
@@ -37,10 +41,12 @@
 //! ```
 
 pub mod error;
+pub mod openapi;
 pub mod routes;
 pub mod state;
 
 pub use error::{ApiError, ApiResult, ErrorResponse};
+pub use openapi::ApiDoc;
 pub use routes::create_routes;
 pub use state::{AppState, MockAppState, RealAppState, ServerConfig};
 
@@ -52,12 +58,17 @@ use tower_http::{
     limit::RequestBodyLimitLayer,
     trace::TraceLayer,
 };
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
 /// Create the server with all middleware
 pub fn create_server<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     state: Arc<AppState<R>>,
 ) -> Router {
     let mut app = create_routes(state.clone());
+
+    // Add OpenAPI documentation
+    app = app.merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()));
 
     // Add middleware
     app = app.layer(TraceLayer::new_for_http());

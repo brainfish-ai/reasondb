@@ -10,64 +10,135 @@ use reasondb_core::llm::ReasoningEngine;
 use serde::Serialize;
 use std::sync::Arc;
 use tracing::{debug, info};
+use utoipa::ToSchema;
 
 use crate::{
-    error::{ApiError, ApiResult},
+    error::{ApiError, ApiResult, ErrorResponse},
     state::AppState,
 };
 
 /// Document summary for listing
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct DocumentSummary {
+    /// Unique document ID
+    #[schema(example = "doc_abc123")]
     pub id: String,
+    /// Document title
+    #[schema(example = "Machine Learning Handbook")]
     pub title: String,
+    /// Total nodes in the tree
+    #[schema(example = 42)]
     pub total_nodes: usize,
+    /// Maximum tree depth
+    #[schema(example = 4)]
     pub max_depth: u8,
+    /// Original source path or URL
+    #[schema(example = "/uploads/ml-handbook.pdf")]
     pub source_path: String,
+    /// MIME type of original file
+    #[schema(example = "application/pdf")]
     pub mime_type: Option<String>,
+    /// Original file size in bytes
+    #[schema(example = 2048576)]
     pub file_size: Option<u64>,
+    /// Creation timestamp (ISO 8601)
+    #[schema(example = "2024-01-15T10:30:00Z")]
     pub created_at: String,
 }
 
-/// Full document with root node info
-#[derive(Debug, Serialize)]
+/// Full document details
+#[derive(Debug, Serialize, ToSchema)]
 pub struct DocumentDetail {
+    /// Unique document ID
+    #[schema(example = "doc_abc123")]
     pub id: String,
+    /// Document title
+    #[schema(example = "Machine Learning Handbook")]
     pub title: String,
+    /// Root node ID of the tree
+    #[schema(example = "node_root_abc")]
     pub root_node_id: String,
+    /// Total nodes in the tree
+    #[schema(example = 42)]
     pub total_nodes: usize,
+    /// Maximum tree depth
+    #[schema(example = 4)]
     pub max_depth: u8,
+    /// Original source path or URL
+    #[schema(example = "/uploads/ml-handbook.pdf")]
     pub source_path: String,
+    /// MIME type of original file
+    #[schema(example = "application/pdf")]
     pub mime_type: Option<String>,
+    /// Original file size in bytes
+    #[schema(example = 2048576)]
     pub file_size: Option<u64>,
+    /// Creation timestamp (ISO 8601)
+    #[schema(example = "2024-01-15T10:30:00Z")]
     pub created_at: String,
+    /// Last update timestamp (ISO 8601)
+    #[schema(example = "2024-01-15T10:35:00Z")]
     pub updated_at: String,
 }
 
 /// Node summary for listing
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct NodeSummary {
+    /// Unique node ID
+    #[schema(example = "node_xyz789")]
     pub id: String,
+    /// Node title
+    #[schema(example = "Chapter 3: Neural Networks")]
     pub title: String,
+    /// LLM-generated summary of this node
+    #[schema(example = "This chapter covers the fundamentals of neural networks...")]
     pub summary: String,
+    /// Depth in the tree (0 = root)
+    #[schema(example = 1)]
     pub depth: u8,
+    /// Whether this is a leaf node (no children)
+    #[schema(example = false)]
     pub is_leaf: bool,
+    /// Number of direct children
+    #[schema(example = 5)]
     pub children_count: usize,
 }
 
-/// Tree node with children
-#[derive(Debug, Serialize)]
+/// Tree node with nested children
+#[derive(Debug, Serialize, ToSchema)]
 pub struct TreeNode {
+    /// Unique node ID
+    #[schema(example = "node_xyz789")]
     pub id: String,
+    /// Node title
+    #[schema(example = "Chapter 3: Neural Networks")]
     pub title: String,
+    /// LLM-generated summary
+    #[schema(example = "This chapter covers neural network fundamentals...")]
     pub summary: String,
+    /// Depth in the tree (0 = root)
+    #[schema(example = 1)]
     pub depth: u8,
+    /// Whether this is a leaf node
+    #[schema(example = false)]
     pub is_leaf: bool,
+    /// Child nodes (recursive structure)
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<TreeNode>,
 }
 
-/// GET /v1/documents - List all documents
+/// List all documents
+///
+/// Returns a summary of all ingested documents in the database.
+#[utoipa::path(
+    get,
+    path = "/v1/documents",
+    tag = "documents",
+    responses(
+        (status = 200, description = "List of documents", body = Vec<DocumentSummary>),
+        (status = 500, description = "Storage error", body = ErrorResponse),
+    )
+)]
 pub async fn list_documents<R: ReasoningEngine + Send + Sync + 'static>(
     State(state): State<Arc<AppState<R>>>,
 ) -> ApiResult<Json<Vec<DocumentSummary>>> {
@@ -95,7 +166,22 @@ pub async fn list_documents<R: ReasoningEngine + Send + Sync + 'static>(
     Ok(Json(summaries))
 }
 
-/// GET /v1/documents/:id - Get document details
+/// Get document details
+///
+/// Returns full details for a specific document including metadata and tree info.
+#[utoipa::path(
+    get,
+    path = "/v1/documents/{id}",
+    tag = "documents",
+    params(
+        ("id" = String, Path, description = "Document ID")
+    ),
+    responses(
+        (status = 200, description = "Document details", body = DocumentDetail),
+        (status = 404, description = "Document not found", body = ErrorResponse),
+        (status = 500, description = "Storage error", body = ErrorResponse),
+    )
+)]
 pub async fn get_document<R: ReasoningEngine + Send + Sync + 'static>(
     State(state): State<Arc<AppState<R>>>,
     Path(id): Path<String>,
@@ -122,7 +208,22 @@ pub async fn get_document<R: ReasoningEngine + Send + Sync + 'static>(
     }))
 }
 
-/// DELETE /v1/documents/:id - Delete a document
+/// Delete a document
+///
+/// Deletes a document and all its associated nodes (cascade delete).
+#[utoipa::path(
+    delete,
+    path = "/v1/documents/{id}",
+    tag = "documents",
+    params(
+        ("id" = String, Path, description = "Document ID to delete")
+    ),
+    responses(
+        (status = 200, description = "Document deleted successfully"),
+        (status = 404, description = "Document not found", body = ErrorResponse),
+        (status = 500, description = "Storage error", body = ErrorResponse),
+    )
+)]
 pub async fn delete_document<R: ReasoningEngine + Send + Sync + 'static>(
     State(state): State<Arc<AppState<R>>>,
     Path(id): Path<String>,
@@ -148,7 +249,22 @@ pub async fn delete_document<R: ReasoningEngine + Send + Sync + 'static>(
     })))
 }
 
-/// GET /v1/documents/:id/nodes - Get all nodes for a document
+/// Get all nodes for a document
+///
+/// Returns a flat list of all nodes in the document tree.
+#[utoipa::path(
+    get,
+    path = "/v1/documents/{id}/nodes",
+    tag = "documents",
+    params(
+        ("id" = String, Path, description = "Document ID")
+    ),
+    responses(
+        (status = 200, description = "List of nodes", body = Vec<NodeSummary>),
+        (status = 404, description = "Document not found", body = ErrorResponse),
+        (status = 500, description = "Storage error", body = ErrorResponse),
+    )
+)]
 pub async fn get_document_nodes<R: ReasoningEngine + Send + Sync + 'static>(
     State(state): State<Arc<AppState<R>>>,
     Path(id): Path<String>,
@@ -186,7 +302,22 @@ pub async fn get_document_nodes<R: ReasoningEngine + Send + Sync + 'static>(
     Ok(Json(summaries))
 }
 
-/// GET /v1/documents/:id/tree - Get document as tree structure
+/// Get document as tree structure
+///
+/// Returns the complete hierarchical tree structure with nested children.
+#[utoipa::path(
+    get,
+    path = "/v1/documents/{id}/tree",
+    tag = "documents",
+    params(
+        ("id" = String, Path, description = "Document ID")
+    ),
+    responses(
+        (status = 200, description = "Document tree", body = TreeNode),
+        (status = 404, description = "Document not found", body = ErrorResponse),
+        (status = 500, description = "Storage error", body = ErrorResponse),
+    )
+)]
 pub async fn get_document_tree<R: ReasoningEngine + Send + Sync + 'static>(
     State(state): State<Arc<AppState<R>>>,
     Path(id): Path<String>,
