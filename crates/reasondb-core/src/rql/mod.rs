@@ -146,6 +146,7 @@ pub struct QueryBuilder {
     from: Option<String>,
     conditions: Vec<Condition>,
     search: Option<SearchClause>,
+    reason: Option<ReasonClause>,
     order_by: Option<OrderByClause>,
     limit: Option<usize>,
     offset: Option<usize>,
@@ -239,15 +240,15 @@ impl QueryBuilder {
         self
     }
 
-    /// Add a full-text search clause.
+    /// Add a full-text search clause (BM25).
     pub fn search(mut self, query: &str) -> Self {
-        self.search = Some(SearchClause::FullText(query.to_string()));
+        self.search = Some(SearchClause { query: query.to_string() });
         self
     }
 
-    /// Add a semantic search clause.
+    /// Add a semantic search clause (LLM reasoning).
     pub fn reason(mut self, query: &str) -> Self {
-        self.search = Some(SearchClause::Semantic {
+        self.reason = Some(ReasonClause {
             query: query.to_string(),
             min_confidence: None,
         });
@@ -256,7 +257,7 @@ impl QueryBuilder {
 
     /// Add a semantic search clause with confidence threshold.
     pub fn reason_with_confidence(mut self, query: &str, min_confidence: f32) -> Self {
-        self.search = Some(SearchClause::Semantic {
+        self.reason = Some(ReasonClause {
             query: query.to_string(),
             min_confidence: Some(min_confidence),
         });
@@ -312,6 +313,7 @@ impl QueryBuilder {
             from: FromClause { table: from },
             where_clause,
             search: self.search,
+            reason: self.reason,
             order_by: self.order_by,
             limit: limit_clause,
         })

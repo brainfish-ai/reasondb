@@ -88,7 +88,8 @@ fn test_parse_tags_contains() {
 #[test]
 fn test_parse_search() {
     let query = Query::parse("SELECT * FROM legal SEARCH 'liability clause'").unwrap();
-    assert!(matches!(query.search, Some(SearchClause::FullText(_))));
+    let search = query.search.expect("Expected search clause");
+    assert_eq!(search.query, "liability clause");
 }
 
 #[test]
@@ -96,14 +97,9 @@ fn test_parse_reason() {
     let query =
         Query::parse("SELECT * FROM legal REASON 'What are the penalties?' WITH CONFIDENCE > 0.7")
             .unwrap();
-    match query.search {
-        Some(SearchClause::Semantic {
-            min_confidence, ..
-        }) => {
-            assert_eq!(min_confidence, Some(0.7));
-        }
-        _ => panic!("Expected semantic search"),
-    }
+    let reason = query.reason.expect("Expected reason clause");
+    assert_eq!(reason.query, "What are the penalties?");
+    assert_eq!(reason.min_confidence, Some(0.7));
 }
 
 #[test]
@@ -155,8 +151,38 @@ fn test_builder_with_search() {
         .build()
         .unwrap();
 
-    assert!(matches!(query.search, Some(SearchClause::FullText(_))));
+    let search = query.search.expect("Expected search clause");
+    assert_eq!(search.query, "liability");
     assert_eq!(query.limit.unwrap().count, 10);
+}
+
+#[test]
+fn test_builder_with_reason() {
+    let query = QueryBuilder::new()
+        .from("legal")
+        .reason("What are the penalties?")
+        .limit(5)
+        .build()
+        .unwrap();
+
+    let reason = query.reason.expect("Expected reason clause");
+    assert_eq!(reason.query, "What are the penalties?");
+    assert_eq!(query.limit.unwrap().count, 5);
+}
+
+#[test]
+fn test_builder_hybrid() {
+    let query = QueryBuilder::new()
+        .from("legal")
+        .search("payment")
+        .reason("What are the fees?")
+        .build()
+        .unwrap();
+
+    let search = query.search.expect("Expected search clause");
+    assert_eq!(search.query, "payment");
+    let reason = query.reason.expect("Expected reason clause");
+    assert_eq!(reason.query, "What are the fees?");
 }
 
 // ==================== Query Execution Tests ====================

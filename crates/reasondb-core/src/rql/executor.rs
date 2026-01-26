@@ -6,10 +6,14 @@
 //!
 //! - `execute_rql()` - Basic execution for filter-only queries
 //! - `execute_rql_with_search()` - Execution with BM25 full-text search support
+//! - `execute_rql_async()` - Async execution with REASON (LLM semantic search)
 
 use std::collections::HashSet;
+use std::sync::Arc;
 
+use crate::engine::{SearchConfig, SearchEngine};
 use crate::error::Result;
+use crate::llm::ReasoningEngine;
 use crate::model::{Document, NodeId};
 use crate::store::NodeStore;
 use crate::text_index::TextIndex;
@@ -57,6 +61,10 @@ pub struct DocumentMatch {
     pub matched_nodes: Vec<NodeId>,
     /// Highlighted text snippets
     pub highlights: Vec<String>,
+    /// LLM-extracted answer (for REASON queries)
+    pub answer: Option<String>,
+    /// Confidence score from LLM (for REASON queries)
+    pub confidence: Option<f32>,
 }
 
 impl NodeStore {
@@ -124,6 +132,8 @@ impl NodeStore {
                 score: None,
                 matched_nodes: Vec::new(),
                 highlights: Vec::new(),
+                answer: None,
+                confidence: None,
             })
             .collect();
 
@@ -133,7 +143,7 @@ impl NodeStore {
             rows_scanned: total_count,
             rows_returned: matches.len(),
             search_executed: query.search.is_some(),
-            reason_executed: matches!(query.search, Some(SearchClause::Semantic { .. })),
+            reason_executed: query.reason.is_some(),
             llm_calls: 0,
         };
 
@@ -175,11 +185,11 @@ impl NodeStore {
         let table_id = self.resolve_table_id(&query.from.table)?;
 
         // Check if we have a SEARCH clause and a text index
-        let search_results = if let (Some(SearchClause::FullText(search_query)), Some(index)) =
+        let search_results = if let (Some(ref search_clause), Some(index)) =
             (&query.search, text_index)
         {
             // Execute BM25 search
-            let results = index.search(search_query, 1000, Some(&table_id))?;
+            let results = index.search(&search_clause.query, 1000, Some(&table_id))?;
             Some(results)
         } else {
             None
@@ -263,6 +273,8 @@ impl NodeStore {
                 },
                 matched_nodes: Vec::new(),
                 highlights: snippet.into_iter().collect(),
+                answer: None,
+                confidence: None,
             })
             .collect();
 
@@ -276,12 +288,176 @@ impl NodeStore {
             rows_scanned: total_count,
             rows_returned: matches.len(),
             search_executed: search_results.is_some(),
-            reason_executed: matches!(query.search, Some(SearchClause::Semantic { .. })),
+            reason_executed: query.reason.is_some(),
             llm_calls: 0,
         };
 
         Ok(QueryResult {
             documents: matches,
+            total_count,
+            execution_time_ms: start.elapsed().as_millis() as u64,
+            stats,
+        })
+    }
+
+    /// Execute an RQL query with full async support (SEARCH + REASON).
+    ///
+    /// This method supports:
+    /// - SEARCH clause: BM25 full-text search
+    /// - REASON clause: LLM-powered semantic search with answer extraction
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - The parsed RQL query
+    /// * `text_index` - Optional TextIndex for BM25 search
+    /// * `reasoner` - The reasoning engine for REASON queries
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use reasondb_core::{NodeStore, TextIndex, rql::Query};
+    /// use reasondb_core::llm::MockReasoner;
+    /// use std::sync::Arc;
+    ///
+    /// async fn example() {
+    ///     let store = Arc::new(NodeStore::open("./test.db").unwrap());
+    ///     let text_index = TextIndex::open("./search_index").unwrap();
+    ///     let reasoner = Arc::new(MockReasoner::new());
+    ///     let query = Query::parse("SELECT * FROM legal REASON 'What are the penalties?'").unwrap();
+    ///     let result = store.execute_rql_async(&query, Some(&text_index), reasoner).await.unwrap();
+    /// }
+    /// ```
+    pub async fn execute_rql_async<R: ReasoningEngine + Send + Sync + 'static>(
+        self: &Arc<Self>,
+        query: &Query,
+        text_index: Option<&TextIndex>,
+        reasoner: Arc<R>,
+    ) -> Result<QueryResult> {
+        // Check if this is a REASON query
+        if let Some(ref reason_clause) = query.reason {
+            return self.execute_reason_query(
+                query,
+                &reason_clause.query,
+                reason_clause.min_confidence,
+                text_index,
+                reasoner,
+            ).await;
+        }
+
+        // For non-REASON queries, delegate to execute_rql_with_search
+        self.execute_rql_with_search(query, text_index)
+    }
+
+    /// Execute a REASON (semantic search) query using the LLM.
+    ///
+    /// Supports hybrid search: if SEARCH clause is present, use BM25 to pre-filter
+    /// documents before applying LLM reasoning.
+    async fn execute_reason_query<R: ReasoningEngine + Send + Sync + 'static>(
+        self: &Arc<Self>,
+        query: &Query,
+        reason_query: &str,
+        min_confidence: Option<f32>,
+        text_index: Option<&TextIndex>,
+        reasoner: Arc<R>,
+    ) -> Result<QueryResult> {
+        let start = std::time::Instant::now();
+
+        // Resolve table name to ID
+        let table_id = self.resolve_table_id(&query.from.table)?;
+
+        // Build search config
+        let config = SearchConfig {
+            min_confidence: min_confidence.unwrap_or(0.3),
+            max_results: query.limit.as_ref().map(|l| l.count).unwrap_or(10),
+            ..Default::default()
+        };
+
+        // Create search engine
+        let engine = SearchEngine::with_config(self.clone(), reasoner, config);
+
+        // Get documents to search - supports hybrid search
+        let documents: Vec<Document> = if let (Some(ref search_clause), Some(index)) = (&query.search, text_index) {
+            // HYBRID SEARCH: Use BM25 to pre-filter, then apply LLM reasoning
+            let search_results = index.search(&search_clause.query, 100, Some(&table_id))?;
+            let mut seen: HashSet<String> = HashSet::new();
+            let mut docs = Vec::new();
+            for hit in search_results {
+                if seen.contains(&hit.document_id) {
+                    continue;
+                }
+                if let Ok(Some(doc)) = self.get_document(&hit.document_id) {
+                    docs.push(doc);
+                    seen.insert(hit.document_id);
+                }
+            }
+            docs
+        } else {
+            // Filter-based search only
+            let mut filter = query.to_search_filter();
+            filter.table_id = Some(table_id.clone());
+            self.find_documents(&filter)?
+        };
+
+        // Execute semantic search on each document
+        let mut all_matches: Vec<DocumentMatch> = Vec::new();
+        let mut total_llm_calls = 0;
+
+        for doc in &documents {
+            let search_result = engine.search_document(reason_query, &doc.id).await;
+
+            if let Ok(response) = search_result {
+                total_llm_calls += response.stats.llm_calls;
+
+                // Convert search results to DocumentMatch
+                for result in response.results {
+                    // Apply min_confidence filter
+                    if let Some(min_conf) = min_confidence {
+                        if result.confidence < min_conf {
+                            continue;
+                        }
+                    }
+
+                    all_matches.push(DocumentMatch {
+                        document: doc.clone(),
+                        score: Some(result.confidence),
+                        matched_nodes: vec![result.node_id.clone()],
+                        highlights: vec![result.content.clone()],
+                        answer: result.extracted_answer,
+                        confidence: Some(result.confidence),
+                    });
+                }
+            }
+        }
+
+        // Sort by confidence (highest first)
+        all_matches.sort_by(|a, b| {
+            b.confidence
+                .unwrap_or(0.0)
+                .partial_cmp(&a.confidence.unwrap_or(0.0))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        // Apply pagination
+        let total_count = all_matches.len();
+        let paginated: Vec<DocumentMatch> = if let Some(ref limit) = query.limit {
+            let offset = limit.offset.unwrap_or(0);
+            all_matches.into_iter().skip(offset).take(limit.count).collect()
+        } else {
+            all_matches
+        };
+
+        // Build stats
+        let stats = QueryStats {
+            index_used: Some("llm_semantic".to_string()),
+            rows_scanned: documents.len(),
+            rows_returned: paginated.len(),
+            search_executed: false,
+            reason_executed: true,
+            llm_calls: total_llm_calls,
+        };
+
+        Ok(QueryResult {
+            documents: paginated,
             total_count,
             execution_time_ms: start.elapsed().as_millis() as u64,
             stats,

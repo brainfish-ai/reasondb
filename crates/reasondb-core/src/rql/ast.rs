@@ -17,8 +17,11 @@ pub struct Query {
     /// Optional WHERE clause (filters)
     pub where_clause: Option<WhereClause>,
 
-    /// Optional SEARCH/REASON clause
+    /// Optional SEARCH clause (BM25 full-text search)
     pub search: Option<SearchClause>,
+
+    /// Optional REASON clause (LLM semantic search) - can be combined with SEARCH
+    pub reason: Option<ReasonClause>,
 
     /// Optional ORDER BY clause
     pub order_by: Option<OrderByClause>,
@@ -305,19 +308,22 @@ impl fmt::Display for Value {
 
 // ==================== SEARCH ====================
 
-/// SEARCH or REASON clause.
+/// SEARCH clause - BM25 full-text search.
 #[derive(Debug, Clone, PartialEq)]
-pub enum SearchClause {
-    /// Full-text search (SEARCH 'query')
-    FullText(String),
+pub struct SearchClause {
+    /// The search query string
+    pub query: String,
+}
 
-    /// Semantic/AI search (REASON 'query')
-    Semantic {
-        /// The natural language query
-        query: String,
-        /// Minimum confidence threshold (0.0 - 1.0)
-        min_confidence: Option<f32>,
-    },
+// ==================== REASON ====================
+
+/// REASON clause - LLM semantic search with answer extraction.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReasonClause {
+    /// The natural language query
+    pub query: String,
+    /// Minimum confidence threshold (0.0 - 1.0)
+    pub min_confidence: Option<f32>,
 }
 
 // ==================== ORDER BY ====================

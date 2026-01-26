@@ -54,11 +54,19 @@ pub struct QueryDocumentMatch {
     /// Author
     pub author: Option<String>,
 
-    /// Relevance score (for search queries)
+    /// Relevance score (BM25 for SEARCH, confidence for REASON)
     pub score: Option<f32>,
 
     /// Highlighted snippets
     pub highlights: Vec<String>,
+
+    /// LLM-extracted answer (for REASON queries)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub answer: Option<String>,
+
+    /// Confidence score from LLM (for REASON queries)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<f32>,
 }
 
 impl From<DocumentMatch> for QueryDocumentMatch {
@@ -71,6 +79,8 @@ impl From<DocumentMatch> for QueryDocumentMatch {
             author: m.document.author,
             score: m.score,
             highlights: m.highlights,
+            answer: m.answer,
+            confidence: m.confidence,
         }
     }
 }
@@ -87,8 +97,10 @@ impl From<QueryResult> for QueryResponse {
 
 /// Execute an RQL query
 ///
-/// Supports filtering with WHERE clauses and full-text search with SEARCH clause.
-/// When SEARCH is used, results are ranked by BM25 relevance score.
+/// Supports:
+/// - WHERE clauses for filtering
+/// - SEARCH clause for BM25 full-text search (fast keyword matching)
+/// - REASON clause for LLM semantic search (intelligent answer extraction)
 ///
 /// # Example
 ///
@@ -102,6 +114,11 @@ impl From<QueryResult> for QueryResponse {
 /// curl -X POST http://localhost:4444/v1/query \
 ///   -H "Content-Type: application/json" \
 ///   -d '{"query": "SELECT * FROM legal_contracts SEARCH '\''payment terms'\''"}'
+///
+/// # Semantic search with LLM
+/// curl -X POST http://localhost:4444/v1/query \
+///   -H "Content-Type: application/json" \
+///   -d '{"query": "SELECT * FROM legal_contracts REASON '\''What are the late payment penalties?'\''"}'
 /// ```
 #[utoipa::path(
     post,
@@ -114,7 +131,7 @@ impl From<QueryResult> for QueryResponse {
     ),
     tag = "query"
 )]
-pub async fn execute_query<R: ReasoningEngine>(
+pub async fn execute_query<R: ReasoningEngine + Send + Sync + 'static>(
     State(state): State<Arc<AppState<R>>>,
     Json(request): Json<QueryRequest>,
 ) -> Result<Json<QueryResponse>, ApiError> {
@@ -122,11 +139,21 @@ pub async fn execute_query<R: ReasoningEngine>(
     let query = Query::parse(&request.query)
         .map_err(|e| ApiError::BadRequest(format!("Invalid query: {}", e)))?;
 
-    // Execute the query with BM25 text search support
-    let result = state
-        .store
-        .execute_rql_with_search(&query, Some(state.text_index.as_ref()))
-        .map_err(|e| ApiError::Internal(format!("Query execution failed: {}", e)))?;
+    // Check if this is a REASON query (needs async LLM execution)
+    let result = if query.reason.is_some() {
+        // Use async executor for REASON queries (supports hybrid SEARCH + REASON)
+        state
+            .store
+            .execute_rql_async(&query, Some(state.text_index.as_ref()), state.reasoner.clone())
+            .await
+            .map_err(|e| ApiError::Internal(format!("Query execution failed: {}", e)))?
+    } else {
+        // Use sync executor for SEARCH/WHERE queries
+        state
+            .store
+            .execute_rql_with_search(&query, Some(state.text_index.as_ref()))
+            .map_err(|e| ApiError::Internal(format!("Query execution failed: {}", e)))?
+    };
 
     Ok(Json(result.into()))
 }

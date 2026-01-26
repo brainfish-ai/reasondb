@@ -23,7 +23,8 @@ impl Parser {
         let select = self.parse_select()?;
         let from = self.parse_from()?;
         let where_clause = self.parse_where()?;
-        let search = self.parse_search()?;
+        let search = self.parse_search_clause()?;
+        let reason = self.parse_reason_clause()?;
         let order_by = self.parse_order_by()?;
         let limit = self.parse_limit()?;
 
@@ -39,6 +40,7 @@ impl Parser {
             from,
             where_clause,
             search,
+            reason,
             order_by,
             limit,
         })
@@ -262,15 +264,20 @@ impl Parser {
         Ok(op)
     }
 
-    // ==================== SEARCH / REASON ====================
+    // ==================== SEARCH ====================
 
-    fn parse_search(&mut self) -> RqlResult<Option<SearchClause>> {
+    fn parse_search_clause(&mut self) -> RqlResult<Option<SearchClause>> {
         if self.check(&Token::Search) {
             self.advance();
             let query = self.parse_string()?;
-            return Ok(Some(SearchClause::FullText(query)));
+            return Ok(Some(SearchClause { query }));
         }
+        Ok(None)
+    }
 
+    // ==================== REASON ====================
+
+    fn parse_reason_clause(&mut self) -> RqlResult<Option<ReasonClause>> {
         if self.check(&Token::Reason) {
             self.advance();
             let query = self.parse_string()?;
@@ -286,12 +293,11 @@ impl Parser {
                 None
             };
 
-            return Ok(Some(SearchClause::Semantic {
+            return Ok(Some(ReasonClause {
                 query,
                 min_confidence,
             }));
         }
-
         Ok(None)
     }
 
@@ -571,27 +577,25 @@ mod tests {
     #[test]
     fn test_search_clause() {
         let query = parse("SELECT * FROM t SEARCH 'hello world'").unwrap();
-        match query.search {
-            Some(SearchClause::FullText(q)) => {
-                assert_eq!(q, "hello world");
-            }
-            _ => panic!("Expected full-text search"),
-        }
+        let search = query.search.expect("Expected search clause");
+        assert_eq!(search.query, "hello world");
     }
 
     #[test]
     fn test_reason_clause() {
         let query = parse("SELECT * FROM t REASON 'what is X?' WITH CONFIDENCE > 0.8").unwrap();
-        match query.search {
-            Some(SearchClause::Semantic {
-                query,
-                min_confidence,
-            }) => {
-                assert_eq!(query, "what is X?");
-                assert_eq!(min_confidence, Some(0.8));
-            }
-            _ => panic!("Expected semantic search"),
-        }
+        let reason = query.reason.expect("Expected reason clause");
+        assert_eq!(reason.query, "what is X?");
+        assert_eq!(reason.min_confidence, Some(0.8));
+    }
+
+    #[test]
+    fn test_combined_search_reason() {
+        let query = parse("SELECT * FROM t SEARCH 'payment' REASON 'What are the fees?'").unwrap();
+        let search = query.search.expect("Expected search clause");
+        assert_eq!(search.query, "payment");
+        let reason = query.reason.expect("Expected reason clause");
+        assert_eq!(reason.query, "What are the fees?");
     }
 
     #[test]
