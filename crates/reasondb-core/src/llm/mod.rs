@@ -213,7 +213,7 @@ pub trait ReasoningEngine: Send + Sync {
     /// Ranked list of documents with relevance scores.
     async fn rank_documents(
         &self,
-        query: &str,
+        _query: &str,
         documents: &[DocumentSummary],
         top_k: usize,
     ) -> Result<Vec<DocumentRanking>> {

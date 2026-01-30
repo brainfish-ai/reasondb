@@ -4,6 +4,7 @@ members = [
     "crates/reasondb-core",
     "crates/reasondb-ingest",
     "crates/reasondb-server",
+    "crates/reasondb-cli",
 ]
 
 [workspace.package]

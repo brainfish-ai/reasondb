@@ -37,13 +37,14 @@ use std::sync::RwLock;
 use tantivy::collector::TopDocs;
 use tantivy::query::QueryParser;
 use tantivy::schema::*;
-use tantivy::{doc, Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument};
+use tantivy::{Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument};
 
 use crate::error::{ReasonError, Result};
 
 /// Full-text search index using Tantivy with BM25 scoring.
 pub struct TextIndex {
     index: Index,
+    #[allow(dead_code)]
     schema: Schema,
     writer: RwLock<IndexWriter>,
     reader: IndexReader,
@@ -237,7 +238,7 @@ impl TextIndex {
         author: Option<&str>,
         tags: &[String],
     ) -> Result<()> {
-        let mut writer = self
+        let writer = self
             .writer
             .write()
             .map_err(|_| ReasonError::Internal("Failed to acquire write lock".to_string()))?;
@@ -280,7 +281,7 @@ impl TextIndex {
 
     /// Delete all documents for a given document ID.
     pub fn delete_document(&self, document_id: &str) -> Result<()> {
-        let mut writer = self
+        let writer = self
             .writer
             .write()
             .map_err(|_| ReasonError::Internal("Failed to acquire write lock".to_string()))?;

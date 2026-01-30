@@ -7,7 +7,7 @@ license.workspace = true
 description = "HTTP API server for ReasonDB"
 
 [[bin]]
-name = "reasondb"
+name = "reasondb-server"
 path = "src/main.rs"
 
 [dependencies]

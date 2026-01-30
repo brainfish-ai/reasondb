@@ -83,6 +83,7 @@ pub enum Token {
 
 impl Token {
     /// Check if this token is a keyword.
+    #[allow(dead_code)]
     pub fn is_keyword(&self) -> bool {
         matches!(
             self,

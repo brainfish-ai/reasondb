@@ -2,7 +2,7 @@
 //!
 //! This module provides CRUD operations for document relationships.
 
-use redb::{MultimapTableDefinition, ReadableMultimapTable, ReadableTable, TableDefinition};
+use redb::{MultimapTableDefinition, ReadableTable, TableDefinition};
 
 use crate::error::{ReasonError, Result, StorageError};
 use crate::model::{DocumentRelation, RelationType};
