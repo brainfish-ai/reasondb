@@ -55,10 +55,13 @@ function generateMockDocuments(tableId: string): Document[] {
 
 type ViewMode = 'table' | 'json' | 'card'
 
-export function DocumentViewer() {
+interface DocumentViewerProps {
+  tableId: string
+}
+
+export function DocumentViewer({ tableId }: DocumentViewerProps) {
   const {
     documents,
-    selectedTableId,
     selectedDocumentId,
     isLoadingDocuments,
     totalDocuments,
@@ -80,16 +83,16 @@ export function DocumentViewer() {
 
   // Load documents when table is selected
   useEffect(() => {
-    if (selectedTableId) {
+    if (tableId) {
       setLoadingDocuments(true)
       // Simulate API call
       setTimeout(() => {
-        const docs = generateMockDocuments(selectedTableId)
+        const docs = generateMockDocuments(tableId)
         setDocuments(docs, docs.length)
         setLoadingDocuments(false)
       }, 300)
     }
-  }, [selectedTableId, setDocuments, setLoadingDocuments])
+  }, [tableId, setDocuments, setLoadingDocuments])
 
   // Generate columns from table schema or document keys
   const columns = useMemo<ColumnDef<Document>[]>(() => {
@@ -136,17 +139,17 @@ export function DocumentViewer() {
   }
 
   const handleRefresh = () => {
-    if (selectedTableId) {
+    if (tableId) {
       setLoadingDocuments(true)
       setTimeout(() => {
-        const docs = generateMockDocuments(selectedTableId)
+        const docs = generateMockDocuments(tableId)
         setDocuments(docs, docs.length)
         setLoadingDocuments(false)
       }, 300)
     }
   }
 
-  if (!selectedTableId) {
+  if (!tableId) {
     return (
       <div className="flex flex-col items-center justify-center h-full bg-base text-center p-8">
         <Table size={64} weight="duotone" className="text-overlay-0 mb-4" />
@@ -166,9 +169,6 @@ export function DocumentViewer() {
           <div className="flex items-center gap-2">
             <Table size={18} weight="duotone" className="text-mauve" />
             <span className="font-medium text-text">{selectedTable?.name}</span>
-            <span className="text-xs text-overlay-0 px-1.5 py-0.5 bg-surface-0 rounded">
-              {totalDocuments.toLocaleString()} rows
-            </span>
           </div>
         </div>
 
@@ -251,18 +251,18 @@ export function DocumentViewer() {
                   {headerGroup.headers.map((header) => (
                     <th
                       key={header.id}
-                      className="px-4 py-2 text-left text-xs text-subtext-0 uppercase tracking-wide"
+                      className="px-4 py-3 text-left text-xs font-medium text-subtext-0 uppercase tracking-wide"
                     >
                       {header.isPlaceholder
                         ? null
                         : flexRender(header.column.columnDef.header, header.getContext())}
                     </th>
                   ))}
-                  <th className="px-4 py-2 w-24" />
+                  <th className="px-4 py-3 w-24" />
                 </tr>
               ))}
             </thead>
-            <tbody>
+              <tbody>
               {table.getRowModel().rows.map((row, idx) => (
                 <tr
                   key={row.id}
@@ -277,8 +277,10 @@ export function DocumentViewer() {
                   )}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="px-4 py-2">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    <td key={cell.id} className="px-4 py-2 max-w-[200px]">
+                      <div className="truncate">
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </div>
                     </td>
                   ))}
                   <td className="px-4 py-2">
@@ -335,37 +337,43 @@ export function DocumentViewer() {
         )}
       </div>
 
-      {/* Pagination */}
-      {viewMode === 'table' && table.getPageCount() > 1 && (
+      {/* Footer */}
+      {viewMode === 'table' && (
         <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-mantle">
           <div className="text-xs text-subtext-0">
-            Showing {table.getState().pagination.pageIndex * pageSize + 1} to{' '}
-            {Math.min((table.getState().pagination.pageIndex + 1) * pageSize, totalDocuments)} of{' '}
-            {totalDocuments}
+            <span className="font-medium text-text">{totalDocuments.toLocaleString()}</span> rows
+            {table.getPageCount() > 1 && (
+              <span className="ml-2 text-overlay-0">
+                · Showing {table.getState().pagination.pageIndex * pageSize + 1}-
+                {Math.min((table.getState().pagination.pageIndex + 1) * pageSize, totalDocuments)}
+              </span>
+            )}
           </div>
-          <div className="flex items-center gap-1">
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
-              className="h-7 w-7"
-            >
-              <CaretLeft size={14} />
-            </Button>
-            <span className="text-xs text-subtext-0 px-2">
-              Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
-            </span>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
-              className="h-7 w-7"
-            >
-              <CaretRight size={14} />
-            </Button>
-          </div>
+          {table.getPageCount() > 1 && (
+            <div className="flex items-center gap-1">
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => table.previousPage()}
+                disabled={!table.getCanPreviousPage()}
+                className="h-7 w-7"
+              >
+                <CaretLeft size={14} />
+              </Button>
+              <span className="text-xs text-subtext-0 px-2">
+                Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
+              </span>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => table.nextPage()}
+                disabled={!table.getCanNextPage()}
+                className="h-7 w-7"
+              >
+                <CaretRight size={14} />
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>

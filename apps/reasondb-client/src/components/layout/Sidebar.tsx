@@ -1,10 +1,9 @@
 import { useState } from 'react'
 import {
-  Database,
   Clock,
   Star,
   Plus,
-  PlugsConnected,
+  CaretLeft,
 } from '@phosphor-icons/react'
 import { cn } from '@/lib/utils'
 import { useConnectionStore, type Connection } from '@/stores/connectionStore'
@@ -12,17 +11,18 @@ import { ConnectionList } from '@/components/connection/ConnectionList'
 import { ConnectionForm } from '@/components/connection/ConnectionForm'
 import { TableBrowser } from '@/components/table/TableBrowser'
 import { CreateTableDialog } from '@/components/table/CreateTableDialog'
-import { createClient, setClient } from '@/lib/api'
+import { createClient, setClient, removeClient } from '@/lib/api'
 
 export function Sidebar() {
-  const { activeConnectionId, setActiveConnection, setConnecting, setConnectionError } = useConnectionStore()
+  const { 
+    activeConnectionId, 
+    setActiveConnection, 
+    setConnecting, 
+    setConnectionError,
+  } = useConnectionStore()
   const [showConnectionForm, setShowConnectionForm] = useState(false)
   const [showCreateTable, setShowCreateTable] = useState(false)
   const [editingConnection, setEditingConnection] = useState<Connection | undefined>()
-  const [activeSection, setActiveSection] = useState<'connections' | 'tables'>('connections')
-
-  // Auto-switch to tables when connected
-  const effectiveSection = activeConnectionId ? activeSection : 'connections'
 
   const handleConnect = async (connection: Connection) => {
     setConnecting(true)
@@ -42,7 +42,6 @@ export function Sidebar() {
         // Store the client for this connection
         setClient(connection.id, client)
         setActiveConnection(connection.id)
-        setActiveSection('tables')
       } else {
         setConnectionError(result.error || 'Connection failed')
       }
@@ -50,6 +49,13 @@ export function Sidebar() {
       setConnectionError(error instanceof Error ? error.message : 'Connection failed')
     } finally {
       setConnecting(false)
+    }
+  }
+
+  const handleDisconnect = () => {
+    if (activeConnectionId) {
+      removeClient(activeConnectionId)
+      setActiveConnection(null)
     }
   }
 
@@ -65,43 +71,32 @@ export function Sidebar() {
 
   return (
     <div className="h-full bg-mantle flex flex-col border-r border-border min-w-[200px]">
-      {/* Section tabs - only show when connected */}
-      {activeConnectionId && (
-        <div className="px-3 pt-3 pb-2 flex gap-1">
-          <button
-            onClick={() => setActiveSection('connections')}
-            className={cn(
-              'flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded-md transition-colors',
-              effectiveSection === 'connections'
-                ? 'bg-surface-0 text-text'
-                : 'text-overlay-1 hover:text-text hover:bg-surface-0/50'
-            )}
-          >
-            <PlugsConnected size={14} weight={effectiveSection === 'connections' ? 'fill' : 'bold'} />
-            Connections
-          </button>
-          <button
-            onClick={() => setActiveSection('tables')}
-            className={cn(
-              'flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded-md transition-colors',
-              effectiveSection === 'tables'
-                ? 'bg-surface-0 text-text'
-                : 'text-overlay-1 hover:text-text hover:bg-surface-0/50'
-            )}
-          >
-            <Database size={14} weight={effectiveSection === 'tables' ? 'fill' : 'bold'} />
-            Tables
-          </button>
-        </div>
-      )}
+      {/* Show Tables when connected, otherwise show Connections */}
+      {activeConnectionId ? (
+        <>
+          {/* Back to connections link */}
+          <div className="px-3 pt-3 pb-2">
+            <button
+              onClick={handleDisconnect}
+              className="flex items-center gap-1.5 text-xs text-overlay-0 hover:text-text transition-colors"
+            >
+              <CaretLeft size={12} weight="bold" />
+              <span>Connections</span>
+            </button>
+          </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-auto">
-        {effectiveSection === 'connections' ? (
-          <div className="px-3 py-2">
-            <div className="flex items-center justify-between mb-2">
+          {/* Tables browser */}
+          <div className="flex-1 overflow-auto">
+            <TableBrowser />
+          </div>
+        </>
+      ) : (
+        <>
+          {/* Connections header */}
+          <div className="px-3 pt-3 pb-2">
+            <div className="flex items-center justify-between">
               <div className="text-xs font-semibold text-overlay-1 uppercase tracking-wide">
-                {activeConnectionId ? 'Servers' : 'Connect to Server'}
+                Connect to Server
               </div>
               <button
                 onClick={handleNewConnection}
@@ -111,15 +106,17 @@ export function Sidebar() {
                 <Plus size={14} weight="bold" />
               </button>
             </div>
+          </div>
+
+          {/* Connections list */}
+          <div className="flex-1 overflow-auto px-3">
             <ConnectionList
               onEdit={handleEditConnection}
               onConnect={handleConnect}
             />
           </div>
-        ) : (
-          <TableBrowser />
-        )}
-      </div>
+        </>
+      )}
 
       {/* Quick actions */}
       <div className="border-t border-border p-3 space-y-1">

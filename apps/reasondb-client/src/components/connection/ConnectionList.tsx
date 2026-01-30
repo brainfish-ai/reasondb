@@ -243,32 +243,28 @@ function ConnectionItem({
         isActive && 'bg-surface-0',
         isGrouped && 'ml-4'
       )}
-      onDoubleClick={onConnect}
+      onClick={onConnect}
       onContextMenu={onContextMenu}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
     >
-      {/* Color indicator */}
-      <div
-        className={cn(
-          'w-2 h-2 rounded-full shrink-0',
-          isActive && 'ring-2 ring-offset-1 ring-offset-surface-0'
-        )}
-        style={{ backgroundColor: connection.color || '#89b4fa' }}
-      />
+      {/* Connection status indicator */}
+      {isActive ? (
+        <PlugsConnected
+          size={16}
+          weight="fill"
+          className="text-green shrink-0"
+        />
+      ) : (
+        <div
+          className="w-2.5 h-2.5 rounded-full shrink-0"
+          style={{ backgroundColor: connection.color || '#89b4fa' }}
+        />
+      )}
 
       {/* Connection info */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          <span className="text-sm font-medium truncate">{connection.name}</span>
-          {isActive && (
-            <PlugsConnected
-              size={12}
-              weight="fill"
-              className="text-green shrink-0"
-            />
-          )}
-        </div>
+        <span className="text-sm font-medium truncate block">{connection.name}</span>
         <span className="text-xs text-overlay-0 truncate block">
           {connection.host}:{connection.port}
         </span>

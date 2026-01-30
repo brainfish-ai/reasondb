@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Panel, Group, Separator } from 'react-resizable-panels'
 import {
   Plus,
@@ -12,12 +12,15 @@ import { cn } from '@/lib/utils'
 import { WelcomeScreen } from '@/components/common/WelcomeScreen'
 import { QueryEditor } from '@/components/query/QueryEditor'
 import { QueryResults } from '@/components/query/QueryResults'
+import { DocumentViewer } from '@/components/table/DocumentViewer'
 import { useQueryStore } from '@/stores/queryStore'
+import { useTableStore } from '@/stores/tableStore'
 
 interface Tab {
   id: string
   title: string
   type: 'query' | 'table'
+  tableId?: string // For table tabs
 }
 
 export function MainPanel() {
@@ -25,6 +28,7 @@ export function MainPanel() {
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
   const [resultView, setResultView] = useState<'table' | 'json' | 'tree'>('table')
   const { result } = useQueryStore()
+  const { selectedTableId, tables, selectTable } = useTableStore()
 
   const addNewTab = () => {
     const newTab: Tab = {
@@ -36,6 +40,36 @@ export function MainPanel() {
     setActiveTabId(newTab.id)
   }
 
+  const addTableTab = (tableId: string) => {
+    const table = tables.find((t) => t.id === tableId)
+    if (!table) return
+
+    // Check if tab already exists
+    const existingTab = tabs.find((t) => t.type === 'table' && t.tableId === tableId)
+    if (existingTab) {
+      setActiveTabId(existingTab.id)
+      return
+    }
+
+    const newTab: Tab = {
+      id: crypto.randomUUID(),
+      title: table.name,
+      type: 'table',
+      tableId,
+    }
+    setTabs([...tabs, newTab])
+    setActiveTabId(newTab.id)
+  }
+
+  // Open table tab when selectedTableId changes
+  useEffect(() => {
+    if (selectedTableId) {
+      addTableTab(selectedTableId)
+      // Clear the selection to allow re-selecting the same table
+      selectTable(null)
+    }
+  }, [selectedTableId])
+
   const closeTab = (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
     const newTabs = tabs.filter((t) => t.id !== id)
@@ -44,6 +78,8 @@ export function MainPanel() {
       setActiveTabId(newTabs.length > 0 ? newTabs[newTabs.length - 1].id : null)
     }
   }
+
+  const activeTab = tabs.find((t) => t.id === activeTabId)
 
   if (tabs.length === 0) {
     return <WelcomeScreen onNewQuery={addNewTab} />
@@ -74,11 +110,19 @@ export function MainPanel() {
                 )}
                 
                 {/* Tab content */}
-                <FileCode 
-                  size={14} 
-                  weight={isActive ? 'fill' : 'regular'} 
-                  className={cn('shrink-0 mr-2', isActive ? 'text-mauve' : 'text-overlay-0')} 
-                />
+                {tab.type === 'table' ? (
+                  <TableIcon 
+                    size={14} 
+                    weight={isActive ? 'fill' : 'regular'} 
+                    className={cn('shrink-0 mr-2', isActive ? 'text-green' : 'text-overlay-0')} 
+                  />
+                ) : (
+                  <FileCode 
+                    size={14} 
+                    weight={isActive ? 'fill' : 'regular'} 
+                    className={cn('shrink-0 mr-2', isActive ? 'text-mauve' : 'text-overlay-0')} 
+                  />
+                )}
                 <span className="truncate max-w-[120px]">{tab.title}</span>
                 
                 {/* Close button */}
@@ -114,91 +158,97 @@ export function MainPanel() {
         </button>
       </div>
 
-      {/* Main content with resizable panels */}
-      <Group orientation="vertical" className="flex-1">
-        {/* Editor panel */}
-        <Panel defaultSize={55} minSize={20}>
-          <QueryEditor />
-        </Panel>
+      {/* Main content */}
+      {activeTab?.type === 'table' && activeTab.tableId ? (
+        <div className="flex-1 overflow-hidden">
+          <DocumentViewer tableId={activeTab.tableId} />
+        </div>
+      ) : (
+        <Group orientation="vertical" className="flex-1">
+          {/* Editor panel */}
+          <Panel defaultSize={55} minSize={20}>
+            <QueryEditor />
+          </Panel>
 
-        <Separator className="h-1 bg-border hover:bg-primary/50 transition-colors cursor-row-resize" />
+          <Separator className="h-1 bg-border hover:bg-primary/50 transition-colors cursor-row-resize" />
 
-        {/* Results panel */}
-        <Panel defaultSize={45} minSize={15}>
-          <div className="h-full flex flex-col">
-            {/* Results header with view toggles */}
-            <div className="flex items-center justify-between px-3 py-1.5 bg-surface-0/30 border-b border-border">
-              <div className="flex items-center gap-4">
-                <span className="text-sm text-text font-medium">Results</span>
-                {result && (
-                  <span className="text-xs text-overlay-0">
-                    {result.rowCount} rows · {result.executionTime}ms
-                  </span>
+          {/* Results panel */}
+          <Panel defaultSize={45} minSize={15}>
+            <div className="h-full flex flex-col">
+              {/* Results header with view toggles */}
+              <div className="flex items-center justify-between px-3 py-1.5 bg-surface-0/30 border-b border-border">
+                <div className="flex items-center gap-4">
+                  <span className="text-sm text-text font-medium">Results</span>
+                  {result && (
+                    <span className="text-xs text-overlay-0">
+                      {result.rowCount} rows · {result.executionTime}ms
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setResultView('table')}
+                    className={cn(
+                      'p-1.5 rounded transition-colors',
+                      resultView === 'table'
+                        ? 'bg-surface-1 text-text'
+                        : 'text-overlay-0 hover:text-text hover:bg-surface-0'
+                    )}
+                    title="Table View"
+                  >
+                    <TableIcon size={16} weight="bold" />
+                  </button>
+                  <button
+                    onClick={() => setResultView('json')}
+                    className={cn(
+                      'p-1.5 rounded transition-colors',
+                      resultView === 'json'
+                        ? 'bg-surface-1 text-text'
+                        : 'text-overlay-0 hover:text-text hover:bg-surface-0'
+                    )}
+                    title="JSON View"
+                  >
+                    <Code size={16} weight="bold" />
+                  </button>
+                  <button
+                    onClick={() => setResultView('tree')}
+                    className={cn(
+                      'p-1.5 rounded transition-colors',
+                      resultView === 'tree'
+                        ? 'bg-surface-1 text-text'
+                        : 'text-overlay-0 hover:text-text hover:bg-surface-0'
+                    )}
+                    title="Tree View"
+                  >
+                    <TreeStructure size={16} weight="bold" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Results content */}
+              <div className="flex-1 min-h-0">
+                {resultView === 'table' && <QueryResults />}
+                {resultView === 'json' && (
+                  <div className="h-full overflow-auto p-4 font-mono text-xs">
+                    {result ? (
+                      <pre className="text-text">
+                        {JSON.stringify(result.rows, null, 2)}
+                      </pre>
+                    ) : (
+                      <span className="text-overlay-0">Run a query to see results</span>
+                    )}
+                  </div>
+                )}
+                {resultView === 'tree' && (
+                  <div className="flex items-center justify-center h-full text-overlay-0 text-sm">
+                    Tree view coming soon...
+                  </div>
                 )}
               </div>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setResultView('table')}
-                  className={cn(
-                    'p-1.5 rounded transition-colors',
-                    resultView === 'table'
-                      ? 'bg-surface-1 text-text'
-                      : 'text-overlay-0 hover:text-text hover:bg-surface-0'
-                  )}
-                  title="Table View"
-                >
-                  <TableIcon size={16} weight="bold" />
-                </button>
-                <button
-                  onClick={() => setResultView('json')}
-                  className={cn(
-                    'p-1.5 rounded transition-colors',
-                    resultView === 'json'
-                      ? 'bg-surface-1 text-text'
-                      : 'text-overlay-0 hover:text-text hover:bg-surface-0'
-                  )}
-                  title="JSON View"
-                >
-                  <Code size={16} weight="bold" />
-                </button>
-                <button
-                  onClick={() => setResultView('tree')}
-                  className={cn(
-                    'p-1.5 rounded transition-colors',
-                    resultView === 'tree'
-                      ? 'bg-surface-1 text-text'
-                      : 'text-overlay-0 hover:text-text hover:bg-surface-0'
-                  )}
-                  title="Tree View"
-                >
-                  <TreeStructure size={16} weight="bold" />
-                </button>
-              </div>
             </div>
-
-            {/* Results content */}
-            <div className="flex-1 min-h-0">
-              {resultView === 'table' && <QueryResults />}
-              {resultView === 'json' && (
-                <div className="h-full overflow-auto p-4 font-mono text-xs">
-                  {result ? (
-                    <pre className="text-text">
-                      {JSON.stringify(result.rows, null, 2)}
-                    </pre>
-                  ) : (
-                    <span className="text-overlay-0">Run a query to see results</span>
-                  )}
-                </div>
-              )}
-              {resultView === 'tree' && (
-                <div className="flex items-center justify-center h-full text-overlay-0 text-sm">
-                  Tree view coming soon...
-                </div>
-              )}
-            </div>
-          </div>
-        </Panel>
-      </Group>
+          </Panel>
+        </Group>
+      )}
     </div>
   )
 }
