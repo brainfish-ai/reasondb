@@ -3,7 +3,6 @@ import {
   useReactTable,
   getCoreRowModel,
   getSortedRowModel,
-  getFilteredRowModel,
   getPaginationRowModel,
   flexRender,
   type ColumnDef,
@@ -21,14 +20,17 @@ import {
   Copy,
   Code,
   Rows,
-  MagnifyingGlass,
   ArrowsClockwise,
   DownloadSimple,
   CheckCircle,
 } from '@phosphor-icons/react'
 import { useTableStore, type Document } from '@/stores/tableStore'
+import { useFilterStore } from '@/stores/filterStore'
 import { Button } from '@/components/ui/Button'
+import { SearchBar, FilterBuilder } from '@/components/search'
 import { cn } from '@/lib/utils'
+import { filterDocuments } from '@/lib/filter-utils'
+import { detectColumnType, type ColumnInfo } from '@/lib/filter-types'
 
 // Mock documents for demo
 function generateMockDocuments(tableId: string): Document[] {
@@ -69,8 +71,12 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
     setLoadingDocuments,
   } = useTableStore()
 
+  const {
+    activeFilter,
+    setDetectedColumns,
+  } = useFilterStore()
+
   const [viewMode, setViewMode] = useState<ViewMode>('table')
-  const [searchQuery, setSearchQuery] = useState('')
   const [sorting, setSorting] = useState<SortingState>([])
   const [copied, setCopied] = useState(false)
 
@@ -86,6 +92,53 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
       }, 300)
     }
   }, [tableId, setDocuments, setLoadingDocuments])
+
+  // Detect columns from documents
+  const detectedColumns = useMemo<ColumnInfo[]>(() => {
+    if (documents.length === 0) return []
+    
+    const sampleDoc = documents[0]
+    const cols: ColumnInfo[] = []
+    
+    // Extract columns from data object
+    const extractColumns = (obj: Record<string, unknown>, prefix: string) => {
+      Object.entries(obj).forEach(([key, value]) => {
+        const path = prefix ? `${prefix}.${key}` : key
+        const type = detectColumnType(value)
+        
+        cols.push({ name: key, type, path })
+        
+        // Recursively extract nested object columns (one level)
+        if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+          Object.entries(value as Record<string, unknown>).forEach(([nestedKey, nestedValue]) => {
+            cols.push({
+              name: `${key}.${nestedKey}`,
+              type: detectColumnType(nestedValue),
+              path: `${path}.${nestedKey}`,
+            })
+          })
+        }
+      })
+    }
+    
+    extractColumns(sampleDoc.data, 'data')
+    
+    return cols
+  }, [documents])
+
+  // Update filter store with detected columns
+  useEffect(() => {
+    setDetectedColumns(detectedColumns)
+  }, [detectedColumns, setDetectedColumns])
+
+  // Filter documents based on active filter
+  const filteredDocuments = useMemo(() => {
+    if (!activeFilter) return documents
+    return filterDocuments(
+      documents.map((doc) => ({ ...doc, ...doc.data })),
+      activeFilter
+    ).map((filtered) => documents.find((d) => d.id === filtered.id)!).filter(Boolean)
+  }, [documents, activeFilter])
 
   // Generate columns from table schema or document keys
   const columns = useMemo<ColumnDef<Document>[]>(() => {
@@ -114,16 +167,20 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
   }, [documents])
 
   const table = useReactTable({
-    data: documents,
+    data: filteredDocuments,
     columns,
-    state: { sorting, globalFilter: searchQuery },
+    state: { sorting },
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     initialState: { pagination: { pageSize } },
   })
+
+  // Handle search
+  const handleSearch = () => {
+    // Search triggers filter update through the SearchBar component
+  }
 
   const handleCopyDocument = async (doc: Document) => {
     await navigator.clipboard.writeText(JSON.stringify(doc.data, null, 2))
@@ -164,25 +221,11 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
         </div>
 
         {/* Search - takes remaining space */}
-        <div className="relative flex-1">
-          <MagnifyingGlass
-            size={14}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-overlay-0"
-          />
-          <input
-            type="text"
-            placeholder="Search..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className={cn(
-              'w-full pl-9 pr-4 py-1.5 text-xs rounded-full',
-              'bg-surface-0 border border-border',
-              'text-text placeholder-overlay-0',
-              'focus:border-mauve'
-            )}
-            style={{ outline: 'none', boxShadow: 'none' }}
-          />
-        </div>
+        <SearchBar
+          columns={detectedColumns}
+          placeholder="Search... (e.g., title = &quot;doc&quot; or content contains &quot;text&quot;)"
+          onSearch={handleSearch}
+        />
 
         <div className="h-5 w-px bg-border shrink-0" />
 
@@ -228,6 +271,9 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
           </Button>
         </div>
       </div>
+
+      {/* Filter Builder */}
+      <FilterBuilder columns={detectedColumns} onApply={() => {}} />
 
       {/* Content */}
       <div className="flex-1 min-h-0 overflow-auto">
@@ -335,11 +381,22 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
       {viewMode === 'table' && (
         <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-mantle">
           <div className="text-xs text-subtext-0">
-            <span className="font-medium text-text">{totalDocuments.toLocaleString()}</span> rows
+            {activeFilter ? (
+              <>
+                <span className="font-medium text-mauve">{filteredDocuments.length.toLocaleString()}</span>
+                <span className="text-overlay-0"> of </span>
+                <span className="text-text">{totalDocuments.toLocaleString()}</span>
+                <span> matching</span>
+              </>
+            ) : (
+              <>
+                <span className="font-medium text-text">{totalDocuments.toLocaleString()}</span> rows
+              </>
+            )}
             {table.getPageCount() > 1 && (
               <span className="ml-2 text-overlay-0">
                 · Showing {table.getState().pagination.pageIndex * pageSize + 1}-
-                {Math.min((table.getState().pagination.pageIndex + 1) * pageSize, totalDocuments)}
+                {Math.min((table.getState().pagination.pageIndex + 1) * pageSize, filteredDocuments.length)}
               </span>
             )}
           </div>
