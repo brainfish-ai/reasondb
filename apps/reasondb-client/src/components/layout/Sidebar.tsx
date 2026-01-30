@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import {
   Database,
-  MagnifyingGlass,
   Clock,
   Star,
   Plus,
@@ -13,9 +12,10 @@ import { ConnectionList } from '@/components/connection/ConnectionList'
 import { ConnectionForm } from '@/components/connection/ConnectionForm'
 import { TableBrowser } from '@/components/table/TableBrowser'
 import { CreateTableDialog } from '@/components/table/CreateTableDialog'
+import { createClient, setClient } from '@/lib/api'
 
 export function Sidebar() {
-  const { activeConnectionId, setActiveConnection, setConnecting } = useConnectionStore()
+  const { activeConnectionId, setActiveConnection, setConnecting, setConnectionError } = useConnectionStore()
   const [showConnectionForm, setShowConnectionForm] = useState(false)
   const [showCreateTable, setShowCreateTable] = useState(false)
   const [editingConnection, setEditingConnection] = useState<Connection | undefined>()
@@ -26,11 +26,31 @@ export function Sidebar() {
 
   const handleConnect = async (connection: Connection) => {
     setConnecting(true)
-    // Simulate connection delay
-    await new Promise((resolve) => setTimeout(resolve, 500))
-    setActiveConnection(connection.id)
-    setConnecting(false)
-    setActiveSection('tables')
+    setConnectionError(null)
+
+    try {
+      const client = createClient({
+        host: connection.host,
+        port: connection.port,
+        apiKey: connection.apiKey,
+        useSsl: connection.ssl,
+      })
+
+      const result = await client.testConnection()
+      
+      if (result.success) {
+        // Store the client for this connection
+        setClient(connection.id, client)
+        setActiveConnection(connection.id)
+        setActiveSection('tables')
+      } else {
+        setConnectionError(result.error || 'Connection failed')
+      }
+    } catch (error) {
+      setConnectionError(error instanceof Error ? error.message : 'Connection failed')
+    } finally {
+      setConnecting(false)
+    }
   }
 
   const handleEditConnection = (connection: Connection) => {

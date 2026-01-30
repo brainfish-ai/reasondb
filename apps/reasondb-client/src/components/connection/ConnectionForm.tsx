@@ -19,7 +19,8 @@ import {
   SelectValue,
 } from '@/components/ui/Select'
 import { useConnectionStore, type Connection } from '@/stores/connectionStore'
-import { CircleNotch, FloppyDisk, Lightning, Trash } from '@phosphor-icons/react'
+import { CircleNotch, FloppyDisk, Lightning, Trash, CheckCircle, WarningCircle } from '@phosphor-icons/react'
+import { createClient } from '@/lib/api'
 
 interface ConnectionFormProps {
   open: boolean
@@ -62,7 +63,7 @@ export function ConnectionForm({ open, onOpenChange, editConnection }: Connectio
   const [formData, setFormData] = useState<FormData>(() => ({
     name: editConnection?.name ?? '',
     host: editConnection?.host ?? 'localhost',
-    port: editConnection?.port?.toString() ?? '8080',
+    port: editConnection?.port?.toString() ?? '4444',
     apiKey: editConnection?.apiKey ?? '',
     ssl: editConnection?.ssl ?? false,
     color: editConnection?.color ?? COLORS[0].value,
@@ -97,34 +98,40 @@ export function ConnectionForm({ open, onOpenChange, editConnection }: Connectio
     return Object.keys(newErrors).length === 0
   }, [formData])
 
+  const [testMessage, setTestMessage] = useState<string>('')
+  const [serverVersion, setServerVersion] = useState<string>('')
+
   const handleTestConnection = async () => {
     if (!validateForm()) return
 
     setIsTesting(true)
     setTestResult(null)
+    setTestMessage('')
+    setServerVersion('')
 
     try {
-      // Simulate connection test - in real app, this would call Tauri backend
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+      const client = createClient({
+        host: formData.host,
+        port: parseInt(formData.port, 10),
+        apiKey: formData.apiKey || undefined,
+        useSsl: formData.ssl,
+      })
+
+      const result = await client.testConnection()
       
-      // Mock: check if host is reachable
-      const response = await fetch(`http${formData.ssl ? 's' : ''}://${formData.host}:${formData.port}/health`, {
-        method: 'GET',
-        signal: AbortSignal.timeout(5000),
-      }).catch(() => null)
-      
-      if (response?.ok) {
+      if (result.success) {
         setTestResult('success')
-      } else {
-        // For demo purposes, show success if localhost
-        if (formData.host === 'localhost' || formData.host === '127.0.0.1') {
-          setTestResult('success')
-        } else {
-          setTestResult('error')
+        setTestMessage('Connection successful!')
+        if (result.version) {
+          setServerVersion(result.version)
         }
+      } else {
+        setTestResult('error')
+        setTestMessage(result.error || 'Connection failed')
       }
-    } catch {
+    } catch (error) {
       setTestResult('error')
+      setTestMessage(error instanceof Error ? error.message : 'Connection failed')
     } finally {
       setIsTesting(false)
     }
@@ -210,7 +217,7 @@ export function ConnectionForm({ open, onOpenChange, editConnection }: Connectio
               <Input
                 id="port"
                 type="number"
-                placeholder="8080"
+                placeholder="4444"
                 value={formData.port}
                 onChange={(e) => updateField('port', e.target.value)}
                 error={errors.port}
@@ -301,15 +308,23 @@ export function ConnectionForm({ open, onOpenChange, editConnection }: Connectio
           {/* Test Result */}
           {testResult && (
             <div
-              className={`p-3 rounded-md text-sm ${
+              className={`p-3 rounded-md text-sm flex items-start gap-2 ${
                 testResult === 'success'
                   ? 'bg-green/10 text-green border border-green/20'
                   : 'bg-red/10 text-red border border-red/20'
               }`}
             >
-              {testResult === 'success'
-                ? '✓ Connection successful!'
-                : '✗ Connection failed. Please check your settings.'}
+              {testResult === 'success' ? (
+                <CheckCircle size={18} weight="fill" className="shrink-0 mt-0.5" />
+              ) : (
+                <WarningCircle size={18} weight="fill" className="shrink-0 mt-0.5" />
+              )}
+              <div>
+                <p className="font-medium">{testMessage}</p>
+                {serverVersion && (
+                  <p className="text-xs opacity-80 mt-0.5">Server version: {serverVersion}</p>
+                )}
+              </div>
             </div>
           )}
         </div>
