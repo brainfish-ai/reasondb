@@ -1,0 +1,292 @@
+---
+title: Monitoring & Observability
+description: Monitor ReasonDB with Prometheus metrics, Grafana dashboards, and OpenTelemetry tracing
+---
+
+# Monitoring & Observability
+
+ReasonDB provides comprehensive monitoring capabilities through Prometheus metrics, 
+OpenTelemetry tracing, and pre-built Grafana dashboards.
+
+## Quick Start
+
+### 1. Start the Monitoring Stack
+
+```bash
+# Start Prometheus, Grafana, and Jaeger
+cd monitoring
+docker-compose up -d
+```
+
+### 2. Start ReasonDB with Metrics
+
+```bash
+# Metrics are enabled by default
+reasondb serve
+
+# With OpenTelemetry tracing
+reasondb serve --otlp-endpoint http://localhost:4317
+```
+
+### 3. Access Dashboards
+
+- **Grafana**: http://localhost:3000 (admin/reasondb)
+- **Prometheus**: http://localhost:9090
+- **Jaeger UI**: http://localhost:16686
+
+## Prometheus Metrics
+
+ReasonDB exposes metrics at the `/metrics` endpoint in Prometheus format.
+
+### HTTP Metrics
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `reasondb_http_requests_total` | Counter | Total HTTP requests by method, path, status |
+| `reasondb_http_request_duration_seconds` | Histogram | Request latency distribution |
+| `reasondb_http_requests_in_flight` | Gauge | Currently processing requests |
+
+### Search & LLM Metrics
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `reasondb_search_requests_total` | Counter | Total search requests |
+| `reasondb_search_duration_seconds` | Histogram | Search latency |
+| `reasondb_search_results_count` | Histogram | Number of results per search |
+| `reasondb_llm_calls_total` | Counter | LLM API calls by provider |
+| `reasondb_llm_call_duration_seconds` | Histogram | LLM call latency |
+| `reasondb_llm_tokens_total` | Counter | Tokens used (input/output) |
+
+### Database Metrics
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `reasondb_documents_total` | Gauge | Total documents stored |
+| `reasondb_tables_total` | Gauge | Total tables |
+| `reasondb_nodes_total` | Gauge | Total nodes across documents |
+| `reasondb_ingestion_total` | Counter | Ingestion operations |
+| `reasondb_ingestion_duration_seconds` | Histogram | Ingestion latency |
+
+### Cluster Metrics
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `reasondb_cluster_nodes` | Gauge | Number of cluster nodes |
+| `reasondb_cluster_term` | Gauge | Current Raft term |
+| `reasondb_cluster_is_leader` | Gauge | 1 if this node is leader |
+
+### Cache Metrics
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `reasondb_cache_hits_total` | Counter | Cache hits |
+| `reasondb_cache_misses_total` | Counter | Cache misses |
+
+### Security Metrics
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `reasondb_auth_success_total` | Counter | Successful authentications |
+| `reasondb_auth_failure_total` | Counter | Failed authentications |
+| `reasondb_rate_limit_exceeded_total` | Counter | Rate limit violations |
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `REASONDB_METRICS_ENABLED` | Enable Prometheus metrics | `true` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OpenTelemetry collector endpoint | - |
+
+### CLI Options
+
+```bash
+reasondb serve \
+  --metrics-enabled \
+  --otlp-endpoint http://localhost:4317
+```
+
+## Grafana Dashboard
+
+The pre-built dashboard includes:
+
+### Overview Panel
+- Request rate (req/sec)
+- P95 latency
+- Error rate
+- Requests in flight
+
+### HTTP Requests Panel
+- Request rate by endpoint
+- Latency percentiles (p50, p95, p99)
+- Status code distribution
+
+### Search & LLM Panel
+- Search requests over time
+- LLM calls by provider
+- Token usage (hourly)
+
+### Database Panel
+- Total documents, tables, nodes
+- Cache hit rate
+
+### Cluster Panel
+- Node role (Leader/Follower)
+- Cluster size
+- Raft term
+- Rate limited requests
+
+### Import Dashboard
+
+1. Open Grafana at http://localhost:3000
+2. Go to Dashboards → Import
+3. Upload `monitoring/grafana-dashboard.json`
+4. Select Prometheus as the data source
+
+## OpenTelemetry Tracing
+
+ReasonDB supports distributed tracing via OpenTelemetry.
+
+### Setup with Jaeger
+
+```bash
+# Start Jaeger (included in docker-compose)
+docker-compose up -d jaeger
+
+# Start ReasonDB with tracing
+reasondb serve --otlp-endpoint http://localhost:4317
+```
+
+### Traced Operations
+
+- HTTP request handling
+- Search operations
+- LLM API calls
+- Database operations
+- Ingestion pipeline
+
+### View Traces
+
+1. Open Jaeger UI at http://localhost:16686
+2. Select "reasondb" service
+3. Search for traces
+
+## Alerting
+
+### Example Prometheus Alert Rules
+
+```yaml
+groups:
+  - name: reasondb
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(reasondb_http_requests_total{status=~"5.."}[5m])) 
+          / sum(rate(reasondb_http_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: High error rate detected
+          description: Error rate is above 5%
+
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.95, 
+            sum(rate(reasondb_http_request_duration_seconds_bucket[5m])) by (le)
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High latency detected
+          description: P95 latency is above 1 second
+
+      - alert: ClusterNoQuorum
+        expr: reasondb_cluster_nodes < 2
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Cluster has no quorum
+          description: Less than 2 nodes in cluster
+
+      - alert: RateLimitingHigh
+        expr: sum(rate(reasondb_rate_limit_exceeded_total[5m])) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High rate limiting
+          description: Many requests being rate limited
+```
+
+## Scraping Configuration
+
+### Prometheus scrape config
+
+```yaml
+scrape_configs:
+  - job_name: 'reasondb'
+    static_configs:
+      - targets: ['localhost:4444']
+    metrics_path: /metrics
+    
+  # For a cluster
+  - job_name: 'reasondb-cluster'
+    static_configs:
+      - targets:
+          - 'node1:4444'
+          - 'node2:4444'
+          - 'node3:4444'
+```
+
+### Kubernetes ServiceMonitor
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: reasondb
+spec:
+  selector:
+    matchLabels:
+      app: reasondb
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+```
+
+## Best Practices
+
+1. **Set up alerting** for critical metrics like error rate and latency
+2. **Monitor LLM costs** using token usage metrics
+3. **Track cache efficiency** to optimize performance
+4. **Use distributed tracing** to debug slow requests
+5. **Monitor cluster health** for high availability setups
+
+## Troubleshooting
+
+### Metrics endpoint not responding
+
+```bash
+# Check if metrics are enabled
+curl http://localhost:4444/metrics
+
+# Verify server started with metrics
+reasondb serve --metrics-enabled
+```
+
+### No data in Grafana
+
+1. Check Prometheus targets: http://localhost:9090/targets
+2. Verify ReasonDB is running and accessible
+3. Check Prometheus logs for scrape errors
+
+### Traces not appearing in Jaeger
+
+1. Verify OTLP endpoint is correct
+2. Check Jaeger is running: `docker ps | grep jaeger`
+3. Ensure network connectivity between ReasonDB and Jaeger

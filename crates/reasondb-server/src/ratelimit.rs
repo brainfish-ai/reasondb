@@ -156,7 +156,6 @@ pub async fn rate_limit_middleware(
 mod tests {
     use super::*;
     use axum::http::HeaderValue;
-    use reasondb_core::ratelimit::RateLimitConfig;
 
     #[test]
     fn test_extract_client_id_from_api_key() {

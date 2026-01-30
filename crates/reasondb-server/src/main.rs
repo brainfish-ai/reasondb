@@ -9,7 +9,7 @@ use reasondb_core::{
     store::NodeStore,
     text_index::TextIndex,
 };
-use reasondb_server::{create_server, AppState, AuthConfig, ClusterNodeConfig, RateLimitConfig, ServerConfig};
+use reasondb_server::{create_server, init_metrics, AppState, AuthConfig, ClusterNodeConfig, RateLimitConfig, ServerConfig};
 use redb::Database;
 use std::sync::Arc;
 use tracing::{info, Level};
@@ -103,6 +103,14 @@ struct Args {
     /// Output logs as JSON
     #[arg(long)]
     json_logs: bool,
+
+    /// Enable Prometheus metrics endpoint
+    #[arg(long, env = "REASONDB_METRICS_ENABLED", default_value = "true")]
+    metrics_enabled: bool,
+
+    /// OpenTelemetry OTLP endpoint (optional, e.g., http://localhost:4317)
+    #[arg(long, env = "OTEL_EXPORTER_OTLP_ENDPOINT")]
+    otlp_endpoint: Option<String>,
 }
 
 #[tokio::main]
@@ -113,6 +121,17 @@ async fn main() -> anyhow::Result<()> {
     init_logging(args.verbose, args.json_logs);
 
     info!("Starting ReasonDB server v{}", env!("CARGO_PKG_VERSION"));
+
+    // Initialize Prometheus metrics
+    if args.metrics_enabled {
+        let _metrics_handle = init_metrics();
+        info!("Prometheus metrics enabled at /metrics");
+    }
+
+    // Log OTLP endpoint if configured
+    if let Some(ref endpoint) = args.otlp_endpoint {
+        info!("OpenTelemetry OTLP endpoint: {}", endpoint);
+    }
 
     // Create data directory if it doesn't exist
     let data_dir = std::path::Path::new(&args.database)

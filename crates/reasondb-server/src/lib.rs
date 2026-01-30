@@ -52,12 +52,14 @@
 
 pub mod auth;
 pub mod error;
+pub mod metrics;
 pub mod openapi;
 pub mod ratelimit;
 pub mod routes;
 pub mod state;
 
 pub use error::{ApiError, ApiResult, ErrorResponse};
+pub use metrics::{init_metrics, init_tracing, metrics_handler, metrics_middleware, shutdown_tracing};
 pub use openapi::ApiDoc;
 pub use ratelimit::{rate_limit_middleware, RateLimitError};
 pub use routes::create_routes;
@@ -87,10 +89,15 @@ use utoipa_swagger_ui::SwaggerUi;
 pub fn create_server<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     state: Arc<AppState<R>>,
 ) -> Router {
+    use axum::routing::get;
+
     let mut app = create_routes(state.clone());
 
     // Add OpenAPI documentation
     app = app.merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()));
+
+    // Add Prometheus metrics endpoint
+    app = app.route("/metrics", get(metrics::metrics_handler));
 
     // Add rate limiting middleware
     if state.config.rate_limit.enabled {
@@ -104,6 +111,9 @@ pub fn create_server<R: ReasoningEngine + Clone + Send + Sync + 'static>(
             ratelimit::rate_limit_middleware,
         ));
     }
+
+    // Add metrics middleware (before other middleware to capture all requests)
+    app = app.layer(axum::middleware::from_fn(metrics::metrics_middleware));
 
     // Add middleware
     app = app.layer(TraceLayer::new_for_http());

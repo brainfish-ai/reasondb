@@ -1,0 +1,28 @@
+# Prometheus configuration for ReasonDB
+# Scrapes metrics from ReasonDB server at /metrics endpoint
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers: []
+
+rule_files: []
+
+scrape_configs:
+  # ReasonDB metrics
+  - job_name: 'reasondb'
+    static_configs:
+      - targets: ['host.docker.internal:4444']
+        labels:
+          instance: 'reasondb-main'
+    # For multiple nodes in a cluster:
+    # - targets: ['host.docker.internal:4444', 'host.docker.internal:4445', 'host.docker.internal:4446']
+    metrics_path: /metrics
+    scheme: http
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

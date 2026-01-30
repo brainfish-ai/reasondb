@@ -39,6 +39,14 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 uuid.workspace = true
 chrono.workspace = true
 
+# Metrics & Observability
+metrics = "0.23"
+metrics-exporter-prometheus = "0.15"
+opentelemetry = { version = "0.24", features = ["trace"] }
+opentelemetry-otlp = { version = "0.17", features = ["trace", "grpc-tonic"] }
+opentelemetry_sdk = { version = "0.24", features = ["trace", "rt-tokio"] }
+tracing-opentelemetry = "0.25"
+
 # CLI
 clap = { version = "4", features = ["derive", "env"] }
 

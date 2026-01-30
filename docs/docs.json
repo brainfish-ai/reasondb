@@ -30,7 +30,8 @@
               "guides/configuration",
               "guides/authentication",
               "guides/rate-limiting",
-              "guides/clustering"
+              "guides/clustering",
+              "guides/monitoring"
             ]
           },
           {
