@@ -18,12 +18,10 @@ import {
   Plus,
   Trash,
   PencilSimple,
-  Eye,
   Copy,
   Code,
   Rows,
   MagnifyingGlass,
-  FunnelSimple,
   ArrowsClockwise,
   DownloadSimple,
   CheckCircle,
@@ -65,12 +63,10 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
     selectedDocumentId,
     isLoadingDocuments,
     totalDocuments,
-    currentPage,
     pageSize,
     setDocuments,
     selectDocument,
     setLoadingDocuments,
-    setPage,
     getSelectedTable,
   } = useTableStore()
 
@@ -230,9 +226,9 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
             <DownloadSimple size={14} />
           </Button>
 
-          <Button size="sm" className="gap-1.5">
+          <Button size="sm" variant="ghost" className="gap-1.5">
             <Plus size={14} />
-            Add Document
+            Add
           </Button>
         </div>
       </div>
@@ -258,7 +254,9 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
                         : flexRender(header.column.columnDef.header, header.getContext())}
                     </th>
                   ))}
-                  <th className="px-4 py-3 w-24" />
+                  <th className="px-4 py-3 w-24 text-right text-xs font-medium text-subtext-0 uppercase tracking-wide">
+                    Actions
+                  </th>
                 </tr>
               ))}
             </thead>
@@ -268,7 +266,7 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
                   key={row.id}
                   onClick={() => selectDocument(row.original.id)}
                   className={cn(
-                    'border-b border-border/50 cursor-pointer transition-colors',
+                    'border-b border-border/50 cursor-pointer transition-colors group',
                     selectedDocumentId === row.original.id
                       ? 'bg-mauve/10'
                       : idx % 2 === 0
@@ -284,7 +282,7 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
                     </td>
                   ))}
                   <td className="px-4 py-2">
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
+                    <div className="flex items-center justify-end gap-1">
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
