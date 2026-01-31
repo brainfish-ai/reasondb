@@ -7,13 +7,15 @@ import {
   Plus,
 } from '@phosphor-icons/react'
 import { Button } from '@/components/ui/Button'
-import { SearchBar } from '@/components/search'
+import { SearchBar, type ValueFetcher } from '@/components/search'
 import { cn } from '@/lib/utils'
 import type { ColumnInfo } from '@/lib/filter-types'
 import type { ViewMode } from '../types'
 
 interface ToolbarProps {
   columns: ColumnInfo[]
+  tableId?: string
+  valueFetcher?: ValueFetcher
   viewMode: ViewMode
   isLoading: boolean
   onViewModeChange: (mode: ViewMode) => void
@@ -23,6 +25,8 @@ interface ToolbarProps {
 
 export function Toolbar({
   columns,
+  tableId,
+  valueFetcher,
   viewMode,
   isLoading,
   onViewModeChange,
@@ -39,6 +43,8 @@ export function Toolbar({
       {/* Search */}
       <SearchBar
         columns={columns}
+        tableId={tableId}
+        valueFetcher={valueFetcher}
         placeholder='Search... (e.g., title = "doc" or content contains "text")'
         onSearch={onSearch}
       />

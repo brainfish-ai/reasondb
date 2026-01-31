@@ -4,6 +4,9 @@ import { useConnectionStore } from '@/stores/connectionStore'
 import { createClient, type TableDocumentSummary } from '@/lib/api'
 import { updateTableMetadataFieldsFromSchema } from '@/lib/rql-language'
 
+// Track which tables have had their metadata schema fetched to prevent repeated requests
+const fetchedSchemas = new Set<string>()
+
 /**
  * Convert API response to document store format
  */
@@ -48,7 +51,7 @@ export function useDocuments(tableId: string) {
   const activeConnection = connections.find(c => c.id === activeConnectionId)
   const currentTable = tables.find(t => t.id === tableId)
 
-  const fetchDocuments = useCallback(async () => {
+  const fetchDocuments = useCallback(async (forceRefresh: boolean = false) => {
     if (!activeConnection || !tableId) return
 
     setLoadingDocuments(true)
@@ -63,18 +66,22 @@ export function useDocuments(tableId: string) {
         useSsl: activeConnection.ssl,
       })
 
-      const response = await client.getTableDocuments(tableId)
+      const response = await client.getTableDocuments(tableId, { forceRefresh })
       const storeDocs = response.documents.map(apiDocumentToStoreDocument)
       setDocuments(storeDocs, response.total)
       
       // Fetch metadata schema from server for autocompletion
-      // This is more efficient than extracting from documents client-side
-      if (currentTable) {
+      // Force refresh if explicitly requested, otherwise only once per table
+      const shouldFetchSchema = forceRefresh || !fetchedSchemas.has(tableId)
+      if (currentTable && shouldFetchSchema) {
+        fetchedSchemas.add(tableId) // Mark as fetched before request to prevent race conditions
         try {
-          const schemaResponse = await client.getTableMetadataSchema(tableId)
+          const schemaResponse = await client.getTableMetadataSchema(tableId, forceRefresh)
           updateTableMetadataFieldsFromSchema(currentTable.name, schemaResponse.fields)
         } catch (schemaError) {
           // Schema endpoint might not exist on older servers, fail silently
+          // Remove from set so it can be retried later
+          fetchedSchemas.delete(tableId)
           console.warn('Failed to fetch metadata schema:', schemaError)
         }
       }

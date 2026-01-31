@@ -2,6 +2,7 @@
  * ReasonDB API Client
  * 
  * Provides typed access to the ReasonDB server API endpoints.
+ * Includes request caching to reduce API calls and prevent rate limiting.
  */
 
 export interface ApiConfig {
@@ -10,6 +11,196 @@ export interface ApiConfig {
   apiKey?: string
   useSsl?: boolean
 }
+
+// ==================== Request Cache ====================
+
+interface CacheEntry<T> {
+  data: T
+  timestamp: number
+  expiresAt: number
+}
+
+interface CacheConfig {
+  defaultTTL: number      // Default TTL in milliseconds
+  maxEntries: number      // Maximum cache entries
+  enabled: boolean        // Whether caching is enabled
+}
+
+// Endpoint-specific TTL configurations (in milliseconds)
+const ENDPOINT_TTL: Record<string, number> = {
+  '/health': 10000,                    // 10 seconds
+  '/v1/tables': 30000,                 // 30 seconds
+  '/v1/documents': 30000,              // 30 seconds
+  'schema/metadata': 300000,           // 5 minutes (metadata schema rarely changes)
+  'values': 60000,                     // 1 minute (column values)
+  'default': 30000,                    // 30 seconds default
+}
+
+class RequestCache {
+  private cache = new Map<string, CacheEntry<unknown>>()
+  private config: CacheConfig = {
+    defaultTTL: 30000,    // 30 seconds default
+    maxEntries: 100,
+    enabled: true,
+  }
+  
+  // Patterns that should invalidate related cache entries
+  private invalidationPatterns: Array<{ method: string; pattern: RegExp; invalidates: RegExp[] }> = [
+    // Creating/updating/deleting documents invalidates document lists
+    { method: 'POST', pattern: /\/documents/, invalidates: [/\/documents/, /\/tables\/.+\/documents/] },
+    { method: 'PUT', pattern: /\/documents/, invalidates: [/\/documents/] },
+    { method: 'DELETE', pattern: /\/documents/, invalidates: [/\/documents/, /\/tables\/.+\/documents/] },
+    // Creating/updating/deleting tables invalidates table lists
+    { method: 'POST', pattern: /\/tables/, invalidates: [/\/tables/] },
+    { method: 'PUT', pattern: /\/tables/, invalidates: [/\/tables/] },
+    { method: 'DELETE', pattern: /\/tables/, invalidates: [/\/tables/] },
+  ]
+  
+  /**
+   * Get TTL for a specific endpoint
+   */
+  private getTTL(endpoint: string): number {
+    // Check for specific endpoint matches
+    for (const [pattern, ttl] of Object.entries(ENDPOINT_TTL)) {
+      if (pattern !== 'default' && endpoint.includes(pattern)) {
+        return ttl
+      }
+    }
+    return this.config.defaultTTL
+  }
+  
+  /**
+   * Generate cache key from request details
+   */
+  private getCacheKey(baseUrl: string, endpoint: string, options?: RequestInit): string {
+    const method = options?.method || 'GET'
+    const body = options?.body ? JSON.stringify(options.body) : ''
+    return `${method}:${baseUrl}${endpoint}:${body}`
+  }
+  
+  /**
+   * Check if an endpoint should be cached
+   */
+  private shouldCache(method: string): boolean {
+    // Only cache GET requests
+    return this.config.enabled && method === 'GET'
+  }
+  
+  /**
+   * Get cached response if valid
+   */
+  get<T>(baseUrl: string, endpoint: string, options?: RequestInit): T | null {
+    if (!this.shouldCache(options?.method || 'GET')) {
+      return null
+    }
+    
+    const key = this.getCacheKey(baseUrl, endpoint, options)
+    const entry = this.cache.get(key) as CacheEntry<T> | undefined
+    
+    if (!entry) {
+      return null
+    }
+    
+    // Check if expired
+    if (Date.now() > entry.expiresAt) {
+      this.cache.delete(key)
+      return null
+    }
+    
+    return entry.data
+  }
+  
+  /**
+   * Store response in cache
+   */
+  set<T>(baseUrl: string, endpoint: string, data: T, options?: RequestInit): void {
+    if (!this.shouldCache(options?.method || 'GET')) {
+      return
+    }
+    
+    // Enforce max entries
+    if (this.cache.size >= this.config.maxEntries) {
+      // Remove oldest entries
+      const entriesToRemove = Math.floor(this.config.maxEntries * 0.2)
+      const keys = Array.from(this.cache.keys()).slice(0, entriesToRemove)
+      keys.forEach(key => this.cache.delete(key))
+    }
+    
+    const key = this.getCacheKey(baseUrl, endpoint, options)
+    const ttl = this.getTTL(endpoint)
+    const now = Date.now()
+    
+    this.cache.set(key, {
+      data,
+      timestamp: now,
+      expiresAt: now + ttl,
+    })
+  }
+  
+  /**
+   * Invalidate cache entries based on mutation
+   */
+  invalidate(method: string, endpoint: string): void {
+    // Check if this mutation should invalidate any cache entries
+    for (const rule of this.invalidationPatterns) {
+      if (rule.method === method && rule.pattern.test(endpoint)) {
+        // Invalidate matching cache entries
+        for (const key of this.cache.keys()) {
+          for (const invalidatePattern of rule.invalidates) {
+            if (invalidatePattern.test(key)) {
+              this.cache.delete(key)
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  /**
+   * Invalidate specific endpoint
+   */
+  invalidateEndpoint(baseUrl: string, endpoint: string): void {
+    const keyPrefix = `GET:${baseUrl}${endpoint}`
+    for (const key of this.cache.keys()) {
+      if (key.startsWith(keyPrefix)) {
+        this.cache.delete(key)
+      }
+    }
+  }
+  
+  /**
+   * Clear all cache entries
+   */
+  clear(): void {
+    this.cache.clear()
+  }
+  
+  /**
+   * Get cache statistics
+   */
+  getStats(): { size: number; enabled: boolean } {
+    return {
+      size: this.cache.size,
+      enabled: this.config.enabled,
+    }
+  }
+  
+  /**
+   * Enable or disable caching
+   */
+  setEnabled(enabled: boolean): void {
+    this.config.enabled = enabled
+    if (!enabled) {
+      this.clear()
+    }
+  }
+}
+
+// Global cache instance
+const requestCache = new RequestCache()
+
+// Export for debugging/testing
+export { requestCache }
 
 // ==================== Response Types ====================
 
@@ -223,10 +414,27 @@ class ReasonDBClient {
     this.apiKey = config.apiKey
   }
 
+  /**
+   * Make an API request with optional caching
+   * @param endpoint - API endpoint
+   * @param options - Fetch options
+   * @param skipCache - Force bypass cache for this request
+   */
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    skipCache: boolean = false
   ): Promise<T> {
+    const method = options.method || 'GET'
+    
+    // Check cache for GET requests (unless skipCache is true)
+    if (method === 'GET' && !skipCache) {
+      const cached = requestCache.get<T>(this.baseUrl, endpoint, options)
+      if (cached !== null) {
+        return cached
+      }
+    }
+    
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...((options.headers as Record<string, string>) || {}),
@@ -249,7 +457,31 @@ class ReasonDBClient {
       throw new Error(error.message || error.error || 'Request failed')
     }
 
-    return response.json()
+    const data = await response.json() as T
+    
+    // Cache GET responses
+    if (method === 'GET') {
+      requestCache.set(this.baseUrl, endpoint, data, options)
+    } else {
+      // Invalidate related cache entries for mutations
+      requestCache.invalidate(method, endpoint)
+    }
+
+    return data
+  }
+  
+  /**
+   * Invalidate cache for a specific endpoint (useful after mutations)
+   */
+  invalidateCache(endpoint: string): void {
+    requestCache.invalidateEndpoint(this.baseUrl, endpoint)
+  }
+  
+  /**
+   * Clear all cached requests for this client
+   */
+  clearCache(): void {
+    requestCache.clear()
   }
 
   // ==================== Health ====================
@@ -305,8 +537,12 @@ class ReasonDBClient {
   /**
    * List all tables
    */
-  async listTables(): Promise<ListTablesResponse> {
-    return this.request<ListTablesResponse>('/v1/tables')
+  /**
+   * List all tables
+   * @param forceRefresh - Bypass cache and fetch fresh data
+   */
+  async listTables(forceRefresh?: boolean): Promise<ListTablesResponse> {
+    return this.request<ListTablesResponse>('/v1/tables', {}, forceRefresh)
   }
 
   /**
@@ -354,10 +590,12 @@ class ReasonDBClient {
 
   /**
    * Get documents in a table
+   * @param tableId - Table ID
+   * @param options - Query options (limit, offset, forceRefresh)
    */
   async getTableDocuments(
     tableId: string,
-    options?: { limit?: number; offset?: number }
+    options?: { limit?: number; offset?: number; forceRefresh?: boolean }
   ): Promise<TableDocumentsResponse> {
     const params = new URLSearchParams()
     if (options?.limit) params.set('limit', options.limit.toString())
@@ -366,26 +604,35 @@ class ReasonDBClient {
     const queryString = params.toString()
     const url = `/v1/tables/${encodeURIComponent(tableId)}/documents${queryString ? `?${queryString}` : ''}`
     
-    return this.request<TableDocumentsResponse>(url)
+    return this.request<TableDocumentsResponse>(url, {}, options?.forceRefresh)
   }
 
   /**
    * Get metadata schema for a table (samples documents to detect field structure)
    * This is more efficient than fetching all documents for large tables
+   * @param tableId - Table ID
+   * @param forceRefresh - Bypass cache and fetch fresh data
    */
-  async getTableMetadataSchema(tableId: string): Promise<MetadataSchemaResponse> {
+  async getTableMetadataSchema(tableId: string, forceRefresh?: boolean): Promise<MetadataSchemaResponse> {
     return this.request<MetadataSchemaResponse>(
-      `/v1/tables/${encodeURIComponent(tableId)}/schema/metadata`
+      `/v1/tables/${encodeURIComponent(tableId)}/schema/metadata`,
+      {},
+      forceRefresh
     )
   }
 
   /**
    * Get distinct values for a column (for autocompletion)
    * Supports: title, tags, metadata.field_name
+   * @param tableId - Table ID
+   * @param column - Column name
+   * @param forceRefresh - Bypass cache and fetch fresh data
    */
-  async getColumnValues(tableId: string, column: string): Promise<ColumnValuesResponse> {
+  async getColumnValues(tableId: string, column: string, forceRefresh?: boolean): Promise<ColumnValuesResponse> {
     return this.request<ColumnValuesResponse>(
-      `/v1/tables/${encodeURIComponent(tableId)}/values/${encodeURIComponent(column)}`
+      `/v1/tables/${encodeURIComponent(tableId)}/values/${encodeURIComponent(column)}`,
+      {},
+      forceRefresh
     )
   }
 
