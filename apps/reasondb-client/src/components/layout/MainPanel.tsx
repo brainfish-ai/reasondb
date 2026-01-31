@@ -16,6 +16,7 @@ import { DocumentViewer } from '@/components/table/DocumentViewer'
 import { useQueryStore } from '@/stores/queryStore'
 import { useTableStore } from '@/stores/tableStore'
 import { useUiStore } from '@/stores/uiStore'
+import { useConnectionStore } from '@/stores/connectionStore'
 
 interface Tab {
   id: string
@@ -31,6 +32,7 @@ export function MainPanel() {
   const { result } = useQueryStore()
   const { selectedTableId, tables, selectTable } = useTableStore()
   const { openConnectionForm } = useUiStore()
+  const { activeConnectionId } = useConnectionStore()
 
   const addNewTab = () => {
     const newTab: Tab = {
@@ -83,7 +85,8 @@ export function MainPanel() {
 
   const activeTab = tabs.find((t) => t.id === activeTabId)
 
-  if (tabs.length === 0) {
+  // Show welcome screen only when no connection is active and no tabs are open
+  if (tabs.length === 0 && !activeConnectionId) {
     return <WelcomeScreen onNewQuery={addNewTab} onNewConnection={openConnectionForm} />
   }
 
@@ -161,7 +164,27 @@ export function MainPanel() {
       </div>
 
       {/* Main content */}
-      {activeTab?.type === 'table' && activeTab.tableId ? (
+      {tabs.length === 0 ? (
+        // Empty state when connected but no tabs
+        <div className="flex-1 flex flex-col items-center justify-center bg-base text-center p-8">
+          <FileCode size={48} weight="duotone" className="text-overlay-0 mb-4" />
+          <h3 className="text-lg font-medium text-text mb-2">No Tabs Open</h3>
+          <p className="text-sm text-subtext-0 mb-6 max-w-sm">
+            Select a table from the sidebar or create a new query tab to get started
+          </p>
+          <button
+            onClick={addNewTab}
+            className={cn(
+              'flex items-center gap-2 px-4 py-2 rounded-lg',
+              'bg-mauve text-base font-medium',
+              'hover:bg-mauve/90 transition-colors'
+            )}
+          >
+            <Plus size={16} weight="bold" />
+            New Query
+          </button>
+        </div>
+      ) : activeTab?.type === 'table' && activeTab.tableId ? (
         <div className="flex-1 overflow-hidden">
           <DocumentViewer tableId={activeTab.tableId} />
         </div>
