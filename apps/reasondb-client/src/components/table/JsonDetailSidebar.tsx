@@ -112,8 +112,8 @@ export function JsonDetailSidebar({ isOpen, onClose, title, data, path, isLoadin
   // Check if data indicates loading
   const showLoading = isLoading || (data && typeof data === 'object' && 'loading' in (data as Record<string, unknown>))
 
-  // Format JSON with proper indentation
-  const formattedJson = showLoading ? '' : JSON.stringify(data, null, 2)
+  // Format JSON with proper indentation (handle undefined data)
+  const formattedJson = showLoading || data === undefined ? '' : JSON.stringify(data, null, 2)
 
   // Handle open/close animation
   useEffect(() => {
