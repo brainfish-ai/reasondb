@@ -163,7 +163,7 @@ Combine with other RQL clauses:
 
 ```sql
 SELECT * FROM legal
-WHERE author = 'Legal Team'
+WHERE metadata.author = 'Legal Team'
 RELATED TO 'doc_master_agreement'
 SEARCH 'payment terms'
 LIMIT 10

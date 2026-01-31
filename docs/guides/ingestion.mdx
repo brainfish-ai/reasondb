@@ -58,7 +58,7 @@ curl -X POST http://localhost:4444/v1/ingest/text \
     "table_id": "tbl_abc123",
     "content": "# Project Overview\n\nThis project aims to...\n\n## Features\n\n### Feature 1\nDescription...",
     "tags": ["documentation", "internal"],
-    "author": "Engineering Team"
+    "metadata": {"author": "Engineering Team", "department": "Engineering"}
   }'
 ```
 
@@ -71,8 +71,7 @@ curl -X POST http://localhost:4444/v1/ingest/text \
 | `content` | Yes | Plain text or Markdown content |
 | `generate_summaries` | No | Generate LLM summaries (default: true) |
 | `tags` | No | Array of tags for filtering |
-| `author` | No | Document author |
-| `metadata` | No | Custom key-value metadata |
+| `metadata` | No | Custom key-value metadata (e.g., author, department) |
 
 ### Markdown Structure
 
@@ -198,8 +197,8 @@ curl -X POST http://localhost:4444/v1/ingest/text \
     "table_id": "tbl_legal",
     "content": "...",
     "tags": ["nda", "confidential", "2024"],
-    "author": "Legal Team",
     "metadata": {
+      "author": "Legal Team",
       "contract_type": "nda",
       "value_usd": 50000,
       "parties": ["Acme Corp", "Beta Inc"],

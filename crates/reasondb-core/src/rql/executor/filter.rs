@@ -56,7 +56,6 @@ pub fn get_field_value(_store: &NodeStore, doc: &Document, path: &FieldPath) -> 
         "id" => Some(Value::String(doc.id.clone())),
         "title" => Some(Value::String(doc.title.clone())),
         "table_id" => Some(Value::String(doc.table_id.clone())),
-        "author" => doc.author.as_ref().map(|a| Value::String(a.clone())),
         "source_url" => doc.source_url.as_ref().map(|u| Value::String(u.clone())),
         "language" => doc.language.as_ref().map(|l| Value::String(l.clone())),
         "version" => doc.version.as_ref().map(|v| Value::String(v.clone())),
@@ -150,7 +149,6 @@ pub fn sort_documents(docs: &mut [Document], order_by: &OrderByClause) {
             "title" => a.title.cmp(&b.title),
             "created_at" => a.created_at.cmp(&b.created_at),
             "updated_at" => a.updated_at.cmp(&b.updated_at),
-            "author" => a.author.cmp(&b.author),
             _ => std::cmp::Ordering::Equal,
         };
         if desc {

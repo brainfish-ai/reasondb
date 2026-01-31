@@ -330,7 +330,7 @@ impl Exporter {
         
         // Write header
         writer.write_record([
-            "id", "table_id", "title", "author", "tags", 
+            "id", "table_id", "title", "tags", 
             "source_path", "created_at", "updated_at"
         ]).map_err(|e| ReasonError::Backup(format!("Failed to write CSV header: {}", e)))?;
         
@@ -340,7 +340,6 @@ impl Exporter {
                 &doc.id,
                 &doc.table_id,
                 &doc.title,
-                doc.author.as_deref().unwrap_or(""),
                 &doc.tags.join(";"),
                 &doc.source_path,
                 &doc.created_at.to_rfc3339(),
@@ -472,14 +471,12 @@ impl Importer {
             
             // Parse CSV fields
             let title = record.get(2).unwrap_or("Untitled").to_string();
-            let author = record.get(3).filter(|s| !s.is_empty()).map(String::from);
-            let tags: Vec<String> = record.get(4)
+            let tags: Vec<String> = record.get(3)
                 .map(|s| s.split(';').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect())
                 .unwrap_or_default();
-            let source_path = record.get(5).unwrap_or("").to_string();
+            let source_path = record.get(4).unwrap_or("").to_string();
             
             let mut doc = Document::new(title, &table_id);
-            doc.author = author;
             doc.tags = tags;
             doc.source_path = source_path;
             

@@ -47,8 +47,6 @@ pub struct DocumentSummary {
     pub table_id: Option<String>,
     /// Document tags
     pub tags: Vec<String>,
-    /// Document author
-    pub author: Option<String>,
     /// Creation timestamp (ISO 8601)
     #[schema(example = "2024-01-15T10:30:00Z")]
     pub created_at: String,
@@ -202,7 +200,6 @@ pub async fn list_documents<R: ReasoningEngine + Send + Sync + 'static>(
             file_size: doc.file_size,
             table_id: Some(doc.table_id),
             tags: doc.tags,
-            author: doc.author,
             created_at: doc.created_at.to_rfc3339(),
         })
         .collect();

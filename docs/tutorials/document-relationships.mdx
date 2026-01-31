@@ -96,8 +96,8 @@ curl -X POST http://localhost:4444/v1/ingest/text \
     "title": "Master Services Agreement - Acme Corp",
     "table_id": "contracts",
     "tags": ["msa", "acme", "active"],
-    "author": "Legal Team",
     "metadata": {
+      "author": "Legal Team",
       "client": "Acme Corporation",
       "effective_date": "2025-01-01",
       "value_usd": 500000,
@@ -124,8 +124,8 @@ curl -X POST http://localhost:4444/v1/ingest/text \
     "title": "Amendment #1 - Payment Terms",
     "table_id": "contracts",
     "tags": ["amendment", "acme", "payment"],
-    "author": "Legal Team",
     "metadata": {
+      "author": "Legal Team",
       "client": "Acme Corporation",
       "effective_date": "2025-06-01",
       "amendment_number": 1,
@@ -176,8 +176,8 @@ curl -X POST http://localhost:4444/v1/ingest/text \
     "title": "Amendment #2 - Term Extension",
     "table_id": "contracts",
     "tags": ["amendment", "acme", "term"],
-    "author": "Legal Team",
     "metadata": {
+      "author": "Legal Team",
       "client": "Acme Corporation",
       "effective_date": "2025-12-01",
       "amendment_number": 2,
@@ -207,8 +207,8 @@ curl -X POST http://localhost:4444/v1/ingest/text \
     "title": "Side Letter - Volume Discount",
     "table_id": "contracts",
     "tags": ["side-letter", "acme", "pricing"],
-    "author": "Sales Team",
     "metadata": {
+      "author": "Sales Team",
       "client": "Acme Corporation",
       "effective_date": "2025-03-15"
     },
@@ -302,8 +302,8 @@ curl -X POST http://localhost:4444/v1/ingest/text \
     "title": "Master Services Agreement v2.0 - Acme Corp",
     "table_id": "contracts",
     "tags": ["msa", "acme", "active"],
-    "author": "Legal Team",
     "metadata": {
+      "author": "Legal Team",
       "client": "Acme Corporation",
       "effective_date": "2026-01-01",
       "value_usd": 750000,
@@ -354,7 +354,7 @@ curl -X POST http://localhost:4444/v1/ingest/text \
     "title": "Vendor Payment Policy",
     "table_id": "policies",
     "tags": ["policy", "payment", "vendors"],
-    "author": "Finance Team",
+    "metadata": {"author": "Finance Team"},
     "content": "# Vendor Payment Policy\n\n## Overview\nThis policy governs payment terms for all vendor agreements.\n\n## Standard Terms\n- Net 30 payment terms unless otherwise negotiated\n- Early payment discounts may be offered per individual agreements\n- Late payment penalties as specified in vendor contracts\n\n## Exceptions\nExceptions require CFO approval and must be documented in the vendor agreement."
   }'
 

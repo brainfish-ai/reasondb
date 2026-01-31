@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Table,
   CaretRight,
@@ -13,80 +13,14 @@ import {
   Plus,
   DotsThree,
   MagnifyingGlass,
-  Trash,
-  PencilSimple,
-  Copy,
   Eye,
+  ArrowClockwise,
 } from '@phosphor-icons/react'
 import { useTableStore, type Table as TableType, type TableColumn } from '@/stores/tableStore'
 import { useConnectionStore } from '@/stores/connectionStore'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
-
-// Mock data for demo
-const mockTables: TableType[] = [
-  {
-    id: '1',
-    name: 'documents',
-    schema: 'public',
-    columns: [
-      { name: 'id', type: 'uuid', nullable: false, primaryKey: true },
-      { name: 'title', type: 'text', nullable: false, primaryKey: false },
-      { name: 'content', type: 'text', nullable: true, primaryKey: false },
-      { name: 'embedding', type: 'vector(1536)', nullable: true, primaryKey: false },
-      { name: 'metadata', type: 'jsonb', nullable: true, primaryKey: false },
-      { name: 'created_at', type: 'timestamp', nullable: false, primaryKey: false, defaultValue: 'now()' },
-    ],
-    indexes: [
-      { name: 'documents_pkey', columns: ['id'], unique: true, type: 'btree' },
-      { name: 'documents_embedding_idx', columns: ['embedding'], unique: false, type: 'vector' },
-    ],
-    rowCount: 1247,
-    sizeBytes: 52428800,
-    createdAt: '2024-01-15T10:30:00Z',
-    updatedAt: '2024-01-20T14:22:00Z',
-    description: 'Main documents table with vector embeddings',
-  },
-  {
-    id: '2',
-    name: 'users',
-    schema: 'public',
-    columns: [
-      { name: 'id', type: 'uuid', nullable: false, primaryKey: true },
-      { name: 'email', type: 'text', nullable: false, primaryKey: false },
-      { name: 'name', type: 'text', nullable: true, primaryKey: false },
-      { name: 'created_at', type: 'timestamp', nullable: false, primaryKey: false },
-    ],
-    indexes: [
-      { name: 'users_pkey', columns: ['id'], unique: true, type: 'btree' },
-      { name: 'users_email_idx', columns: ['email'], unique: true, type: 'btree' },
-    ],
-    rowCount: 89,
-    sizeBytes: 1048576,
-    createdAt: '2024-01-10T08:00:00Z',
-    updatedAt: '2024-01-18T16:45:00Z',
-  },
-  {
-    id: '3',
-    name: 'embeddings_cache',
-    schema: 'public',
-    columns: [
-      { name: 'id', type: 'uuid', nullable: false, primaryKey: true },
-      { name: 'document_id', type: 'uuid', nullable: false, primaryKey: false },
-      { name: 'model', type: 'text', nullable: false, primaryKey: false },
-      { name: 'vector', type: 'vector(1536)', nullable: false, primaryKey: false },
-      { name: 'created_at', type: 'timestamp', nullable: false, primaryKey: false },
-    ],
-    indexes: [
-      { name: 'embeddings_cache_pkey', columns: ['id'], unique: true, type: 'btree' },
-      { name: 'embeddings_cache_vector_idx', columns: ['vector'], unique: false, type: 'vector' },
-    ],
-    rowCount: 3521,
-    sizeBytes: 209715200,
-    createdAt: '2024-01-12T12:00:00Z',
-    updatedAt: '2024-01-20T10:00:00Z',
-  },
-]
+import { createClient, type TableSummary } from '@/lib/api'
 
 function getTypeIcon(type: string) {
   const lowerType = type.toLowerCase()
@@ -105,6 +39,32 @@ function formatBytes(bytes: number): string {
   const sizes = ['B', 'KB', 'MB', 'GB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
+}
+
+// Standard document fields in ReasonDB
+const DOCUMENT_FIELDS: TableColumn[] = [
+  { name: 'id', type: 'uuid', nullable: false, primaryKey: true },
+  { name: 'title', type: 'text', nullable: false, primaryKey: false },
+  { name: 'total_nodes', type: 'integer', nullable: false, primaryKey: false },
+  { name: 'tags', type: 'text[]', nullable: true, primaryKey: false },
+  { name: 'metadata', type: 'jsonb', nullable: true, primaryKey: false, description: 'Custom key-value pairs' },
+  { name: 'created_at', type: 'timestamp', nullable: false, primaryKey: false },
+]
+
+// Convert API response to table store format
+function apiTableToStoreTable(apiTable: TableSummary): TableType {
+  return {
+    id: apiTable.id,
+    name: apiTable.name,
+    schema: 'default',
+    columns: DOCUMENT_FIELDS, // Standard document fields
+    indexes: [],
+    rowCount: apiTable.document_count,
+    sizeBytes: 0,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    description: apiTable.description || '',
+  }
 }
 
 interface TableItemProps {
@@ -150,7 +110,7 @@ function TableItem({ table, isSelected, onSelect, onViewData }: TableItemProps) 
         </span>
         
         <span className="text-xs text-overlay-0">
-          {table.rowCount.toLocaleString()}
+          {table.rowCount.toLocaleString()} docs
         </span>
 
         {/* Actions */}
@@ -180,15 +140,21 @@ function TableItem({ table, isSelected, onSelect, onViewData }: TableItemProps) 
       {/* Expanded columns */}
       {isExpanded && (
         <div className="pl-8 pr-3 pb-2 space-y-0.5">
-          {table.columns.map((col) => (
-            <ColumnItem key={col.name} column={col} />
-          ))}
+          {table.columns.length > 0 ? (
+            table.columns.map((col) => (
+              <ColumnItem key={col.name} column={col} />
+            ))
+          ) : (
+            <p className="text-xs text-overlay-0 py-2">{table.description}</p>
+          )}
           
           {/* Table info */}
-          <div className="mt-2 pt-2 border-t border-border/30 flex items-center gap-4 text-xs text-overlay-0">
-            <span>{formatBytes(table.sizeBytes)}</span>
-            <span>{table.indexes.length} indexes</span>
-          </div>
+          {table.sizeBytes > 0 && (
+            <div className="mt-2 pt-2 border-t border-border/30 flex items-center gap-4 text-xs text-overlay-0">
+              <span>{formatBytes(table.sizeBytes)}</span>
+              <span>{table.indexes.length} indexes</span>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -216,7 +182,7 @@ function ColumnItem({ column }: { column: TableColumn }) {
 }
 
 export function TableBrowser() {
-  const { activeConnectionId } = useConnectionStore()
+  const { activeConnectionId, connections } = useConnectionStore()
   const { 
     tables, 
     selectedTableId, 
@@ -224,24 +190,51 @@ export function TableBrowser() {
     selectTable, 
     isLoadingTables,
     setLoadingTables,
+    setTablesError,
+    tablesError,
   } = useTableStore()
   
   const [searchQuery, setSearchQuery] = useState('')
   const [showCreateDialog, setShowCreateDialog] = useState(false)
 
-  // Load mock tables when connected
+  // Get active connection details
+  const activeConnection = connections.find(c => c.id === activeConnectionId)
+
+  // Fetch tables from server
+  const fetchTables = useCallback(async () => {
+    if (!activeConnection) return
+
+    setLoadingTables(true)
+    setTablesError(null)
+
+    try {
+      const client = createClient({
+        host: activeConnection.host,
+        port: activeConnection.port,
+        apiKey: activeConnection.apiKey,
+        useSsl: activeConnection.ssl,
+      })
+
+      const response = await client.listTables()
+      const storeTables = response.tables.map(apiTableToStoreTable)
+      setTables(storeTables)
+    } catch (error) {
+      console.error('Failed to fetch tables:', error)
+      setTablesError(error instanceof Error ? error.message : 'Failed to fetch tables')
+      setTables([])
+    } finally {
+      setLoadingTables(false)
+    }
+  }, [activeConnection, setLoadingTables, setTables, setTablesError])
+
+  // Load tables when connected
   useEffect(() => {
-    if (activeConnectionId) {
-      setLoadingTables(true)
-      // Simulate API call
-      setTimeout(() => {
-        setTables(mockTables)
-        setLoadingTables(false)
-      }, 500)
+    if (activeConnectionId && activeConnection) {
+      fetchTables()
     } else {
       setTables([])
     }
-  }, [activeConnectionId, setTables, setLoadingTables])
+  }, [activeConnectionId, activeConnection, fetchTables, setTables])
 
   const filteredTables = tables.filter((t) =>
     t.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -268,15 +261,27 @@ export function TableBrowser() {
         <span className="text-xs font-semibold text-overlay-1 uppercase tracking-wide">
           Tables ({tables.length})
         </span>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-6 w-6"
-          onClick={() => setShowCreateDialog(true)}
-          title="Create table"
-        >
-          <Plus size={14} />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-6 w-6"
+            onClick={fetchTables}
+            title="Refresh tables"
+            disabled={isLoadingTables}
+          >
+            <ArrowClockwise size={14} className={isLoadingTables ? 'animate-spin' : ''} />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-6 w-6"
+            onClick={() => setShowCreateDialog(true)}
+            title="Create table"
+          >
+            <Plus size={14} />
+          </Button>
+        </div>
       </div>
 
       {/* Search */}
@@ -300,6 +305,19 @@ export function TableBrowser() {
           />
         </div>
       </div>
+
+      {/* Error state */}
+      {tablesError && (
+        <div className="px-3 py-2 mx-2 mb-2 rounded-md bg-red/10 border border-red/20">
+          <p className="text-xs text-red">{tablesError}</p>
+          <button 
+            onClick={fetchTables}
+            className="text-xs text-red underline mt-1 hover:text-red/80"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Table list */}
       <div className="flex-1 overflow-auto">

@@ -146,7 +146,7 @@ SQL-like RQL queries for filtering and aggregation:
 
 ```bash
 curl -X POST http://localhost:4444/v1/query \
-  -d '{"query": "SELECT * FROM legal WHERE author = '\''Alice'\'' LIMIT 10"}'
+  -d '{"query": "SELECT * FROM legal WHERE metadata.author = '\''Alice'\'' LIMIT 10"}'
 ```
 
 Best for:

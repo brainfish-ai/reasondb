@@ -358,7 +358,6 @@ fn test_execute_search_with_bm25() {
             "legal", // Must match the actual table_id
             "Contract A",
             "This agreement covers payment terms of fifty thousand dollars.",
-            Some("alice"),
             &["nda".to_string()],
         )
         .unwrap();
@@ -369,7 +368,6 @@ fn test_execute_search_with_bm25() {
             "legal",
             "Contract B",
             "Service agreement with monthly maintenance fee.",
-            Some("bob"),
             &["service".to_string()],
         )
         .unwrap();
@@ -380,7 +378,6 @@ fn test_execute_search_with_bm25() {
             "legal",
             "Contract C",
             "Employment contract with salary and payment schedule.",
-            Some("alice"),
             &["employment".to_string()],
         )
         .unwrap();

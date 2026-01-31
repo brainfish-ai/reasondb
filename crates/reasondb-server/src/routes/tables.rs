@@ -399,7 +399,7 @@ pub async fn get_table_documents<R: ReasoningEngine + Clone + Send + Sync + 'sta
             title: doc.title.clone(),
             total_nodes: doc.total_nodes,
             tags: doc.tags.clone(),
-            author: doc.author.clone(),
+            metadata: doc.metadata.clone(),
             created_at: doc.created_at.to_rfc3339(),
         })
         .collect();
@@ -444,8 +444,9 @@ pub struct TableDocumentSummary {
     /// Document tags
     pub tags: Vec<String>,
 
-    /// Document author
-    pub author: Option<String>,
+    /// Custom metadata (key-value pairs)
+    #[schema(example = json!({"contract_type": "nda", "value_usd": 50000}))]
+    pub metadata: HashMap<String, Value>,
 
     /// Creation timestamp
     #[schema(example = "2026-01-27T10:00:00Z")]

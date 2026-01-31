@@ -6,7 +6,7 @@
 use redb::ReadableTable;
 use serde_json::Value;
 
-use super::{IDX_AUTHOR_DOCS, IDX_METADATA, IDX_TABLE_DOCS, IDX_TAG_DOCS, TABLES_TABLE};
+use super::{IDX_METADATA, IDX_TABLE_DOCS, IDX_TAG_DOCS, TABLES_TABLE};
 use crate::error::{Result, StorageError};
 use crate::model::{Document, Table};
 
@@ -33,15 +33,6 @@ pub(crate) fn index_document_in_txn(
             idx.insert(tag.to_lowercase().as_str(), doc.id.as_str())
                 .map_err(|e| StorageError::TableError(e.to_string()))?;
         }
-    }
-
-    // Index by author
-    if let Some(author) = &doc.author {
-        let mut idx = write_txn
-            .open_multimap_table(IDX_AUTHOR_DOCS)
-            .map_err(StorageError::from)?;
-        idx.insert(author.to_lowercase().as_str(), doc.id.as_str())
-            .map_err(|e| StorageError::TableError(e.to_string()))?;
     }
 
     // Index metadata values
@@ -82,15 +73,6 @@ pub(crate) fn unindex_document_in_txn(
             idx.remove(tag.to_lowercase().as_str(), doc.id.as_str())
                 .map_err(|e| StorageError::TableError(e.to_string()))?;
         }
-    }
-
-    // Unindex from author
-    if let Some(author) = &doc.author {
-        let mut idx = write_txn
-            .open_multimap_table(IDX_AUTHOR_DOCS)
-            .map_err(StorageError::from)?;
-        idx.remove(author.to_lowercase().as_str(), doc.id.as_str())
-            .map_err(|e| StorageError::TableError(e.to_string()))?;
     }
 
     // Unindex metadata values

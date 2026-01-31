@@ -113,8 +113,7 @@ struct Document {
     total_nodes: usize,
     max_depth: u8,
     tags: Vec<String>,
-    author: Option<String>,
-    metadata: HashMap<String, Value>,
+    metadata: HashMap<String, Value>,  // All custom fields (author, etc.)
 }
 
 // Node: Tree node with content and summary

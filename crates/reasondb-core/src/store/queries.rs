@@ -5,7 +5,7 @@
 use std::collections::HashSet;
 
 use super::indexes::{format_metadata_key, get_doc_ids_from_index};
-use super::{NodeStore, IDX_AUTHOR_DOCS, IDX_METADATA, IDX_TABLE_DOCS, IDX_TAG_DOCS};
+use super::{NodeStore, IDX_METADATA, IDX_TABLE_DOCS, IDX_TAG_DOCS};
 use crate::error::{Result, StorageError};
 use crate::model::{Document, SearchFilter};
 
@@ -64,12 +64,6 @@ impl NodeStore {
             }
         }
 
-        // Filter by author
-        if let Some(author) = &filter.author {
-            let ids = get_doc_ids_from_index(&read_txn, IDX_AUTHOR_DOCS, &author.to_lowercase())?;
-            candidate_ids = intersect_or_replace(candidate_ids, ids.into_iter().collect());
-        }
-
         // Filter by metadata
         if let Some(metadata) = &filter.document_metadata {
             for (key, value) in metadata {
@@ -110,11 +104,6 @@ impl NodeStore {
     /// Get all documents with a specific tag.
     pub fn get_documents_by_tag(&self, tag: &str) -> Result<Vec<Document>> {
         self.find_documents(&SearchFilter::new().with_tags(vec![tag]))
-    }
-
-    /// Get all documents by a specific author.
-    pub fn get_documents_by_author(&self, author: &str) -> Result<Vec<Document>> {
-        self.find_documents(&SearchFilter::new().with_author(author))
     }
 }
 

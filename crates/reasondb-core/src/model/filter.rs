@@ -11,18 +11,19 @@ use super::{json_metadata_option, Document, DocumentId, TableId};
 
 /// Search filter criteria for documents.
 ///
-/// Allows filtering by table, tags, author, metadata, and date ranges.
+/// Allows filtering by table, tags, metadata, and date ranges.
 /// All filters are combined with AND logic.
 ///
 /// # Example
 ///
 /// ```rust
 /// use reasondb_core::SearchFilter;
+/// use serde_json::json;
 ///
 /// let filter = SearchFilter::new()
 ///     .with_table_id("legal-contracts")
 ///     .with_tags(vec!["nda", "active"])
-///     .with_author("Legal Team");
+///     .with_metadata("author", json!("Legal Team"));
 /// ```
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SearchFilter {
@@ -46,9 +47,6 @@ pub struct SearchFilter {
 
     /// Filter by document tags (all must match - AND)
     pub tags_all: Option<Vec<String>>,
-
-    /// Filter by author (contains match, case-insensitive)
-    pub author: Option<String>,
 
     /// Filter by document metadata (exact match)
     #[serde(with = "json_metadata_option", default)]
@@ -98,12 +96,6 @@ impl SearchFilter {
     /// Filter by tags (all must match - AND logic).
     pub fn with_tags_all(mut self, tags: Vec<&str>) -> Self {
         self.tags_all = Some(tags.into_iter().map(|s| s.to_string()).collect());
-        self
-    }
-
-    /// Filter by author (case-insensitive contains).
-    pub fn with_author(mut self, author: &str) -> Self {
-        self.author = Some(author.to_string());
         self
     }
 
@@ -176,19 +168,6 @@ impl SearchFilter {
         true
     }
 
-    /// Check if a document matches author filter.
-    pub fn matches_author(&self, doc: &Document) -> bool {
-        if let Some(filter_author) = &self.author {
-            if let Some(doc_author) = &doc.author {
-                return doc_author
-                    .to_lowercase()
-                    .contains(&filter_author.to_lowercase());
-            }
-            return false;
-        }
-        true
-    }
-
     /// Check if a document matches metadata filters.
     pub fn matches_metadata(&self, doc: &Document) -> bool {
         if let Some(filter_meta) = &self.document_metadata {
@@ -206,7 +185,6 @@ impl SearchFilter {
     pub fn matches_document(&self, doc: &Document) -> bool {
         self.matches_date_range(doc)
             && self.matches_tags(doc)
-            && self.matches_author(doc)
             && self.matches_metadata(doc)
     }
 }

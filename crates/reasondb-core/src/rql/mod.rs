@@ -107,11 +107,6 @@ impl Query {
         let field = comp.left.to_string();
 
         match field.as_str() {
-            "author" => {
-                if let Value::String(s) = &comp.right {
-                    filter.author = Some(s.clone());
-                }
-            }
             f if f.starts_with("metadata.") => {
                 let key = f.strip_prefix("metadata.").unwrap();
                 if let Some(meta) = filter.document_metadata.as_mut() {

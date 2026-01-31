@@ -53,10 +53,6 @@ pub(crate) const IDX_TABLE_DOCS: MultimapTableDefinition<&str, &str> =
 pub(crate) const IDX_TAG_DOCS: MultimapTableDefinition<&str, &str> =
     MultimapTableDefinition::new("idx_tag_docs");
 
-/// Author-to-documents index (Author -> DocumentIds)
-pub(crate) const IDX_AUTHOR_DOCS: MultimapTableDefinition<&str, &str> =
-    MultimapTableDefinition::new("idx_author_docs");
-
 /// Metadata value index (field:value -> DocumentIds)
 pub(crate) const IDX_METADATA: MultimapTableDefinition<&str, &str> =
     MultimapTableDefinition::new("idx_metadata");
@@ -161,9 +157,6 @@ impl NodeStore {
                 .map_err(StorageError::from)?;
             let _ = write_txn
                 .open_multimap_table(IDX_TAG_DOCS)
-                .map_err(StorageError::from)?;
-            let _ = write_txn
-                .open_multimap_table(IDX_AUTHOR_DOCS)
                 .map_err(StorageError::from)?;
             let _ = write_txn
                 .open_multimap_table(IDX_METADATA)
