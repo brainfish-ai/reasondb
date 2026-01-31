@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Panel, Group, Separator } from 'react-resizable-panels'
 import {
   Plus,
@@ -17,31 +17,22 @@ import { useQueryStore } from '@/stores/queryStore'
 import { useTableStore } from '@/stores/tableStore'
 import { useUiStore } from '@/stores/uiStore'
 import { useConnectionStore } from '@/stores/connectionStore'
-
-interface Tab {
-  id: string
-  title: string
-  type: 'query' | 'table'
-  tableId?: string // For table tabs
-}
+import { useTabsStore } from '@/stores/tabsStore'
 
 export function MainPanel() {
-  const [tabs, setTabs] = useState<Tab[]>([])
-  const [activeTabId, setActiveTabId] = useState<string | null>(null)
   const [resultView, setResultView] = useState<'table' | 'json' | 'tree'>('table')
   const { result } = useQueryStore()
   const { selectedTableId, tables, selectTable } = useTableStore()
   const { openConnectionForm } = useUiStore()
   const { activeConnectionId } = useConnectionStore()
+  const { tabs, activeTabId, addTab, closeTab: closeTabStore, setActiveTab } = useTabsStore()
 
   const addNewTab = () => {
-    const newTab: Tab = {
-      id: crypto.randomUUID(),
+    addTab({
       title: `Query ${tabs.length + 1}`,
       type: 'query',
-    }
-    setTabs([...tabs, newTab])
-    setActiveTabId(newTab.id)
+      query: '',
+    })
   }
 
   const addTableTab = (tableId: string) => {
@@ -51,18 +42,15 @@ export function MainPanel() {
     // Check if tab already exists
     const existingTab = tabs.find((t) => t.type === 'table' && t.tableId === tableId)
     if (existingTab) {
-      setActiveTabId(existingTab.id)
+      setActiveTab(existingTab.id)
       return
     }
 
-    const newTab: Tab = {
-      id: crypto.randomUUID(),
+    addTab({
       title: table.name,
       type: 'table',
       tableId,
-    }
-    setTabs([...tabs, newTab])
-    setActiveTabId(newTab.id)
+    })
   }
 
   // Open table tab when selectedTableId changes
@@ -74,14 +62,18 @@ export function MainPanel() {
     }
   }, [selectedTableId])
 
-  const closeTab = (id: string, e: React.MouseEvent) => {
+  const handleCloseTab = (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
-    const newTabs = tabs.filter((t) => t.id !== id)
-    setTabs(newTabs)
-    if (activeTabId === id) {
-      setActiveTabId(newTabs.length > 0 ? newTabs[newTabs.length - 1].id : null)
-    }
+    closeTabStore(id)
   }
+  
+  const { updateTabQuery } = useTabsStore()
+  
+  const handleQueryChange = useCallback((query: string) => {
+    if (activeTabId) {
+      updateTabQuery(activeTabId, query)
+    }
+  }, [activeTabId, updateTabQuery])
 
   const activeTab = tabs.find((t) => t.id === activeTabId)
 
@@ -100,7 +92,7 @@ export function MainPanel() {
             return (
               <div
                 key={tab.id}
-                onClick={() => setActiveTabId(tab.id)}
+                onClick={() => setActiveTab(tab.id)}
                 className={cn(
                   'group relative flex items-center h-[40px] px-3 text-sm cursor-pointer select-none',
                   'transition-colors duration-150',
@@ -132,7 +124,7 @@ export function MainPanel() {
                 
                 {/* Close button */}
                 <button
-                  onClick={(e) => closeTab(tab.id, e)}
+                  onClick={(e) => handleCloseTab(tab.id, e)}
                   className={cn(
                     'ml-2 p-1 rounded-sm transition-all',
                     'hover:bg-surface-1 active:bg-surface-2',
@@ -192,7 +184,11 @@ export function MainPanel() {
         <Group orientation="vertical" className="flex-1">
           {/* Editor panel */}
           <Panel defaultSize={55} minSize={20}>
-            <QueryEditor />
+            <QueryEditor 
+              key={activeTabId}
+              initialQuery={activeTab?.query || ''}
+              onQueryChange={handleQueryChange}
+            />
           </Panel>
 
           <Separator className="h-1 bg-border hover:bg-primary/50 transition-colors cursor-row-resize" />
