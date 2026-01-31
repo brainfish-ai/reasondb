@@ -15,6 +15,7 @@ import { QueryResults } from '@/components/query/QueryResults'
 import { DocumentViewer } from '@/components/table/DocumentViewer'
 import { useQueryStore } from '@/stores/queryStore'
 import { useTableStore } from '@/stores/tableStore'
+import { useUiStore } from '@/stores/uiStore'
 
 interface Tab {
   id: string
@@ -29,6 +30,7 @@ export function MainPanel() {
   const [resultView, setResultView] = useState<'table' | 'json' | 'tree'>('table')
   const { result } = useQueryStore()
   const { selectedTableId, tables, selectTable } = useTableStore()
+  const { openConnectionForm } = useUiStore()
 
   const addNewTab = () => {
     const newTab: Tab = {
@@ -82,7 +84,7 @@ export function MainPanel() {
   const activeTab = tabs.find((t) => t.id === activeTabId)
 
   if (tabs.length === 0) {
-    return <WelcomeScreen onNewQuery={addNewTab} />
+    return <WelcomeScreen onNewQuery={addNewTab} onNewConnection={openConnectionForm} />
   }
 
   return (
