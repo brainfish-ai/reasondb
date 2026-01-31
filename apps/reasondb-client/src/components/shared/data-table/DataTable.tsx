@@ -88,7 +88,7 @@ export function DataTable<TData extends RowData>({
             {headerGroup.headers.map((header) => (
               <th
                 key={header.id}
-                className="px-3 py-2 text-left text-xs font-semibold text-subtext-0 uppercase tracking-wide"
+                className="px-3 py-2 text-left text-xs font-semibold text-subtext-0"
               >
                 {header.isPlaceholder
                   ? null
@@ -96,8 +96,8 @@ export function DataTable<TData extends RowData>({
               </th>
             ))}
             {renderRowActions && (
-              <th className="px-3 py-2 w-24 text-right text-xs font-semibold text-subtext-0 uppercase tracking-wide">
-                Actions
+              <th className="px-3 py-2 w-24 text-right text-xs font-semibold text-subtext-0">
+                actions
               </th>
             )}
           </tr>

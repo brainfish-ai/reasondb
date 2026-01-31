@@ -120,6 +120,27 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
   })
 
   // Handlers
+  // Create value fetcher for autocomplete
+  const valueFetcher = useCallback(
+    async (column: string): Promise<string[]> => {
+      if (!activeConnection || !tableId) return []
+      
+      try {
+        const client = createClient({
+          host: activeConnection.host,
+          port: activeConnection.port,
+          apiKey: activeConnection.apiKey,
+          useSsl: activeConnection.ssl,
+        })
+        const response = await client.getColumnValues(tableId, column)
+        return response.values.map(v => v.value)
+      } catch {
+        return []
+      }
+    },
+    [activeConnection, tableId]
+  )
+
   const handleSearch = useCallback(
     async (searchText: string) => {
       if (!activeConnection || !tableId || !searchText.trim()) {
@@ -149,10 +170,12 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
         {/* Toolbar */}
         <Toolbar
           columns={detectedColumns}
+          tableId={tableId}
+          valueFetcher={valueFetcher}
           viewMode={viewMode}
           isLoading={isLoadingDocuments}
           onViewModeChange={setViewMode}
-          onRefresh={fetchDocuments}
+          onRefresh={() => fetchDocuments(true)}
           onSearch={handleSearch}
         />
 

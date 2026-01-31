@@ -235,7 +235,25 @@ export function parseSimpleQuery(query: string, availableColumns: string[]): Fil
     const match = trimmed.match(patterns[i])
     if (match) {
       const column = match[1]
-      const value = match[2] || null
+      const rawValue = match[2] || null
+      
+      // Parse value - convert to number if it's numeric, handle booleans
+      let parsedValue: string | number | boolean | null = rawValue
+      if (rawValue !== null) {
+        const trimmedValue = rawValue.trim()
+        // Check if it's a number (integer or float)
+        if (/^-?\d+(\.\d+)?$/.test(trimmedValue)) {
+          parsedValue = parseFloat(trimmedValue)
+        }
+        // Check for boolean values
+        else if (trimmedValue.toLowerCase() === 'true') {
+          parsedValue = true
+        } else if (trimmedValue.toLowerCase() === 'false') {
+          parsedValue = false
+        } else {
+          parsedValue = trimmedValue
+        }
+      }
       
       // Find the full column path
       const fullColumn = availableColumns.find(
@@ -250,7 +268,7 @@ export function parseSimpleQuery(query: string, availableColumns: string[]): Fil
             id: crypto.randomUUID(),
             column: fullColumn,
             operator: operatorMap[i],
-            value: value,
+            value: parsedValue,
           },
         ],
       }
