@@ -103,10 +103,16 @@ interface JsonDetailSidebarProps {
   isLoading?: boolean
 }
 
+const MIN_WIDTH = 300
+const MAX_WIDTH = window.innerWidth * 0.8
+const DEFAULT_WIDTH = 400
+
 export function JsonDetailSidebar({ isOpen, onClose, title, data, path, isLoading }: JsonDetailSidebarProps) {
   const [copied, setCopied] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
   const [isVisible, setIsVisible] = useState(false)
+  const [width, setWidth] = useState(DEFAULT_WIDTH)
+  const [isDragging, setIsDragging] = useState(false)
   const editorRef = useRef<unknown>(null)
 
   // Check if data indicates loading
@@ -126,6 +132,37 @@ export function JsonDetailSidebar({ isOpen, onClose, title, data, path, isLoadin
       setIsVisible(false)
     }
   }, [isOpen])
+
+  // Handle drag resize
+  useEffect(() => {
+    if (!isDragging) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const newWidth = window.innerWidth - e.clientX
+      setWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, newWidth)))
+    }
+
+    const handleMouseUp = () => {
+      setIsDragging(false)
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [isDragging])
+
+  const handleDragStart = (e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsDragging(true)
+  }
 
   const handleCopy = async () => {
     try {
@@ -182,11 +219,20 @@ export function JsonDetailSidebar({ isOpen, onClose, title, data, path, isLoadin
       <div
         className={cn(
           'fixed inset-y-0 right-0 flex flex-col bg-mantle border-l border-border shadow-2xl z-50',
-          'transition-all duration-300 ease-out',
-          isVisible ? 'translate-x-0' : 'translate-x-full',
-          isExpanded ? 'w-[60vw]' : 'w-[400px]'
+          'transition-transform duration-300 ease-out',
+          isVisible ? 'translate-x-0' : 'translate-x-full'
         )}
+        style={{ width: isExpanded ? '60vw' : width }}
       >
+        {/* Drag handle */}
+        <div
+          onMouseDown={handleDragStart}
+          className={cn(
+            'absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-10',
+            'hover:bg-mauve/50 transition-colors',
+            isDragging && 'bg-mauve'
+          )}
+        />
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-surface-0/30">
           <div className="flex flex-col gap-0.5 min-w-0 flex-1">
