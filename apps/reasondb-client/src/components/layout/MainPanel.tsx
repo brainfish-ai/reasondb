@@ -176,11 +176,11 @@ export function MainPanel() {
             onClick={addNewTab}
             className={cn(
               'flex items-center gap-2 px-4 py-2 rounded-lg',
-              'bg-mauve text-base font-medium',
-              'hover:bg-mauve/90 transition-colors'
+              'bg-surface-0 border border-border text-subtext-0 font-medium',
+              'hover:bg-surface-1 hover:text-text hover:border-overlay-0 transition-colors'
             )}
           >
-            <Plus size={16} weight="bold" />
+            <Plus size={16} />
             New Query
           </button>
         </div>
