@@ -7,6 +7,7 @@ import { registerRqlLanguage, RQL_LANGUAGE_ID, updateRqlTables } from '@/lib/rql
 import { useQueryStore } from '@/stores/queryStore'
 import { useConnectionStore } from '@/stores/connectionStore'
 import { useTableStore } from '@/stores/tableStore'
+import { createClient } from '@/lib/api'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
 
@@ -87,8 +88,8 @@ export function QueryEditor({ onExecute, initialQuery, onQueryChange }: QueryEdi
 
   // Execute query
   const handleExecute = useCallback(async () => {
-    const query = currentQuery.trim()
-    if (!query || isExecuting || !activeConnectionId) return
+    const queryText = query.trim()
+    if (!queryText || isExecuting || !activeConnectionId || !activeConnection) return
 
     setIsExecuting(true)
     setError(null)
@@ -97,60 +98,33 @@ export function QueryEditor({ onExecute, initialQuery, onQueryChange }: QueryEdi
 
     try {
       if (onExecute) {
-        await onExecute(query)
+        await onExecute(queryText)
       } else {
-        // Mock execution for demo
-        await new Promise((resolve) => setTimeout(resolve, 500 + Math.random() * 1000))
+        // Execute query against the server
+        const client = createClient({
+          host: activeConnection.host,
+          port: activeConnection.port,
+          apiKey: activeConnection.apiKey,
+          useSsl: activeConnection.ssl,
+        })
         
-        // Generate mock results based on query type
-        const isSelect = query.toUpperCase().startsWith('SELECT') || 
-                        query.toUpperCase().startsWith('REASON') ||
-                        query.toUpperCase().startsWith('SEARCH')
+        const result = await client.executeQuery(queryText)
+        const executionTime = Date.now() - startTime
         
-        if (isSelect) {
-          const mockColumns = ['id', 'title', 'content', 'similarity', 'created_at']
-          const mockRows = Array.from({ length: Math.floor(Math.random() * 20) + 5 }, (_, i) => ({
-            id: `doc_${i + 1}`,
-            title: `Document ${i + 1}`,
-            content: `This is the content of document ${i + 1}...`,
-            similarity: (Math.random() * 0.5 + 0.5).toFixed(3),
-            created_at: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
-          }))
-          
-          const executionTime = Date.now() - startTime
-          
-          setResult({
-            columns: mockColumns,
-            rows: mockRows,
-            rowCount: mockRows.length,
-            executionTime,
-          })
-          
-          addToHistory({
-            query,
-            connectionId: activeConnectionId,
-            executedAt: new Date().toISOString(),
-            executionTime,
-            rowCount: mockRows.length,
-          })
-        } else {
-          const executionTime = Date.now() - startTime
-          
-          setResult({
-            columns: ['affected_rows'],
-            rows: [{ affected_rows: Math.floor(Math.random() * 10) + 1 }],
-            rowCount: 1,
-            executionTime,
-          })
-          
-          addToHistory({
-            query,
-            connectionId: activeConnectionId,
-            executedAt: new Date().toISOString(),
-            executionTime,
-            rowCount: 1,
-          })
-        }
+        setResult({
+          columns: result.columns || [],
+          rows: result.rows || [],
+          rowCount: result.rowCount || result.rows?.length || 0,
+          executionTime,
+        })
+        
+        addToHistory({
+          query: queryText,
+          connectionId: activeConnectionId,
+          executedAt: new Date().toISOString(),
+          executionTime,
+          rowCount: result.rowCount || result.rows?.length || 0,
+        })
       }
     } catch (err) {
       const executionTime = Date.now() - startTime
@@ -159,7 +133,7 @@ export function QueryEditor({ onExecute, initialQuery, onQueryChange }: QueryEdi
       setError(errorMessage)
       
       addToHistory({
-        query,
+        query: queryText,
         connectionId: activeConnectionId,
         executedAt: new Date().toISOString(),
         executionTime,
@@ -169,7 +143,7 @@ export function QueryEditor({ onExecute, initialQuery, onQueryChange }: QueryEdi
     } finally {
       setIsExecuting(false)
     }
-  }, [currentQuery, isExecuting, activeConnectionId, onExecute, setIsExecuting, setError, setResult, addToHistory])
+  }, [query, isExecuting, activeConnectionId, activeConnection, onExecute, setIsExecuting, setError, setResult, addToHistory])
 
   // Keyboard shortcut for execute
   useHotkeys('mod+enter', () => handleExecute(), {

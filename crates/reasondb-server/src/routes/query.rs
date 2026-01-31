@@ -92,11 +92,22 @@ pub struct QueryDocumentMatch {
 
     /// Tags
     pub tags: Vec<String>,
+    
+    /// Document metadata
+    pub metadata: std::collections::HashMap<String, serde_json::Value>,
+    
+    /// Total nodes in document
+    pub total_nodes: usize,
+    
+    /// Created timestamp
+    pub created_at: String,
 
     /// Relevance score (BM25 for SEARCH, confidence for REASON)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub score: Option<f32>,
 
     /// Highlighted snippets
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub highlights: Vec<String>,
 
     /// LLM-extracted answer (for REASON queries)
@@ -115,6 +126,9 @@ impl From<DocumentMatch> for QueryDocumentMatch {
             title: m.document.title,
             table_id: m.document.table_id,
             tags: m.document.tags,
+            metadata: m.document.metadata,
+            total_nodes: m.document.total_nodes,
+            created_at: m.document.created_at.to_rfc3339(),
             score: m.score,
             highlights: m.highlights,
             answer: m.answer,

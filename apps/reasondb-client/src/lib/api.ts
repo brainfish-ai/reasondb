@@ -176,8 +176,32 @@ export interface SearchResponse {
 export interface QueryResult {
   rows: Record<string, unknown>[]
   columns: string[]
-  row_count: number
+  rowCount: number
+  executionTime: number
+}
+
+// Server query response (internal)
+interface QueryServerResponse {
+  documents: Array<{
+    id: string
+    title: string
+    table_id: string
+    tags: string[]
+    metadata: Record<string, unknown>
+    total_nodes: number
+    created_at: string
+    score?: number
+    highlights?: string[]
+    answer?: string
+    confidence?: number
+  }>
+  total_count: number
   execution_time_ms: number
+  aggregates?: Array<{
+    name: string
+    value: unknown
+    group_key?: Array<[string, unknown]>
+  }>
 }
 
 // Errors
@@ -424,10 +448,51 @@ class ReasonDBClient {
    * Execute RQL query
    */
   async executeQuery(query: string): Promise<QueryResult> {
-    return this.request<QueryResult>('/v1/query', {
+    // Strip trailing semicolons - RQL doesn't use them
+    const cleanQuery = query.trim().replace(/;+$/, '').trim()
+    
+    const response = await this.request<QueryServerResponse>('/v1/query', {
       method: 'POST',
-      body: JSON.stringify({ query }),
+      body: JSON.stringify({ query: cleanQuery }),
     })
+    
+    // Transform server response to frontend format
+    if (response.documents && response.documents.length > 0) {
+      // Get columns from first document
+      const firstDoc = response.documents[0]
+      const columns = Object.keys(firstDoc)
+      
+      return {
+        columns,
+        rows: response.documents,
+        rowCount: response.total_count,
+        executionTime: response.execution_time_ms,
+      }
+    }
+    
+    // Handle aggregate results
+    if (response.aggregates && response.aggregates.length > 0) {
+      const columns = response.aggregates.map(a => a.name)
+      const row: Record<string, unknown> = {}
+      response.aggregates.forEach(a => {
+        row[a.name] = a.value
+      })
+      
+      return {
+        columns,
+        rows: [row],
+        rowCount: 1,
+        executionTime: response.execution_time_ms,
+      }
+    }
+    
+    // Empty result
+    return {
+      columns: [],
+      rows: [],
+      rowCount: 0,
+      executionTime: response.execution_time_ms,
+    }
   }
 }
 
