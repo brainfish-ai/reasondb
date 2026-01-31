@@ -608,3 +608,154 @@ pub async fn get_table_metadata_schema<R: ReasoningEngine + Clone + Send + Sync 
         total_documents,
     }))
 }
+
+/// Response for column values endpoint
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ColumnValuesResponse {
+    /// Table ID
+    #[schema(example = "tbl_abc123")]
+    pub table_id: String,
+
+    /// Column name
+    #[schema(example = "tags")]
+    pub column: String,
+
+    /// Distinct values found
+    pub values: Vec<ColumnValue>,
+
+    /// Number of documents sampled
+    #[schema(example = 100)]
+    pub documents_sampled: usize,
+}
+
+/// A distinct value with its occurrence count
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ColumnValue {
+    /// The value (as string)
+    #[schema(example = "engineering")]
+    pub value: String,
+
+    /// Number of occurrences
+    #[schema(example = 15)]
+    pub count: usize,
+}
+
+/// Get distinct values for a column
+///
+/// Returns distinct values found in a specific column, useful for autocompletion.
+/// Supports standard columns (title, tags) and metadata fields (metadata.department).
+#[utoipa::path(
+    get,
+    path = "/v1/tables/{id}/values/{column}",
+    tag = "tables",
+    params(
+        ("id" = String, Path, description = "Table ID"),
+        ("column" = String, Path, description = "Column name (e.g., 'title', 'tags', 'metadata.department')")
+    ),
+    responses(
+        (status = 200, description = "Column values", body = ColumnValuesResponse),
+        (status = 404, description = "Table not found", body = ErrorResponse),
+        (status = 500, description = "Failed to get values", body = ErrorResponse),
+    )
+)]
+pub async fn get_column_values<R: ReasoningEngine + Clone + Send + Sync + 'static>(
+    State(state): State<Arc<AppState<R>>>,
+    Path((id, column)): Path<(String, String)>,
+) -> ApiResult<Json<ColumnValuesResponse>> {
+    // Verify table exists
+    let _ = state
+        .store
+        .get_table(&id)
+        .map_err(|e| ApiError::StorageError(e.to_string()))?
+        .ok_or_else(|| ApiError::NotFound(format!("Table not found: {}", id)))?;
+
+    let documents = state
+        .store
+        .get_documents_in_table(&id)
+        .map_err(|e| ApiError::StorageError(e.to_string()))?;
+
+    // Sample documents (limit to 100 for performance)
+    const SAMPLE_SIZE: usize = 100;
+    let sample_count = std::cmp::min(documents.len(), SAMPLE_SIZE);
+    let sampled_docs = &documents[..sample_count];
+
+    // Collect distinct values with counts
+    let mut value_counts: HashMap<String, usize> = HashMap::new();
+
+    for doc in sampled_docs {
+        let values = extract_column_values(doc, &column);
+        for value in values {
+            *value_counts.entry(value).or_insert(0) += 1;
+        }
+    }
+
+    // Convert to response format, sorted by count (descending)
+    let mut values: Vec<ColumnValue> = value_counts
+        .into_iter()
+        .map(|(value, count)| ColumnValue { value, count })
+        .collect();
+    
+    values.sort_by(|a, b| b.count.cmp(&a.count));
+    
+    // Limit to top 50 values
+    values.truncate(50);
+
+    Ok(Json(ColumnValuesResponse {
+        table_id: id,
+        column,
+        values,
+        documents_sampled: sample_count,
+    }))
+}
+
+/// Extract values from a document for a given column
+fn extract_column_values(doc: &reasondb_core::Document, column: &str) -> Vec<String> {
+    let mut values = Vec::new();
+
+    match column.to_lowercase().as_str() {
+        "title" => {
+            if !doc.title.is_empty() {
+                values.push(doc.title.clone());
+            }
+        }
+        "tags" => {
+            values.extend(doc.tags.iter().cloned());
+        }
+        col if col.starts_with("metadata.") => {
+            // Extract value from metadata using dot notation
+            let path = &column[9..]; // Remove "metadata." prefix
+            if let Some(value) = get_metadata_value(&doc.metadata, path) {
+                values.push(value);
+            }
+        }
+        _ => {
+            // Unknown column, return empty
+        }
+    }
+
+    values
+}
+
+/// Get a value from metadata using dot notation path
+fn get_metadata_value(metadata: &HashMap<String, Value>, path: &str) -> Option<String> {
+    let parts: Vec<&str> = path.split('.').collect();
+    let mut current: &Value = metadata.get(parts[0])?;
+
+    for part in &parts[1..] {
+        match current {
+            Value::Object(obj) => {
+                current = obj.get(*part)?;
+            }
+            _ => return None,
+        }
+    }
+
+    // Convert value to string
+    match current {
+        Value::String(s) => Some(s.clone()),
+        Value::Number(n) => Some(n.to_string()),
+        Value::Bool(b) => Some(b.to_string()),
+        Value::Null => Some("null".to_string()),
+        _ => None, // Don't return arrays/objects as values
+    }
+}

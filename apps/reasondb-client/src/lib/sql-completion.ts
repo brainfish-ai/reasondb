@@ -3,26 +3,20 @@
  * 
  * Uses node-sql-parser for AST-based context detection
  * and provides intelligent autocompletion suggestions.
+ * 
+ * Schema state is managed by schemaStore for reactivity.
  */
 
 import { Parser } from 'node-sql-parser'
 import type * as Monaco from 'monaco-editor'
+import { useSchemaStore } from '@/stores/schemaStore'
 
-// Schema types
-export interface ColumnSchema {
-  name: string
-  type: string
-  nullable?: boolean
-  primaryKey?: boolean
-}
+// Re-export types from store
+export type { ColumnSchema, TableSchema, MetadataSchemaField } from '@/stores/schemaStore'
 
-export interface TableSchema {
-  name: string
-  columns: ColumnSchema[]
-}
-
+// Legacy types for backwards compatibility
 export interface DatabaseSchema {
-  tables: TableSchema[]
+  tables: Array<{ name: string; columns: Array<{ name: string; type: string }> }>
 }
 
 // Completion context
@@ -37,17 +31,55 @@ export type CompletionContext =
 // Parser instance (reused)
 const parser = new Parser()
 
-// Current database schema (updated via setSchema)
-let currentSchema: DatabaseSchema = { tables: [] }
-
 // Table aliases in current query
 let tableAliases: Map<string, string> = new Map()
 
+// Value fetcher function (set by frontend)
+type ValueFetcher = (tableId: string, column: string) => Promise<string[]>
+let valueFetcher: ValueFetcher | null = null
+
 /**
- * Update the schema for autocompletion
+ * Set the value fetcher function (called from frontend with API client)
  */
-export function setSchema(schema: DatabaseSchema) {
-  currentSchema = schema
+export function setValueFetcher(fetcher: ValueFetcher) {
+  valueFetcher = fetcher
+}
+
+/**
+ * Get cached values or fetch from server
+ */
+async function getColumnValues(tableName: string, column: string): Promise<string[]> {
+  const store = useSchemaStore.getState()
+  
+  if (!valueFetcher) {
+    return []
+  }
+  
+  const table = store.getTableByName(tableName)
+  if (!table) {
+    return []
+  }
+  
+  // Check cache
+  const cached = store.getCachedValues(table.id, column)
+  if (cached) {
+    return cached
+  }
+  
+  try {
+    const values = await valueFetcher(table.id, column)
+    store.setCachedValues(table.id, column, values)
+    return values
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Get current schema from store
+ */
+function getCurrentSchema(): DatabaseSchema {
+  return useSchemaStore.getState().getSchema()
 }
 
 /**
@@ -103,44 +135,18 @@ function getValueAtPath(obj: unknown, path: string): unknown {
 }
 
 /**
- * Server-side metadata schema field
- */
-export interface MetadataSchemaField {
-  path: string
-  field_type: string
-  occurrence_count?: number
-}
-
-/**
  * Update metadata fields for a specific table from server-side schema response
- * This is more efficient than extracting from documents client-side
+ * Delegates to schemaStore for state management
  */
 export function updateTableMetadataFieldsFromSchema(
   tableName: string,
-  fields: MetadataSchemaField[]
+  fields: Array<{ path: string; field_type: string; occurrence_count?: number }>
 ) {
-  // Find the table in current schema
-  const tableIndex = currentSchema.tables.findIndex(
-    t => t.name.toLowerCase() === tableName.toLowerCase()
-  )
-  
-  if (tableIndex === -1 || fields.length === 0) {
-    return
-  }
-  
-  // Get existing columns (excluding old metadata.* columns to avoid duplicates)
-  const existingColumns = currentSchema.tables[tableIndex].columns.filter(
-    col => !col.name.startsWith('metadata.')
-  )
-  
-  // Create new columns for metadata fields (prepend "metadata." prefix)
-  const metadataColumns: ColumnSchema[] = fields.map(field => ({
-    name: `metadata.${field.path}`,
-    type: field.field_type,
-  }))
-  
-  // Update the table's columns
-  currentSchema.tables[tableIndex].columns = [...existingColumns, ...metadataColumns]
+  useSchemaStore.getState().addMetadataFields(tableName, fields.map(f => ({
+    path: f.path,
+    field_type: f.field_type,
+    occurrence_count: f.occurrence_count ?? 0,
+  })))
 }
 
 /**
@@ -151,27 +157,18 @@ export function updateTableMetadataFields(
   tableName: string,
   documents: Array<{ metadata?: Record<string, unknown> }>
 ) {
-  // Find the table in current schema
-  const tableIndex = currentSchema.tables.findIndex(
-    t => t.name.toLowerCase() === tableName.toLowerCase()
-  )
-  
-  if (tableIndex === -1) {
-    return
-  }
-  
   // Extract all unique metadata field paths from documents
   const fieldPaths = new Set<string>()
   const fieldTypes = new Map<string, string>()
   
   for (const doc of documents) {
     if (doc.metadata && typeof doc.metadata === 'object') {
-      const paths = extractFieldPaths(doc.metadata, 'metadata')
+      const paths = extractFieldPaths(doc.metadata)
       for (const path of paths) {
         fieldPaths.add(path)
         // Try to infer type from first non-null value
         if (!fieldTypes.has(path)) {
-          const value = getValueAtPath(doc, path)
+          const value = getValueAtPath(doc.metadata, path)
           if (value !== undefined && value !== null) {
             fieldTypes.set(path, inferType(value))
           }
@@ -184,28 +181,21 @@ export function updateTableMetadataFields(
     return
   }
   
-  // Get existing columns (excluding old metadata.* columns to avoid duplicates)
-  const existingColumns = currentSchema.tables[tableIndex].columns.filter(
-    col => !col.name.startsWith('metadata.')
-  )
+  // Convert to MetadataSchemaField format and delegate to store
+  const fields = Array.from(fieldPaths).map(path => ({
+    path,
+    field_type: fieldTypes.get(path) || 'unknown',
+    occurrence_count: 1,
+  }))
   
-  // Create new columns for metadata fields
-  const metadataColumns: ColumnSchema[] = Array.from(fieldPaths)
-    .sort()
-    .map(path => ({
-      name: path,
-      type: fieldTypes.get(path) || 'unknown',
-    }))
-  
-  // Update the table's columns
-  currentSchema.tables[tableIndex].columns = [...existingColumns, ...metadataColumns]
+  useSchemaStore.getState().addMetadataFields(tableName, fields)
 }
 
 /**
  * Get the current schema
  */
 export function getSchema(): DatabaseSchema {
-  return currentSchema
+  return getCurrentSchema()
 }
 
 /**
@@ -243,12 +233,31 @@ function extractAliases(sql: string): Map<string, string> {
 }
 
 /**
+ * Extract table name from FROM clause
+ */
+function extractFromTable(sql: string): string | undefined {
+  const match = sql.match(/\bFROM\s+(\w+)/i)
+  return match ? match[1] : undefined
+}
+
+/**
+ * Extract column name from WHERE clause before operator
+ */
+function extractWhereColumn(textBefore: string): string | undefined {
+  // Match patterns like "WHERE column =", "AND metadata.field ="
+  const match = textBefore.match(/\b(?:WHERE|AND|OR)\s+([\w.]+)\s+(?:=|!=|<>|>|<|>=|<=|LIKE|IN|BETWEEN)\s*$/i)
+  return match ? match[1] : undefined
+}
+
+/**
  * Detect completion context from cursor position
  */
 export function detectContext(sql: string, cursorOffset: number): {
   context: CompletionContext
   prefix: string
-  tableName?: string  // For alias.column completion
+  tableName?: string  // For alias.column completion or value context
+  columnName?: string // For value context - which column we're filtering
+  fromTable?: string  // The table in FROM clause
 } {
   const textBefore = sql.substring(0, cursorOffset)
   const trimmedText = textBefore.trim()
@@ -257,6 +266,9 @@ export function detectContext(sql: string, cursorOffset: number): {
   // Update aliases
   tableAliases = extractAliases(sql)
   
+  // Extract FROM table for value context
+  const fromTable = extractFromTable(sql)
+  
   // Check if we're typing after a dot (alias.column or table.column)
   // But NOT if there's a space after it (then we need operator)
   const dotMatch = trimmedText.match(/(\w+)\.(\w*)$/i)
@@ -264,7 +276,7 @@ export function detectContext(sql: string, cursorOffset: number): {
     const [, tableOrAlias, columnPrefix] = dotMatch
     // Resolve alias to table name
     const tableName = tableAliases.get(tableOrAlias) || tableOrAlias
-    return { context: 'column', prefix: columnPrefix || '', tableName }
+    return { context: 'column', prefix: columnPrefix || '', tableName, fromTable }
   }
   
   // Get the word being typed
@@ -273,24 +285,31 @@ export function detectContext(sql: string, cursorOffset: number): {
   
   // After FROM, JOIN, INTO, UPDATE - expect table
   if (/\b(FROM|JOIN|INTO|UPDATE|TABLE)\s*$/i.test(upperText)) {
-    return { context: 'table', prefix }
+    return { context: 'table', prefix, fromTable }
   }
   
   // After FROM/JOIN/INTO/UPDATE + partial table name being typed (no space after)
   // This catches cases like "FROM kno" where "kno" is partial table name
   if (/\b(FROM|JOIN|INTO|UPDATE|TABLE)\s+\w+$/i.test(trimmedText) && !textBefore.endsWith(' ')) {
-    return { context: 'table', prefix }
+    return { context: 'table', prefix, fromTable }
   }
   
   // After WHERE/AND/OR + identifier (column or table.column) + space - expect operator
   // This checks if we have a column name followed by space, indicating we need an operator
   if (/\b(WHERE|AND|OR|HAVING)\s+[\w.]+\s+$/i.test(textBefore)) {
-    return { context: 'operator', prefix }
+    return { context: 'operator', prefix, fromTable }
   }
   
   // After operator - expect value
   if (/\b(WHERE|AND|OR)\s+[\w.]+\s+(=|!=|<>|>|<|>=|<=|LIKE|IN|BETWEEN)\s*$/i.test(upperText)) {
-    return { context: 'value', prefix }
+    const columnName = extractWhereColumn(textBefore)
+    return { context: 'value', prefix, fromTable, columnName }
+  }
+  
+  // After operator with partial value typed (inside quotes)
+  const valueMatch = textBefore.match(/\b(?:WHERE|AND|OR)\s+([\w.]+)\s+(?:=|!=|<>|LIKE)\s+'([^']*)$/i)
+  if (valueMatch) {
+    return { context: 'value', prefix: valueMatch[2], fromTable, columnName: valueMatch[1] }
   }
   
   // Right after SELECT - expect columns
@@ -339,22 +358,23 @@ export function detectContext(sql: string, cursorOffset: number): {
 }
 
 /**
- * Generate completion items based on context
+ * Generate completion items based on context (async for value fetching)
  */
-export function getCompletions(
+export async function getCompletions(
   monaco: typeof Monaco,
   sql: string,
   cursorOffset: number,
   range: Monaco.IRange
-): Monaco.languages.CompletionItem[] {
-  const { context, prefix, tableName } = detectContext(sql, cursorOffset)
+): Promise<Monaco.languages.CompletionItem[]> {
+  const { context, prefix, tableName, fromTable, columnName } = detectContext(sql, cursorOffset)
   const items: Monaco.languages.CompletionItem[] = []
   const textBefore = sql.substring(0, cursorOffset).toUpperCase()
+  const schema = getCurrentSchema()
   
   switch (context) {
     case 'table': {
       // Show table names
-      currentSchema.tables.forEach((table, idx) => {
+      schema.tables.forEach((table, idx) => {
         if (!prefix || table.name.toLowerCase().startsWith(prefix.toLowerCase())) {
           items.push({
             label: table.name,
@@ -373,7 +393,7 @@ export function getCompletions(
     case 'column': {
       // If specific table, show only its columns
       if (tableName) {
-        const table = currentSchema.tables.find(
+        const table = schema.tables.find(
           t => t.name.toLowerCase() === tableName.toLowerCase()
         )
         if (table) {
@@ -384,7 +404,7 @@ export function getCompletions(
                 label: col.name,
                 kind: monaco.languages.CompletionItemKind.Field,
                 insertText: col.name,
-                detail: `${col.type}${col.primaryKey ? ' (PK)' : ''}`,
+                detail: col.type,
                 range,
                 sortText: idx.toString().padStart(3, '0'),
               })
@@ -396,7 +416,7 @@ export function getCompletions(
           const fullPrefix = prefix ? `${tableName}.${prefix}` : `${tableName}.`
           const fullPrefixLower = fullPrefix.toLowerCase()
           
-          currentSchema.tables.forEach((t) => {
+          schema.tables.forEach((t) => {
             t.columns.forEach((col, idx) => {
               if (col.name.toLowerCase().startsWith(fullPrefixLower)) {
                 // Extract the part after the dot for display
@@ -418,7 +438,7 @@ export function getCompletions(
         const seenColumns = new Set<string>()
         
         // First, add columns without prefix (common ones)
-        currentSchema.tables.forEach((table) => {
+        schema.tables.forEach((table) => {
           table.columns.forEach((col, idx) => {
             if (!prefix || col.name.toLowerCase().startsWith(prefix.toLowerCase())) {
               if (!seenColumns.has(col.name)) {
@@ -437,7 +457,7 @@ export function getCompletions(
         })
         
         // Then, add table.column format
-        currentSchema.tables.forEach((table) => {
+        schema.tables.forEach((table) => {
           table.columns.forEach((col, idx) => {
             const fullName = `${table.name}.${col.name}`
             if (!prefix || fullName.toLowerCase().startsWith(prefix.toLowerCase())) {
@@ -567,15 +587,42 @@ export function getCompletions(
     }
     
     case 'value': {
-      // Could suggest common values or leave empty for user input
-      items.push({
-        label: "'value'",
-        kind: monaco.languages.CompletionItemKind.Value,
-        insertText: "'${1}'",
-        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-        detail: 'String value',
-        range,
-      })
+      // Try to fetch actual values from the database
+      if (fromTable && columnName) {
+        try {
+          const values = await getColumnValues(fromTable, columnName)
+          
+          values.forEach((value, idx) => {
+            if (!prefix || value.toLowerCase().includes(prefix.toLowerCase())) {
+              // Escape single quotes in value
+              const escapedValue = value.replace(/'/g, "''")
+              items.push({
+                label: value,
+                kind: monaco.languages.CompletionItemKind.Value,
+                insertText: `'${escapedValue}'`,
+                detail: `Value from ${columnName}`,
+                range,
+                sortText: idx.toString().padStart(3, '0'),
+              })
+            }
+          })
+        } catch {
+          // Fallback to generic suggestions
+        }
+      }
+      
+      // Add generic suggestions if no values found
+      if (items.length === 0) {
+        items.push({
+          label: "'value'",
+          kind: monaco.languages.CompletionItemKind.Value,
+          insertText: "'${1}'",
+          insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+          detail: 'String value',
+          range,
+        })
+      }
+      
       items.push({
         label: 'NULL',
         kind: monaco.languages.CompletionItemKind.Constant,

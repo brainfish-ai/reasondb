@@ -1,31 +1,33 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { detectContext, setSchema, getSchema, updateTableMetadataFields } from './sql-completion'
+import { detectContext, getSchema, updateTableMetadataFields } from './sql-completion'
+import { useSchemaStore } from '@/stores/schemaStore'
 
 describe('SQL Completion Engine', () => {
   beforeEach(() => {
-    // Set up test schema
-    setSchema({
-      tables: [
-        {
-          name: 'users',
-          columns: [
-            { name: 'id', type: 'uuid', primaryKey: true },
-            { name: 'name', type: 'text' },
-            { name: 'email', type: 'text' },
-            { name: 'created_at', type: 'timestamp' },
-          ],
-        },
-        {
-          name: 'posts',
-          columns: [
-            { name: 'id', type: 'uuid', primaryKey: true },
-            { name: 'title', type: 'text' },
-            { name: 'content', type: 'text' },
-            { name: 'user_id', type: 'uuid' },
-          ],
-        },
-      ],
-    })
+    // Reset and set up test schema using store
+    useSchemaStore.getState().reset()
+    useSchemaStore.getState().setTables([
+      {
+        id: 'tbl_users',
+        name: 'users',
+        columns: [
+          { name: 'id', type: 'uuid' },
+          { name: 'name', type: 'text' },
+          { name: 'email', type: 'text' },
+          { name: 'created_at', type: 'timestamp' },
+        ],
+      },
+      {
+        id: 'tbl_posts',
+        name: 'posts',
+        columns: [
+          { name: 'id', type: 'uuid' },
+          { name: 'title', type: 'text' },
+          { name: 'content', type: 'text' },
+          { name: 'user_id', type: 'uuid' },
+        ],
+      },
+    ])
   })
 
   describe('detectContext', () => {
@@ -187,17 +189,17 @@ describe('SQL Completion Engine', () => {
 
   describe('metadata field extraction', () => {
     it('should extract top-level metadata fields', () => {
-      // Reset schema with a table
-      setSchema({
-        tables: [{
-          name: 'documents',
-          columns: [
-            { name: 'id', type: 'uuid' },
-            { name: 'title', type: 'text' },
-            { name: 'metadata', type: 'jsonb' },
-          ],
-        }],
-      })
+      // Reset schema with a table using store
+      useSchemaStore.getState().reset()
+      useSchemaStore.getState().setTables([{
+        id: 'tbl_documents',
+        name: 'documents',
+        columns: [
+          { name: 'id', type: 'uuid' },
+          { name: 'title', type: 'text' },
+          { name: 'metadata', type: 'jsonb' },
+        ],
+      }])
       
       // Add metadata fields from documents
       updateTableMetadataFields('documents', [
@@ -216,15 +218,15 @@ describe('SQL Completion Engine', () => {
     })
 
     it('should extract nested metadata fields', () => {
-      setSchema({
-        tables: [{
-          name: 'articles',
-          columns: [
-            { name: 'id', type: 'uuid' },
-            { name: 'metadata', type: 'jsonb' },
-          ],
-        }],
-      })
+      useSchemaStore.getState().reset()
+      useSchemaStore.getState().setTables([{
+        id: 'tbl_articles',
+        name: 'articles',
+        columns: [
+          { name: 'id', type: 'uuid' },
+          { name: 'metadata', type: 'jsonb' },
+        ],
+      }])
       
       updateTableMetadataFields('articles', [
         { 

@@ -44,6 +44,7 @@ export function QueryEditor({ onExecute }: QueryEditorProps) {
     ]
     
     const tableSchemas = tables.map((table) => ({
+      id: table.id,
       name: table.name,
       fields: table.columns && table.columns.length > 0
         ? table.columns.map(col => ({ name: col.name, type: col.type }))

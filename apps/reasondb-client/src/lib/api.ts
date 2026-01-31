@@ -100,6 +100,19 @@ export interface MetadataSchemaResponse {
   total_documents: number
 }
 
+// Column Values (for autocompletion)
+export interface ColumnValue {
+  value: string
+  count: number
+}
+
+export interface ColumnValuesResponse {
+  table_id: string
+  column: string
+  values: ColumnValue[]
+  documents_sampled: number
+}
+
 // Nodes
 export interface NodeSummary {
   id: string
@@ -339,6 +352,16 @@ class ReasonDBClient {
   async getTableMetadataSchema(tableId: string): Promise<MetadataSchemaResponse> {
     return this.request<MetadataSchemaResponse>(
       `/v1/tables/${encodeURIComponent(tableId)}/schema/metadata`
+    )
+  }
+
+  /**
+   * Get distinct values for a column (for autocompletion)
+   * Supports: title, tags, metadata.field_name
+   */
+  async getColumnValues(tableId: string, column: string): Promise<ColumnValuesResponse> {
+    return this.request<ColumnValuesResponse>(
+      `/v1/tables/${encodeURIComponent(tableId)}/values/${encodeURIComponent(column)}`
     )
   }
 

@@ -1,36 +1,37 @@
 import type * as Monaco from 'monaco-editor'
 import { 
   getCompletions, 
-  setSchema, 
   updateTableMetadataFields, 
   updateTableMetadataFieldsFromSchema,
+  setValueFetcher,
   type DatabaseSchema, 
-  type TableSchema,
-  type MetadataSchemaField,
 } from './sql-completion'
+import { useSchemaStore, type MetadataSchemaField } from '@/stores/schemaStore'
 
 // RQL Language Definition for Monaco Editor
 export const RQL_LANGUAGE_ID = 'rql'
 
 // Re-export for convenience
 export { 
-  setSchema, 
   updateTableMetadataFields, 
   updateTableMetadataFieldsFromSchema,
+  setValueFetcher,
   type DatabaseSchema, 
-  type TableSchema,
   type MetadataSchemaField,
 }
 
-// Update tables for autocompletion (converts to new schema format)
-export function updateRqlTables(tables: { name: string; fields: { name: string; type: string }[] }[]) {
-  const schema: DatabaseSchema = {
-    tables: tables.map(t => ({
+// Re-export store for direct access
+export { useSchemaStore }
+
+// Update tables for autocompletion (converts to store format)
+export function updateRqlTables(tables: { id: string; name: string; fields: { name: string; type: string }[] }[]) {
+  useSchemaStore.getState().setTables(
+    tables.map(t => ({
+      id: t.id,
       name: t.name,
       columns: t.fields.map(f => ({ name: f.name, type: f.type }))
     }))
-  }
-  setSchema(schema)
+  )
 }
 
 export const rqlLanguageConfig: Monaco.languages.LanguageConfiguration = {
@@ -226,8 +227,8 @@ export function registerRqlLanguage(monaco: typeof Monaco) {
 
   // Register completion provider using new SQL completion engine
   monaco.languages.registerCompletionItemProvider(RQL_LANGUAGE_ID, {
-    triggerCharacters: [' ', '.', ','],
-    provideCompletionItems: (model, position) => {
+    triggerCharacters: [' ', '.', ',', "'"],
+    provideCompletionItems: async (model, position) => {
       const word = model.getWordUntilPosition(position)
       const range: Monaco.IRange = {
         startLineNumber: position.lineNumber,
@@ -240,9 +241,8 @@ export function registerRqlLanguage(monaco: typeof Monaco) {
       const fullText = model.getValue()
       const cursorOffset = model.getOffsetAt(position)
       
-      return {
-        suggestions: getCompletions(monaco, fullText, cursorOffset, range),
-      }
+      const suggestions = await getCompletions(monaco, fullText, cursorOffset, range)
+      return { suggestions }
     },
   })
 }

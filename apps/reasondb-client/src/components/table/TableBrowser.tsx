@@ -21,7 +21,7 @@ import { useConnectionStore } from '@/stores/connectionStore'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
 import { createClient, type TableSummary } from '@/lib/api'
-import { updateTableMetadataFieldsFromSchema } from '@/lib/rql-language'
+import { setValueFetcher, useSchemaStore } from '@/lib/rql-language'
 
 function getTypeIcon(type: string) {
   const lowerType = type.toLowerCase()
@@ -242,6 +242,8 @@ export function TableBrowser() {
   useEffect(() => {
     if (!activeConnection || tables.length === 0) return
 
+    const { addMetadataFields } = useSchemaStore.getState()
+    
     const fetchMetadataSchemas = async () => {
       const client = createClient({
         host: activeConnection.host,
@@ -254,7 +256,7 @@ export function TableBrowser() {
         try {
           const schemaResponse = await client.getTableMetadataSchema(table.id)
           if (schemaResponse.fields.length > 0) {
-            updateTableMetadataFieldsFromSchema(table.name, schemaResponse.fields)
+            addMetadataFields(table.name, schemaResponse.fields)
           }
         } catch {
           // Silently ignore - endpoint might not exist or table might be empty
@@ -266,6 +268,24 @@ export function TableBrowser() {
     const timer = setTimeout(fetchMetadataSchemas, 300)
     return () => clearTimeout(timer)
   }, [activeConnection, tables])
+
+  // Set up value fetcher for autocompletion
+  useEffect(() => {
+    if (!activeConnection) return
+
+    const client = createClient({
+      host: activeConnection.host,
+      port: activeConnection.port,
+      apiKey: activeConnection.apiKey,
+      useSsl: activeConnection.ssl,
+    })
+
+    // Set up value fetcher (store handles table ID resolution)
+    setValueFetcher(async (tableId: string, column: string) => {
+      const response = await client.getColumnValues(tableId, column)
+      return response.values.map(v => v.value)
+    })
+  }, [activeConnection])
 
   const filteredTables = tables.filter((t) =>
     t.name.toLowerCase().includes(searchQuery.toLowerCase())

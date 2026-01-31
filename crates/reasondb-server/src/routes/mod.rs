@@ -43,6 +43,7 @@ fn v1_routes<R: ReasoningEngine + Clone + Send + Sync + 'static>(state: Arc<AppS
         .route("/tables/:id", delete(tables::delete_table::<R>))
         .route("/tables/:id/documents", get(tables::get_table_documents::<R>))
         .route("/tables/:id/schema/metadata", get(tables::get_table_metadata_schema::<R>))
+        .route("/tables/:id/values/:column", get(tables::get_column_values::<R>))
         // Ingestion
         .route("/ingest/file", post(ingest::ingest_file::<R>))
         .route("/ingest/text", post(ingest::ingest_text::<R>))
