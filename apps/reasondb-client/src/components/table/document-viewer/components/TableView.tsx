@@ -6,17 +6,21 @@ import type { Document } from '@/stores/tableStore'
 interface TableViewProps {
   table: TableType<Document>
   selectedDocumentId: string | null
-  copied: boolean
+  copiedId: string | null  // Track which specific document was copied
   onSelectDocument: (id: string) => void
   onCopyDocument: (doc: Document) => void
+  onEditDocument?: (doc: Document) => void
+  onDeleteDocument?: (doc: Document) => void
 }
 
 export function TableView({
   table,
   selectedDocumentId,
-  copied,
+  copiedId,
   onSelectDocument,
   onCopyDocument,
+  onEditDocument,
+  onDeleteDocument,
 }: TableViewProps) {
   return (
     <DataTable
@@ -27,8 +31,10 @@ export function TableView({
       renderRowActions={(row) => (
         <RowActions
           row={row}
-          copied={copied}
+          isCopied={copiedId === row.id}
           onCopy={onCopyDocument}
+          onEdit={onEditDocument}
+          onDelete={onDeleteDocument}
         />
       )}
     />
@@ -37,11 +43,13 @@ export function TableView({
 
 interface RowActionsProps {
   row: Document
-  copied: boolean
+  isCopied: boolean
   onCopy: (doc: Document) => void
+  onEdit?: (doc: Document) => void
+  onDelete?: (doc: Document) => void
 }
 
-function RowActions({ row, copied, onCopy }: RowActionsProps) {
+function RowActions({ row, isCopied, onCopy, onEdit, onDelete }: RowActionsProps) {
   return (
     <div className="flex items-center justify-end gap-1">
       <button
@@ -52,21 +60,27 @@ function RowActions({ row, copied, onCopy }: RowActionsProps) {
         className="p-1 hover:bg-surface-1 rounded text-overlay-0 hover:text-text"
         title="Copy JSON"
       >
-        {copied ? (
+        {isCopied ? (
           <CheckCircle size={14} className="text-green" />
         ) : (
           <Copy size={14} />
         )}
       </button>
       <button
-        onClick={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation()
+          onEdit?.(row)
+        }}
         className="p-1 hover:bg-surface-1 rounded text-overlay-0 hover:text-text"
         title="Edit"
       >
         <PencilSimple size={14} />
       </button>
       <button
-        onClick={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation()
+          onDelete?.(row)
+        }}
         className="p-1 hover:bg-surface-1 rounded text-overlay-0 hover:text-red"
         title="Delete"
       >

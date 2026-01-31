@@ -9,6 +9,16 @@ import {
 import { FilterBuilder } from '@/components/search'
 import { JsonDetailSidebar } from '../JsonDetailSidebar'
 import { createClient } from '@/lib/api'
+import type { Document } from '@/stores/tableStore'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/Dialog'
+import { Button } from '@/components/ui/Button'
 
 // Hooks
 import { useDocuments, useColumnDetection, useDocumentFilter } from './hooks'
@@ -38,8 +48,10 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
   // State
   const [viewMode, setViewMode] = useState<ViewMode>('table')
   const [sorting, setSorting] = useState<SortingState>([])
-  const [copied, setCopied] = useState(false)
+  const [copiedId, setCopiedId] = useState<string | null>(null)
   const [selectedCell, setSelectedCell] = useState<SelectedCellData | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Document | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   // Hooks
   const {
@@ -152,10 +164,48 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
     [activeConnection, tableId, fetchDocuments]
   )
 
-  const handleCopyDocument = useCallback(async (doc: { data: unknown }) => {
+  const handleCopyDocument = useCallback(async (doc: Document) => {
     await navigator.clipboard.writeText(JSON.stringify(doc.data, null, 2))
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    setCopiedId(doc.id)
+    setTimeout(() => setCopiedId(null), 2000)
+  }, [])
+
+  // Handle delete document
+  const handleDeleteDocument = useCallback((doc: Document) => {
+    setDeleteTarget(doc)
+  }, [])
+
+  const confirmDelete = useCallback(async () => {
+    if (!deleteTarget || !activeConnection) return
+
+    setIsDeleting(true)
+    try {
+      const client = createClient({
+        host: activeConnection.host,
+        port: activeConnection.port,
+        apiKey: activeConnection.apiKey,
+        useSsl: activeConnection.ssl,
+      })
+
+      await client.deleteDocument(deleteTarget.id)
+      setDeleteTarget(null)
+      // Refresh the document list
+      fetchDocuments(true)
+    } catch (error) {
+      console.error('Failed to delete document:', error)
+      alert(error instanceof Error ? error.message : 'Failed to delete document')
+    } finally {
+      setIsDeleting(false)
+    }
+  }, [deleteTarget, activeConnection, fetchDocuments])
+
+  // Handle edit document - opens document in sidebar for viewing
+  const handleEditDocument = useCallback((doc: Document) => {
+    setSelectedCell({
+      title: `${doc.data.title || doc.id}`,
+      path: 'document',
+      data: doc.data,
+    })
   }, [])
 
   // Early return for no table selected
@@ -197,9 +247,11 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
             <TableView
               table={table}
               selectedDocumentId={selectedDocumentId}
-              copied={copied}
+              copiedId={copiedId}
               onSelectDocument={selectDocument}
               onCopyDocument={handleCopyDocument}
+              onEditDocument={handleEditDocument}
+              onDeleteDocument={handleDeleteDocument}
             />
           ) : (
             <JsonView
@@ -231,6 +283,35 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
         data={selectedCell?.data}
         isLoading={selectedCell?.isLoading}
       />
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Document</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "{deleteTarget?.data.title || deleteTarget?.id}"? 
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setDeleteTarget(null)}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDelete}
+              disabled={isDeleting}
+            >
+              {isDeleting ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
