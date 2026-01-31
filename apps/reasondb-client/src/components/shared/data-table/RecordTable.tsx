@@ -13,13 +13,12 @@ import {
   CaretDown,
   BracketsCurly,
   TreeStructure,
-  X,
-  CircleNotch,
 } from '@phosphor-icons/react'
 import { cn } from '@/lib/utils'
 import { DataTable } from './DataTable'
 import { TableToolbar } from './TableToolbar'
 import { TablePagination } from './TablePagination'
+import { JsonDetailSidebar } from '@/components/table/JsonDetailSidebar'
 import { useConnectionStore } from '@/stores/connectionStore'
 import { createClient } from '@/lib/api'
 
@@ -42,11 +41,12 @@ export interface RecordTableProps {
   className?: string
 }
 
-interface DetailPanelData {
+interface SidebarState {
+  isOpen: boolean
   title: string
-  type: 'metadata' | 'content' | 'record'
+  path: string
   data: unknown
-  isLoading?: boolean
+  isLoading: boolean
 }
 
 // Preferred column order (same as DocumentViewer)
@@ -218,113 +218,6 @@ function CellRenderer({ columnName, value, row, onMetadataClick, onContentClick 
   return <span>{strValue}</span>
 }
 
-// ==================== Detail Panel ====================
-
-interface DetailPanelProps {
-  data: DetailPanelData | null
-  onClose: () => void
-}
-
-function DetailPanel({ data, onClose }: DetailPanelProps) {
-  if (!data) return null
-
-  const getPanelTitle = () => {
-    switch (data.type) {
-      case 'metadata':
-        return `${data.title} → metadata`
-      case 'content':
-        return `${data.title} → content`
-      default:
-        return 'Record Details'
-    }
-  }
-
-  return (
-    <div className="fixed top-0 right-0 h-full w-96 border-l border-border bg-mantle flex flex-col z-50 shadow-xl">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-        <span className="text-sm font-medium text-text truncate pr-2">{getPanelTitle()}</span>
-        <button
-          onClick={onClose}
-          className="p-1.5 hover:bg-surface-1 rounded text-overlay-0 hover:text-text transition-colors shrink-0"
-        >
-          <X size={18} />
-        </button>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-auto p-4">
-        {data.isLoading ? (
-          <div className="flex flex-col items-center justify-center h-full text-subtext-0">
-            <CircleNotch size={32} className="animate-spin mb-2" />
-            <span className="text-sm">Loading...</span>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {renderPanelContent(data.data)}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function renderPanelContent(data: unknown): React.ReactNode {
-  if (data === null) return <span className="text-overlay-0 italic">null</span>
-  if (data === undefined) return <span className="text-overlay-0 italic">undefined</span>
-
-  if (typeof data === 'boolean') {
-    return <span className={data ? 'text-green' : 'text-red'}>{String(data)}</span>
-  }
-
-  if (typeof data === 'number') {
-    return <span className="text-peach font-mono">{data}</span>
-  }
-
-  if (typeof data === 'string') {
-    // Check if it's a date
-    if (data.match(/^\d{4}-\d{2}-\d{2}/)) {
-      return <span className="text-sky">{new Date(data).toLocaleString()}</span>
-    }
-    return <span className="break-words whitespace-pre-wrap">{data}</span>
-  }
-
-  if (Array.isArray(data)) {
-    if (data.length === 0) return <span className="text-overlay-0 italic">empty array</span>
-    return (
-      <div className="space-y-2">
-        {data.map((item, i) => (
-          <div key={i} className="flex items-start gap-2">
-            <span className="text-overlay-0 font-mono text-xs shrink-0 pt-0.5">{i}:</span>
-            <div className="flex-1 min-w-0">{renderPanelContent(item)}</div>
-          </div>
-        ))}
-      </div>
-    )
-  }
-
-  if (typeof data === 'object') {
-    const entries = Object.entries(data)
-    if (entries.length === 0) return <span className="text-overlay-0 italic">empty object</span>
-    return (
-      <div className="space-y-3">
-        {entries.map(([key, value]) => (
-          <div key={key} className="space-y-1">
-            <div className="text-xs font-medium text-mauve uppercase tracking-wide">
-              {key}
-            </div>
-            <div className="text-sm text-text bg-surface-0 rounded p-2">
-              {renderPanelContent(value)}
-            </div>
-          </div>
-        ))}
-      </div>
-    )
-  }
-
-  return String(data)
-}
-
 // ==================== Main Component ====================
 
 export function RecordTable({
@@ -338,20 +231,33 @@ export function RecordTable({
 }: RecordTableProps) {
   const [sorting, setSorting] = useState<SortingState>([])
   const [globalFilter, setGlobalFilter] = useState('')
-  const [panelData, setPanelData] = useState<DetailPanelData | null>(null)
+  const [sidebar, setSidebar] = useState<SidebarState>({
+    isOpen: false,
+    title: '',
+    path: '',
+    data: null,
+    isLoading: false,
+  })
   
   const { activeConnectionId, connections } = useConnectionStore()
   const activeConnection = connections.find((c) => c.id === activeConnectionId)
+
+  // Close sidebar
+  const closeSidebar = useCallback(() => {
+    setSidebar(prev => ({ ...prev, isOpen: false }))
+  }, [])
 
   // Handle metadata click - show metadata in sidebar
   const handleMetadataClick = useCallback((row: Record<string, unknown>) => {
     const title = String(row.title || row.id || 'Record')
     const metadata = row.metadata as Record<string, unknown>
     
-    setPanelData({
-      title,
-      type: 'metadata',
+    setSidebar({
+      isOpen: true,
+      title: `${title} → metadata`,
+      path: 'metadata',
       data: metadata,
+      isLoading: false,
     })
   }, [])
 
@@ -363,9 +269,10 @@ export function RecordTable({
     if (!activeConnection || !docId) return
 
     // Show loading state
-    setPanelData({
-      title,
-      type: 'content',
+    setSidebar({
+      isOpen: true,
+      title: `${title} → content`,
+      path: 'document tree',
       data: null,
       isLoading: true,
     })
@@ -380,17 +287,21 @@ export function RecordTable({
 
       const tree = await client.getDocumentTree(docId)
       
-      setPanelData({
-        title,
-        type: 'content',
+      setSidebar({
+        isOpen: true,
+        title: `${title} → content`,
+        path: 'document tree',
         data: tree,
+        isLoading: false,
       })
     } catch (error) {
       console.error('Failed to load document tree:', error)
-      setPanelData({
-        title,
-        type: 'content',
+      setSidebar({
+        isOpen: true,
+        title: `${title} → content`,
+        path: 'document tree',
         data: { error: error instanceof Error ? error.message : 'Failed to load document tree' },
+        isLoading: false,
       })
     }
   }, [activeConnection])
@@ -467,7 +378,7 @@ export function RecordTable({
   const rowCount = totalCount ?? records.length
 
   return (
-    <div className={cn('flex h-full bg-base relative', className)}>
+    <div className={cn('flex h-full bg-base', className)}>
       {/* Main table area */}
       <div className="flex flex-col flex-1 min-w-0">
         <TableToolbar
@@ -483,27 +394,21 @@ export function RecordTable({
         />
 
         <div className="flex-1 overflow-auto">
-          <DataTable
-            table={table}
-          />
+          <DataTable table={table} />
         </div>
 
         <TablePagination table={table} />
       </div>
 
-      {/* Detail panel - fixed full height */}
-      <DetailPanel
-        data={panelData}
-        onClose={() => setPanelData(null)}
+      {/* Shared JSON Detail Sidebar */}
+      <JsonDetailSidebar
+        isOpen={sidebar.isOpen}
+        onClose={closeSidebar}
+        title={sidebar.title}
+        path={sidebar.path}
+        data={sidebar.data}
+        isLoading={sidebar.isLoading}
       />
-
-      {/* Overlay backdrop when panel is open */}
-      {panelData && (
-        <div
-          className="fixed inset-0 bg-black/20 z-40"
-          onClick={() => setPanelData(null)}
-        />
-      )}
     </div>
   )
 }
