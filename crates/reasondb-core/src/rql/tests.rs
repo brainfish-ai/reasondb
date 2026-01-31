@@ -22,23 +22,52 @@ fn setup_test_data(store: &NodeStore) {
     // Create documents
     let mut doc1 = Document::new("Contract A".to_string(), "legal");
     doc1.tags = vec!["nda".to_string(), "active".to_string()];
-    doc1.author = Some("Alice".to_string());
+    doc1.set_metadata("author", serde_json::json!("Alice"));
     doc1.set_metadata("status", serde_json::json!("active"));
     doc1.set_metadata("value", serde_json::json!(50000));
+    // Add nested metadata for testing deep queries
+    doc1.set_metadata("employee", serde_json::json!({
+        "name": "John Smith",
+        "department": "Engineering",
+        "manager": {
+            "name": "Jane Doe",
+            "email": "jane@company.com"
+        }
+    }));
+    doc1.set_metadata("parties", serde_json::json!([
+        {"name": "Acme Corp", "role": "client"},
+        {"name": "Beta Inc", "role": "vendor"}
+    ]));
     store.insert_document(&doc1).unwrap();
 
     let mut doc2 = Document::new("Contract B".to_string(), "legal");
     doc2.tags = vec!["service".to_string(), "draft".to_string()];
-    doc2.author = Some("Bob".to_string());
+    doc2.set_metadata("author", serde_json::json!("Bob"));
     doc2.set_metadata("status", serde_json::json!("draft"));
     doc2.set_metadata("value", serde_json::json!(25000));
+    doc2.set_metadata("employee", serde_json::json!({
+        "name": "Alice Johnson",
+        "department": "Legal",
+        "manager": {
+            "name": "Bob Wilson",
+            "email": "bob@company.com"
+        }
+    }));
     store.insert_document(&doc2).unwrap();
 
     let mut doc3 = Document::new("Contract C".to_string(), "legal");
     doc3.tags = vec!["nda".to_string(), "expired".to_string()];
-    doc3.author = Some("Alice".to_string());
+    doc3.set_metadata("author", serde_json::json!("Alice"));
     doc3.set_metadata("status", serde_json::json!("expired"));
     doc3.set_metadata("value", serde_json::json!(100000));
+    doc3.set_metadata("employee", serde_json::json!({
+        "name": "Charlie Brown",
+        "department": "Engineering",
+        "manager": {
+            "name": "Jane Doe",
+            "email": "jane@company.com"
+        }
+    }));
     store.insert_document(&doc3).unwrap();
 }
 
@@ -65,7 +94,7 @@ fn test_parse_select_count() {
 
 #[test]
 fn test_parse_where_string() {
-    let query = Query::parse("SELECT * FROM legal WHERE author = 'Alice'").unwrap();
+    let query = Query::parse("SELECT * FROM legal WHERE metadata.author = 'Alice'").unwrap();
     assert!(query.where_clause.is_some());
 }
 
@@ -78,7 +107,7 @@ fn test_parse_where_number() {
 #[test]
 fn test_parse_where_and_or() {
     let query = Query::parse(
-        "SELECT * FROM legal WHERE status = 'active' AND value > 1000 OR author = 'Bob'",
+        "SELECT * FROM legal WHERE status = 'active' AND value > 1000 OR metadata.author = 'Bob'",
     )
     .unwrap();
     assert!(query.where_clause.is_some());
@@ -206,16 +235,19 @@ fn test_execute_select_all() {
 }
 
 #[test]
-fn test_execute_where_author() {
+fn test_execute_where_metadata_author() {
     let (store, _dir) = create_test_store();
     setup_test_data(&store);
 
-    let query = Query::parse("SELECT * FROM legal WHERE author = 'Alice'").unwrap();
+    let query = Query::parse("SELECT * FROM legal WHERE metadata.author = 'Alice'").unwrap();
     let result = store.execute_rql(&query).unwrap();
 
     assert_eq!(result.total_count, 2);
     for doc_match in &result.documents {
-        assert_eq!(doc_match.document.author, Some("Alice".to_string()));
+        assert_eq!(
+            doc_match.document.metadata.get("author"),
+            Some(&serde_json::json!("Alice"))
+        );
     }
 }
 
@@ -240,6 +272,55 @@ fn test_execute_where_numeric() {
     let result = store.execute_rql(&query).unwrap();
 
     assert_eq!(result.total_count, 2); // Contract A (50000) and Contract C (100000)
+}
+
+#[test]
+fn test_execute_where_nested_metadata() {
+    let (store, _dir) = create_test_store();
+    setup_test_data(&store);
+
+    // Test nested object access: metadata.employee.department
+    let query = Query::parse("SELECT * FROM legal WHERE metadata.employee.department = 'Engineering'").unwrap();
+    let result = store.execute_rql(&query).unwrap();
+
+    assert_eq!(result.total_count, 2); // Contract A and Contract C have Engineering department
+}
+
+#[test]
+fn test_execute_where_deeply_nested_metadata() {
+    let (store, _dir) = create_test_store();
+    setup_test_data(&store);
+
+    // Test deeply nested object access: metadata.employee.manager.name
+    let query = Query::parse("SELECT * FROM legal WHERE metadata.employee.manager.name = 'Jane Doe'").unwrap();
+    let result = store.execute_rql(&query).unwrap();
+
+    assert_eq!(result.total_count, 2); // Contract A and Contract C have Jane Doe as manager
+}
+
+#[test]
+fn test_execute_where_array_index_metadata() {
+    let (store, _dir) = create_test_store();
+    setup_test_data(&store);
+
+    // Test array access: metadata.parties[0].name
+    let query = Query::parse("SELECT * FROM legal WHERE metadata.parties[0].name = 'Acme Corp'").unwrap();
+    let result = store.execute_rql(&query).unwrap();
+
+    assert_eq!(result.total_count, 1); // Only Contract A has parties array
+    assert_eq!(result.documents[0].document.title, "Contract A");
+}
+
+#[test]
+fn test_execute_where_array_second_element() {
+    let (store, _dir) = create_test_store();
+    setup_test_data(&store);
+
+    // Test array access: metadata.parties[1].role
+    let query = Query::parse("SELECT * FROM legal WHERE metadata.parties[1].role = 'vendor'").unwrap();
+    let result = store.execute_rql(&query).unwrap();
+
+    assert_eq!(result.total_count, 1); // Only Contract A has parties[1]
 }
 
 #[test]
@@ -301,7 +382,7 @@ fn test_execute_complex_query() {
 
     let query = Query::parse(
         "SELECT * FROM legal \
-         WHERE author = 'Alice' AND metadata.value > 40000 \
+         WHERE metadata.author = 'Alice' AND metadata.value > 40000 \
          ORDER BY title DESC \
          LIMIT 10",
     )
@@ -451,11 +532,11 @@ fn test_parse_aggregates() {
 
 #[test]
 fn test_parse_group_by() {
-    let query = Query::parse("SELECT COUNT(*) FROM legal GROUP BY author").unwrap();
+    let query = Query::parse("SELECT COUNT(*) FROM legal GROUP BY metadata.author").unwrap();
     assert!(query.group_by.is_some());
     let group_by = query.group_by.unwrap();
     assert_eq!(group_by.fields.len(), 1);
-    assert_eq!(group_by.fields[0].first_field(), Some("author"));
+    assert_eq!(group_by.fields[0].first_field(), Some("metadata"));
 }
 
 #[test]
@@ -491,7 +572,7 @@ fn test_execute_count_with_filter() {
     setup_test_data(&store);
 
     // Note: Author names are case-sensitive ("Alice" not "alice")
-    let query = Query::parse("SELECT COUNT(*) FROM legal WHERE author = 'Alice'").unwrap();
+    let query = Query::parse("SELECT COUNT(*) FROM legal WHERE metadata.author = 'Alice'").unwrap();
     let result = store.execute_rql(&query).unwrap();
 
     assert!(result.aggregates.is_some());
@@ -507,7 +588,7 @@ fn test_execute_explain() {
     let (store, _dir) = create_test_store();
     setup_test_data(&store);
 
-    let query = Query::parse("EXPLAIN SELECT * FROM legal WHERE author = 'alice'").unwrap();
+    let query = Query::parse("EXPLAIN SELECT * FROM legal WHERE metadata.author = 'alice'").unwrap();
     let result = store.execute_rql(&query).unwrap();
 
     assert!(result.explain.is_some());
@@ -531,13 +612,13 @@ fn test_execute_group_by() {
     let (store, _dir) = create_test_store();
     setup_test_data(&store);
 
-    let query = Query::parse("SELECT COUNT(*) FROM legal GROUP BY author").unwrap();
+    let query = Query::parse("SELECT COUNT(*) FROM legal GROUP BY metadata.author").unwrap();
     let result = store.execute_rql(&query).unwrap();
 
     assert!(result.aggregates.is_some());
     let aggs = result.aggregates.unwrap();
     
-    // Should have groups - one for alice (2 docs), one for bob (1 doc)
+    // Should have groups - one for Alice (2 docs), one for Bob (1 doc)
     assert!(aggs.len() >= 2);
     
     // Each result should have a group_key

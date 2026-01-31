@@ -109,13 +109,18 @@ impl Query {
         match field.as_str() {
             f if f.starts_with("metadata.") => {
                 let key = f.strip_prefix("metadata.").unwrap();
-                if let Some(meta) = filter.document_metadata.as_mut() {
-                    meta.insert(key.to_string(), comp.right.to_json());
-                } else {
-                    let mut meta = std::collections::HashMap::new();
-                    meta.insert(key.to_string(), comp.right.to_json());
-                    filter.document_metadata = Some(meta);
+                // Only add top-level metadata fields to the filter
+                // Nested paths (e.g., "employee.department") are handled by apply_where_filter
+                if !key.contains('.') && !key.contains('[') {
+                    if let Some(meta) = filter.document_metadata.as_mut() {
+                        meta.insert(key.to_string(), comp.right.to_json());
+                    } else {
+                        let mut meta = std::collections::HashMap::new();
+                        meta.insert(key.to_string(), comp.right.to_json());
+                        filter.document_metadata = Some(meta);
+                    }
                 }
+                // Nested metadata paths will be filtered by apply_where_filter using get_field_value
             }
             _ => {}
         }

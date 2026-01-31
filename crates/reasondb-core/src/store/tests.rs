@@ -426,13 +426,13 @@ fn test_find_documents_with_filter() {
     // Create documents
     let mut doc1 = Document::new("NDA Agreement".to_string(), &table.id);
     doc1.tags = vec!["nda".to_string(), "active".to_string()];
-    doc1.author = Some("Legal Team".to_string());
+    doc1.set_metadata("author", serde_json::json!("Legal Team"));
     doc1.set_metadata("signed", Value::Bool(true));
     store.insert_document(&doc1).unwrap();
 
     let mut doc2 = Document::new("Service Agreement".to_string(), &table.id);
     doc2.tags = vec!["msa".to_string(), "active".to_string()];
-    doc2.author = Some("Legal Team".to_string());
+    doc2.set_metadata("author", serde_json::json!("Legal Team"));
     doc2.set_metadata("signed", Value::Bool(false));
     store.insert_document(&doc2).unwrap();
 
@@ -454,8 +454,8 @@ fn test_find_documents_with_filter() {
     let results2 = store.find_documents(&filter2).unwrap();
     assert_eq!(results2.len(), 2);
 
-    // Filter by author (lowercase)
-    let filter3 = SearchFilter::new().with_author("legal team");
+    // Filter by metadata (author is now in metadata)
+    let filter3 = SearchFilter::new().with_metadata("author", Value::String("Legal Team".to_string()));
     let results3 = store.find_documents(&filter3).unwrap();
     assert_eq!(results3.len(), 2);
 

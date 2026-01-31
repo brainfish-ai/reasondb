@@ -565,7 +565,7 @@ mod tests {
         store.insert_table(&table).unwrap();
         
         let mut doc = Document::new("Test Doc".to_string(), &table.id);
-        doc.author = Some("Alice".to_string());
+        doc.set_metadata("author", serde_json::json!("Alice"));
         doc.tags = vec!["tag1".to_string(), "tag2".to_string()];
         store.insert_document(&doc).unwrap();
         

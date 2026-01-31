@@ -201,7 +201,7 @@ fn test_search_filter() {
     let filter = SearchFilter::new()
         .with_table_id("legal")
         .with_tags(vec!["nda", "active"])
-        .with_author("Legal Team")
+        .with_metadata("author", Value::String("Legal Team".to_string()))
         .with_metadata("signed", Value::Bool(true))
         .with_limit(10);
 
@@ -210,7 +210,6 @@ fn test_search_filter() {
         filter.tags,
         Some(vec!["nda".to_string(), "active".to_string()])
     );
-    assert_eq!(filter.author, Some("Legal Team".to_string()));
     assert_eq!(filter.limit, Some(10));
 }
 
@@ -218,7 +217,7 @@ fn test_search_filter() {
 fn test_search_filter_matches() {
     let mut doc = Document::new("Test".to_string(), "test-table");
     doc.tags = vec!["nda".to_string(), "active".to_string()];
-    doc.author = Some("Legal Team".to_string());
+    doc.set_metadata("author", serde_json::json!("Legal Team"));
     doc.set_metadata("signed", Value::Bool(true));
 
     // Should match
@@ -233,9 +232,9 @@ fn test_search_filter_matches() {
     let filter3 = SearchFilter::new().with_tags_all(vec!["nda", "pending"]);
     assert!(!filter3.matches_tags(&doc));
 
-    // Should match author
-    let filter4 = SearchFilter::new().with_author("legal");
-    assert!(filter4.matches_author(&doc));
+    // Should match metadata (author is now in metadata)
+    let filter4 = SearchFilter::new().with_metadata("author", Value::String("Legal Team".to_string()));
+    assert!(filter4.matches_metadata(&doc));
 
     // Should match metadata
     let filter5 = SearchFilter::new().with_metadata("signed", Value::Bool(true));

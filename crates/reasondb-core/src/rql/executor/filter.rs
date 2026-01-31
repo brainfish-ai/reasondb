@@ -63,15 +63,51 @@ pub fn get_field_value(_store: &NodeStore, doc: &Document, path: &FieldPath) -> 
             doc.tags.iter().map(|t| Value::String(t.clone())).collect(),
         )),
         "metadata" => {
-            // Handle metadata.field_name
+            // Handle metadata.field_name with support for deeply nested paths
             if path.segments.len() > 1 {
                 if let PathSegment::Field(key) = &path.segments[1] {
-                    return doc.metadata.get(key).map(json_to_value);
+                    if let Some(json_value) = doc.metadata.get(key) {
+                        // If there are more segments, traverse the nested structure
+                        if path.segments.len() > 2 {
+                            return traverse_json_path(json_value, &path.segments[2..]);
+                        } else {
+                            return Some(json_to_value(json_value));
+                        }
+                    }
                 }
             }
             None
         }
         _ => None,
+    }
+}
+
+/// Traverse a JSON value following a path of segments.
+/// Supports nested objects (metadata.employee.department) and arrays (metadata.parties[0].name).
+fn traverse_json_path(json: &serde_json::Value, segments: &[PathSegment]) -> Option<Value> {
+    if segments.is_empty() {
+        return Some(json_to_value(json));
+    }
+
+    match &segments[0] {
+        PathSegment::Field(key) => {
+            // Access object field
+            if let serde_json::Value::Object(obj) = json {
+                if let Some(value) = obj.get(key) {
+                    return traverse_json_path(value, &segments[1..]);
+                }
+            }
+            None
+        }
+        PathSegment::Index(idx) => {
+            // Access array element
+            if let serde_json::Value::Array(arr) = json {
+                if let Some(value) = arr.get(*idx) {
+                    return traverse_json_path(value, &segments[1..]);
+                }
+            }
+            None
+        }
     }
 }
 
