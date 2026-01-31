@@ -236,7 +236,7 @@ export function registerRqlLanguage(monaco: typeof Monaco) {
 
   // Register completion provider using new SQL completion engine
   monaco.languages.registerCompletionItemProvider(RQL_LANGUAGE_ID, {
-    triggerCharacters: [' ', '.', ',', "'"],
+    triggerCharacters: [' ', '.', ','],
     provideCompletionItems: async (model, position) => {
       const word = model.getWordUntilPosition(position)
       const range: Monaco.IRange = {

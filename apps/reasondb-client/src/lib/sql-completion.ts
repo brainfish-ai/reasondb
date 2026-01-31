@@ -594,12 +594,10 @@ export async function getCompletions(
           
           values.forEach((value, idx) => {
             if (!prefix || value.toLowerCase().includes(prefix.toLowerCase())) {
-              // Escape single quotes in value
-              const escapedValue = value.replace(/'/g, "''")
               items.push({
                 label: value,
                 kind: monaco.languages.CompletionItemKind.Value,
-                insertText: `'${escapedValue}'`,
+                insertText: value,
                 detail: `Value from ${columnName}`,
                 range,
                 sortText: idx.toString().padStart(3, '0'),
@@ -611,18 +609,7 @@ export async function getCompletions(
         }
       }
       
-      // Add generic suggestions if no values found
-      if (items.length === 0) {
-        items.push({
-          label: "'value'",
-          kind: monaco.languages.CompletionItemKind.Value,
-          insertText: "'${1}'",
-          insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-          detail: 'String value',
-          range,
-        })
-      }
-      
+      // Add NULL option
       items.push({
         label: 'NULL',
         kind: monaco.languages.CompletionItemKind.Constant,
