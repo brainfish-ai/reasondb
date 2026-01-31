@@ -7,6 +7,7 @@ import {
 } from '@phosphor-icons/react'
 import { cn } from '@/lib/utils'
 import { useConnectionStore, type Connection } from '@/stores/connectionStore'
+import { useUiStore } from '@/stores/uiStore'
 import { ConnectionList } from '@/components/connection/ConnectionList'
 import { ConnectionForm } from '@/components/connection/ConnectionForm'
 import { TableBrowser } from '@/components/table/TableBrowser'
@@ -20,7 +21,7 @@ export function Sidebar() {
     setConnecting, 
     setConnectionError,
   } = useConnectionStore()
-  const [showConnectionForm, setShowConnectionForm] = useState(false)
+  const { showConnectionForm, setShowConnectionForm } = useUiStore()
   const [showCreateTable, setShowCreateTable] = useState(false)
   const [editingConnection, setEditingConnection] = useState<Connection | undefined>()
 

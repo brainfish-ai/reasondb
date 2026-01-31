@@ -13,9 +13,10 @@ import { useConnectionStore } from '@/stores/connectionStore'
 
 interface WelcomeScreenProps {
   onNewQuery: () => void
+  onNewConnection: () => void
 }
 
-export function WelcomeScreen({ onNewQuery }: WelcomeScreenProps) {
+export function WelcomeScreen({ onNewQuery, onNewConnection }: WelcomeScreenProps) {
   const { connections, setActiveConnection } = useConnectionStore()
 
   const features = [
@@ -79,6 +80,7 @@ export function WelcomeScreen({ onNewQuery }: WelcomeScreenProps) {
           </button>
 
           <button
+            onClick={onNewConnection}
             className={cn(
               'flex items-center gap-3 p-4 rounded-lg',
               'bg-surface-0 hover:bg-surface-1 border border-border',
