@@ -155,16 +155,14 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
         )}
       </div>
 
-      {/* JSON Detail Sidebar */}
-      {selectedCell && (
-        <JsonDetailSidebar
-          isOpen={selectedCell !== null}
-          onClose={() => setSelectedCell(null)}
-          title={selectedCell.title}
-          path={selectedCell.path}
-          data={selectedCell.data}
-        />
-      )}
+      {/* JSON Detail Sidebar - always render for animation */}
+      <JsonDetailSidebar
+        isOpen={selectedCell !== null}
+        onClose={() => setSelectedCell(null)}
+        title={selectedCell?.title ?? ''}
+        path={selectedCell?.path}
+        data={selectedCell?.data}
+      />
     </div>
   )
 }

@@ -1,8 +1,98 @@
-import { useEffect, useRef } from 'react'
-import Editor, { type Monaco } from '@monaco-editor/react'
+import { useEffect, useRef, useState } from 'react'
+import Editor, { type Monaco, loader } from '@monaco-editor/react'
 import { X, Copy, CheckCircle, ArrowsOut, ArrowsIn } from '@phosphor-icons/react'
-import { useState } from 'react'
 import { cn } from '@/lib/utils'
+
+// Catppuccin Mocha theme colors
+const catppuccinMocha = {
+  base: '#1e1e2e',
+  mantle: '#181825',
+  crust: '#11111b',
+  surface0: '#313244',
+  surface1: '#45475a',
+  surface2: '#585b70',
+  overlay0: '#6c7086',
+  overlay1: '#7f849c',
+  overlay2: '#9399b2',
+  text: '#cdd6f4',
+  subtext0: '#a6adc8',
+  subtext1: '#bac2de',
+  rosewater: '#f5e0dc',
+  flamingo: '#f2cdcd',
+  pink: '#f5c2e7',
+  mauve: '#cba6f7',
+  red: '#f38ba8',
+  maroon: '#eba0ac',
+  peach: '#fab387',
+  yellow: '#f9e2af',
+  green: '#a6e3a1',
+  teal: '#94e2d5',
+  sky: '#89dceb',
+  sapphire: '#74c7ec',
+  blue: '#89b4fa',
+  lavender: '#b4befe',
+}
+
+// Define custom Monaco theme
+const defineTheme = (monaco: Monaco) => {
+  monaco.editor.defineTheme('catppuccin-mocha', {
+    base: 'vs-dark',
+    inherit: false,
+    rules: [
+      // JSON specific
+      { token: 'string.key.json', foreground: catppuccinMocha.blue.slice(1) },
+      { token: 'string.value.json', foreground: catppuccinMocha.green.slice(1) },
+      { token: 'number', foreground: catppuccinMocha.peach.slice(1) },
+      { token: 'keyword', foreground: catppuccinMocha.mauve.slice(1) },
+      { token: 'keyword.json', foreground: catppuccinMocha.peach.slice(1) }, // true, false, null
+      { token: 'delimiter', foreground: catppuccinMocha.overlay2.slice(1) },
+      { token: 'delimiter.bracket', foreground: catppuccinMocha.overlay2.slice(1) },
+      // General
+      { token: 'comment', foreground: catppuccinMocha.overlay0.slice(1), fontStyle: 'italic' },
+      { token: 'string', foreground: catppuccinMocha.green.slice(1) },
+      { token: 'variable', foreground: catppuccinMocha.text.slice(1) },
+      { token: 'type', foreground: catppuccinMocha.yellow.slice(1) },
+    ],
+    colors: {
+      'editor.background': catppuccinMocha.mantle,
+      'editor.foreground': catppuccinMocha.text,
+      'editor.lineHighlightBackground': catppuccinMocha.surface0 + '40',
+      'editor.selectionBackground': catppuccinMocha.surface2 + '80',
+      'editor.inactiveSelectionBackground': catppuccinMocha.surface1 + '60',
+      'editorLineNumber.foreground': catppuccinMocha.surface2,
+      'editorLineNumber.activeForeground': catppuccinMocha.lavender,
+      'editorCursor.foreground': catppuccinMocha.rosewater,
+      'editorWhitespace.foreground': catppuccinMocha.surface2,
+      'editorIndentGuide.background': catppuccinMocha.surface1,
+      'editorIndentGuide.activeBackground': catppuccinMocha.surface2,
+      'editorBracketMatch.background': catppuccinMocha.surface2 + '40',
+      'editorBracketMatch.border': catppuccinMocha.mauve,
+      'editor.foldBackground': catppuccinMocha.surface0 + '40',
+      'scrollbar.shadow': catppuccinMocha.crust,
+      'scrollbarSlider.background': catppuccinMocha.surface2 + '80',
+      'scrollbarSlider.hoverBackground': catppuccinMocha.overlay0,
+      'scrollbarSlider.activeBackground': catppuccinMocha.overlay1,
+      'editorGutter.background': catppuccinMocha.mantle,
+      'editorWidget.background': catppuccinMocha.surface0,
+      'editorWidget.border': catppuccinMocha.surface1,
+      'editorBracketHighlight.foreground1': catppuccinMocha.red,
+      'editorBracketHighlight.foreground2': catppuccinMocha.peach,
+      'editorBracketHighlight.foreground3': catppuccinMocha.yellow,
+      'editorBracketHighlight.foreground4': catppuccinMocha.green,
+      'editorBracketHighlight.foreground5': catppuccinMocha.sapphire,
+      'editorBracketHighlight.foreground6': catppuccinMocha.mauve,
+    },
+  })
+}
+
+// Initialize theme once
+let themeInitialized = false
+loader.init().then((monaco) => {
+  if (!themeInitialized) {
+    defineTheme(monaco)
+    themeInitialized = true
+  }
+})
 
 interface JsonDetailSidebarProps {
   isOpen: boolean
@@ -15,10 +105,23 @@ interface JsonDetailSidebarProps {
 export function JsonDetailSidebar({ isOpen, onClose, title, data, path }: JsonDetailSidebarProps) {
   const [copied, setCopied] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
+  const [isVisible, setIsVisible] = useState(false)
   const editorRef = useRef<unknown>(null)
 
   // Format JSON with proper indentation
   const formattedJson = JSON.stringify(data, null, 2)
+
+  // Handle open/close animation
+  useEffect(() => {
+    if (isOpen) {
+      // Small delay to trigger CSS transition
+      requestAnimationFrame(() => {
+        setIsVisible(true)
+      })
+    } else {
+      setIsVisible(false)
+    }
+  }, [isOpen])
 
   const handleCopy = async () => {
     try {
@@ -32,6 +135,12 @@ export function JsonDetailSidebar({ isOpen, onClose, title, data, path }: JsonDe
 
   const handleEditorDidMount = (editor: unknown, monaco: Monaco) => {
     editorRef.current = editor
+    
+    // Ensure theme is defined
+    if (!themeInitialized) {
+      defineTheme(monaco)
+      themeInitialized = true
+    }
     
     // Configure JSON language features
     monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
@@ -52,26 +161,26 @@ export function JsonDetailSidebar({ isOpen, onClose, title, data, path }: JsonDe
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isOpen, onClose])
 
-  if (!isOpen) return null
+  if (!isOpen && !isVisible) return null
 
   return (
     <>
-      {/* Backdrop for expanded mode */}
-      {isExpanded && (
-        <div 
-          className="fixed inset-0 bg-black/50 z-40"
-          onClick={() => setIsExpanded(false)}
-        />
-      )}
+      {/* Backdrop - always show when sidebar is open */}
+      <div 
+        className={cn(
+          'fixed inset-0 bg-black/30 z-40 transition-opacity duration-300',
+          isVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        )}
+        onClick={isExpanded ? () => setIsExpanded(false) : onClose}
+      />
       
       {/* Sidebar */}
       <div
         className={cn(
-          'flex flex-col bg-mantle border-l border-border shadow-xl z-50',
-          'transition-all duration-200 ease-out',
-          isExpanded 
-            ? 'fixed inset-y-0 right-0 w-[60vw]' 
-            : 'w-[400px] h-full'
+          'fixed inset-y-0 right-0 flex flex-col bg-mantle border-l border-border shadow-2xl z-50',
+          'transition-all duration-300 ease-out',
+          isVisible ? 'translate-x-0' : 'translate-x-full',
+          isExpanded ? 'w-[60vw]' : 'w-[400px]'
         )}
       >
         {/* Header */}
@@ -178,7 +287,7 @@ export function JsonDetailSidebar({ isOpen, onClose, title, data, path }: JsonDe
               },
               padding: { top: 12, bottom: 12 },
             }}
-            theme="vs-dark"
+            theme="catppuccin-mocha"
           />
         </div>
 
