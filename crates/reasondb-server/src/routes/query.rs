@@ -93,9 +93,6 @@ pub struct QueryDocumentMatch {
     /// Tags
     pub tags: Vec<String>,
 
-    /// Author
-    pub author: Option<String>,
-
     /// Relevance score (BM25 for SEARCH, confidence for REASON)
     pub score: Option<f32>,
 
@@ -118,7 +115,6 @@ impl From<DocumentMatch> for QueryDocumentMatch {
             title: m.document.title,
             table_id: m.document.table_id,
             tags: m.document.tags,
-            author: m.document.author,
             score: m.score,
             highlights: m.highlights,
             answer: m.answer,

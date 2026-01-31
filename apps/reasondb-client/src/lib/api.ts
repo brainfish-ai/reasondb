@@ -1,5 +1,7 @@
 /**
  * ReasonDB API Client
+ * 
+ * Provides typed access to the ReasonDB server API endpoints.
  */
 
 export interface ApiConfig {
@@ -9,24 +11,141 @@ export interface ApiConfig {
   useSsl?: boolean
 }
 
+// ==================== Response Types ====================
+
 export interface HealthResponse {
   status: string
   version: string
   uptime_seconds?: number
 }
 
-export interface Table {
-  name: string
-  schema?: string
-  row_count?: number
-}
-
-export interface Document {
+// Tables
+export interface TableSummary {
   id: string
-  content: string
-  metadata?: Record<string, unknown>
+  name: string
+  description?: string
+  document_count: number
+  total_nodes: number
 }
 
+export interface TableResponse {
+  id: string
+  name: string
+  description?: string
+  metadata: Record<string, unknown>
+  document_count: number
+  total_nodes: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ListTablesResponse {
+  tables: TableSummary[]
+  total: number
+}
+
+// Documents
+export interface DocumentSummary {
+  id: string
+  title: string
+  total_nodes: number
+  max_depth: number
+  source_path: string
+  mime_type?: string
+  file_size?: number
+  table_id?: string
+  tags: string[]
+  created_at: string
+}
+
+export interface DocumentDetail {
+  id: string
+  title: string
+  root_node_id: string
+  total_nodes: number
+  max_depth: number
+  source_path: string
+  mime_type?: string
+  file_size?: number
+  created_at: string
+  updated_at: string
+}
+
+export interface TableDocumentSummary {
+  id: string
+  title: string
+  total_nodes: number
+  tags: string[]
+  metadata: Record<string, unknown>
+  created_at: string
+}
+
+export interface TableDocumentsResponse {
+  table_id: string
+  documents: TableDocumentSummary[]
+  total: number
+}
+
+// Nodes
+export interface NodeSummary {
+  id: string
+  title: string
+  summary: string
+  depth: number
+  is_leaf: boolean
+  children_count: number
+}
+
+export interface TreeNode {
+  id: string
+  title: string
+  summary: string
+  depth: number
+  is_leaf: boolean
+  children: TreeNode[]
+}
+
+// Search
+export interface SearchRequest {
+  query: string
+  document_id?: string
+  table_id?: string
+  tags?: string[]
+  metadata?: Record<string, unknown>
+  max_depth?: number
+  beam_width?: number
+  min_confidence?: number
+  limit?: number
+}
+
+export interface PathNode {
+  node_id: string
+  title: string
+  reasoning: string
+}
+
+export interface SearchResult {
+  node_id: string
+  document_id: string
+  path: PathNode[]
+  content: string
+  answer?: string
+  confidence: number
+}
+
+export interface SearchStats {
+  nodes_visited: number
+  nodes_pruned: number
+  llm_calls: number
+  total_time_ms: number
+}
+
+export interface SearchResponse {
+  results: SearchResult[]
+  stats: SearchStats
+}
+
+// Query (RQL)
 export interface QueryResult {
   rows: Record<string, unknown>[]
   columns: string[]
@@ -34,11 +153,14 @@ export interface QueryResult {
   execution_time_ms: number
 }
 
+// Errors
 export interface ApiError {
   error: string
   message: string
   status?: number
 }
+
+// ==================== API Client ====================
 
 class ReasonDBClient {
   private baseUrl: string
@@ -79,12 +201,13 @@ class ReasonDBClient {
     return response.json()
   }
 
+  // ==================== Health ====================
+
   /**
    * Test connection to the server
    */
   async testConnection(): Promise<{ success: boolean; version?: string; error?: string }> {
     try {
-      // Try health endpoint - may return plain text "OK" or JSON
       const response = await fetch(`${this.baseUrl}/health`, {
         headers: this.apiKey ? { 'X-API-Key': this.apiKey } : {},
         signal: AbortSignal.timeout(5000),
@@ -99,7 +222,6 @@ class ReasonDBClient {
       
       const text = await response.text()
       
-      // Try to parse as JSON first
       try {
         const health = JSON.parse(text) as HealthResponse
         return {
@@ -107,7 +229,6 @@ class ReasonDBClient {
           version: health.version,
         }
       } catch {
-        // Plain text response (e.g., "OK")
         if (text.toLowerCase().includes('ok') || text.toLowerCase().includes('healthy')) {
           return { success: true }
         }
@@ -128,73 +249,135 @@ class ReasonDBClient {
     return this.request<HealthResponse>('/health')
   }
 
+  // ==================== Tables ====================
+
   /**
    * List all tables
    */
-  async listTables(): Promise<Table[]> {
-    return this.request<Table[]>('/api/v1/tables')
+  async listTables(): Promise<ListTablesResponse> {
+    return this.request<ListTablesResponse>('/v1/tables')
   }
 
   /**
-   * Get documents from a table
+   * Get table details
    */
-  async getDocuments(
-    tableName: string,
-    options?: { limit?: number; offset?: number }
-  ): Promise<Document[]> {
-    const params = new URLSearchParams()
-    if (options?.limit) params.set('limit', options.limit.toString())
-    if (options?.offset) params.set('offset', options.offset.toString())
-    
-    const query = params.toString() ? `?${params}` : ''
-    return this.request<Document[]>(`/api/v1/tables/${tableName}/documents${query}`)
-  }
-
-  /**
-   * Execute RQL query
-   */
-  async executeQuery(query: string): Promise<QueryResult> {
-    return this.request<QueryResult>('/api/v1/query', {
-      method: 'POST',
-      body: JSON.stringify({ query }),
-    })
+  async getTable(tableId: string): Promise<TableResponse> {
+    return this.request<TableResponse>(`/v1/tables/${encodeURIComponent(tableId)}`)
   }
 
   /**
    * Create a new table
    */
-  async createTable(name: string, schema?: Record<string, string>): Promise<Table> {
-    return this.request<Table>('/api/v1/tables', {
+  async createTable(
+    name: string,
+    options?: { description?: string; metadata?: Record<string, unknown> }
+  ): Promise<TableResponse> {
+    return this.request<TableResponse>('/v1/tables', {
       method: 'POST',
-      body: JSON.stringify({ name, schema }),
+      body: JSON.stringify({ name, ...options }),
     })
   }
 
   /**
-   * Insert a document
+   * Update a table
    */
-  async insertDocument(
-    tableName: string,
-    content: string,
-    metadata?: Record<string, unknown>
-  ): Promise<Document> {
-    return this.request<Document>(`/api/v1/tables/${tableName}/documents`, {
-      method: 'POST',
-      body: JSON.stringify({ content, metadata }),
+  async updateTable(
+    tableId: string,
+    updates: { name?: string; description?: string; metadata?: Record<string, unknown> }
+  ): Promise<TableResponse> {
+    return this.request<TableResponse>(`/v1/tables/${encodeURIComponent(tableId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
     })
+  }
+
+  /**
+   * Delete a table
+   */
+  async deleteTable(tableId: string, cascade = false): Promise<void> {
+    await this.request(`/v1/tables/${encodeURIComponent(tableId)}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ cascade }),
+    })
+  }
+
+  /**
+   * Get documents in a table
+   */
+  async getTableDocuments(tableId: string): Promise<TableDocumentsResponse> {
+    return this.request<TableDocumentsResponse>(
+      `/v1/tables/${encodeURIComponent(tableId)}/documents`
+    )
+  }
+
+  // ==================== Documents ====================
+
+  /**
+   * List all documents
+   */
+  async listDocuments(): Promise<DocumentSummary[]> {
+    return this.request<DocumentSummary[]>('/v1/documents')
+  }
+
+  /**
+   * Get document details
+   */
+  async getDocument(documentId: string): Promise<DocumentDetail> {
+    return this.request<DocumentDetail>(`/v1/documents/${encodeURIComponent(documentId)}`)
   }
 
   /**
    * Delete a document
    */
-  async deleteDocument(tableName: string, documentId: string): Promise<void> {
-    await this.request(`/api/v1/tables/${tableName}/documents/${documentId}`, {
+  async deleteDocument(documentId: string): Promise<void> {
+    await this.request(`/v1/documents/${encodeURIComponent(documentId)}`, {
       method: 'DELETE',
+    })
+  }
+
+  /**
+   * Get nodes for a document
+   */
+  async getDocumentNodes(documentId: string): Promise<NodeSummary[]> {
+    return this.request<NodeSummary[]>(
+      `/v1/documents/${encodeURIComponent(documentId)}/nodes`
+    )
+  }
+
+  /**
+   * Get document tree structure
+   */
+  async getDocumentTree(documentId: string): Promise<TreeNode> {
+    return this.request<TreeNode>(`/v1/documents/${encodeURIComponent(documentId)}/tree`)
+  }
+
+  // ==================== Search ====================
+
+  /**
+   * Search documents using LLM-guided tree traversal
+   */
+  async search(request: SearchRequest): Promise<SearchResponse> {
+    return this.request<SearchResponse>('/v1/search', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    })
+  }
+
+  // ==================== Query (RQL) ====================
+
+  /**
+   * Execute RQL query
+   */
+  async executeQuery(query: string): Promise<QueryResult> {
+    return this.request<QueryResult>('/v1/query', {
+      method: 'POST',
+      body: JSON.stringify({ query }),
     })
   }
 }
 
-// Singleton instances per connection
+// ==================== Client Management ====================
+
 const clients = new Map<string, ReasonDBClient>()
 
 export function createClient(config: ApiConfig): ReasonDBClient {

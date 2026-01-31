@@ -299,7 +299,7 @@ Complete export with all metadata:
       "title": "NDA Agreement",
       "table_id": "tbl_abc123",
       "tags": ["nda", "legal"],
-      "author": "Legal Team"
+      "metadata": {"author": "Legal Team"}
     }
   ],
   "nodes": [
@@ -322,8 +322,8 @@ One document per line for streaming processing:
 Tabular format for spreadsheet compatibility:
 
 ```csv
-id,table_id,title,author,tags,source_path,created_at,updated_at
-doc_001,tbl_abc,Document 1,Alice,tag1;tag2,/path/to/file,2026-01-30T10:00:00Z,2026-01-30T10:00:00Z
+id,table_id,title,tags,source_path,created_at,updated_at
+doc_001,tbl_abc,Document 1,tag1;tag2,/path/to/file,2026-01-30T10:00:00Z,2026-01-30T10:00:00Z
 ```
 
 ## Programmatic Usage

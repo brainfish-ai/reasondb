@@ -19,7 +19,7 @@
 //!     let index = TextIndex::open("./search_index")?;
 //!
 //!     // Index a document node
-//!     index.index_node("doc_1", "node_1", "table_1", "My Title", "Document content here...", None, &[])?;
+//!     index.index_node("doc_1", "node_1", "table_1", "My Title", "Document content here...", &[])?;
 //!     index.commit()?;
 //!
 //!     // Search
@@ -54,7 +54,6 @@ pub struct TextIndex {
     table_id_field: Field,
     title_field: Field,
     content_field: Field,
-    author_field: Field,
     tags_field: Field,
 }
 
@@ -103,9 +102,8 @@ impl TextIndex {
             );
 
         let title_field = schema_builder.add_text_field("title", text_options.clone());
-        let content_field = schema_builder.add_text_field("content", text_options.clone());
-        let author_field = schema_builder.add_text_field("author", text_options.clone());
-        let tags_field = schema_builder.add_text_field("tags", text_options);
+        let content_field = schema_builder.add_text_field("content", text_options);
+        let tags_field = schema_builder.add_text_field("tags", TEXT | STORED);
 
         let schema = schema_builder.build();
 
@@ -151,7 +149,6 @@ impl TextIndex {
             table_id_field,
             title_field,
             content_field,
-            author_field,
             tags_field,
         })
     }
@@ -174,9 +171,8 @@ impl TextIndex {
             );
 
         let title_field = schema_builder.add_text_field("title", text_options.clone());
-        let content_field = schema_builder.add_text_field("content", text_options.clone());
-        let author_field = schema_builder.add_text_field("author", text_options.clone());
-        let tags_field = schema_builder.add_text_field("tags", text_options);
+        let content_field = schema_builder.add_text_field("content", text_options);
+        let tags_field = schema_builder.add_text_field("tags", TEXT | STORED);
 
         let schema = schema_builder.build();
         let index = Index::create_in_ram(schema.clone());
@@ -212,7 +208,6 @@ impl TextIndex {
             table_id_field,
             title_field,
             content_field,
-            author_field,
             tags_field,
         })
     }
@@ -226,7 +221,6 @@ impl TextIndex {
     /// * `table_id` - Table ID the document belongs to
     /// * `title` - Node title
     /// * `content` - Node content
-    /// * `author` - Optional author
     /// * `tags` - Optional tags
     pub fn index_node(
         &self,
@@ -235,7 +229,6 @@ impl TextIndex {
         table_id: &str,
         title: &str,
         content: &str,
-        author: Option<&str>,
         tags: &[String],
     ) -> Result<()> {
         let writer = self
@@ -249,10 +242,6 @@ impl TextIndex {
         doc.add_text(self.table_id_field, table_id);
         doc.add_text(self.title_field, title);
         doc.add_text(self.content_field, content);
-
-        if let Some(author) = author {
-            doc.add_text(self.author_field, author);
-        }
 
         if !tags.is_empty() {
             doc.add_text(self.tags_field, tags.join(" "));
@@ -432,7 +421,6 @@ mod tests {
                 "tbl_legal",
                 "NDA Agreement",
                 "This Non-Disclosure Agreement protects confidential information.",
-                Some("Legal Team"),
                 &["nda".to_string(), "confidential".to_string()],
             )
             .unwrap();
@@ -444,7 +432,6 @@ mod tests {
                 "tbl_legal",
                 "Service Contract",
                 "This Service Agreement outlines payment terms of $15,000 per month.",
-                Some("Sales Team"),
                 &["service".to_string(), "contract".to_string()],
             )
             .unwrap();
@@ -456,7 +443,6 @@ mod tests {
                 "tbl_hr",
                 "Employment Agreement",
                 "Employment contract with salary of $150,000 and stock options.",
-                Some("HR Team"),
                 &["employment".to_string(), "salary".to_string()],
             )
             .unwrap();
@@ -494,7 +480,6 @@ mod tests {
                 "tbl_1",
                 "Test Doc",
                 "Test content",
-                None,
                 &[],
             )
             .unwrap();
@@ -524,7 +509,6 @@ mod tests {
                 "tbl_1",
                 "Running Tests",
                 "The runner runs through the running track",
-                None,
                 &[],
             )
             .unwrap();

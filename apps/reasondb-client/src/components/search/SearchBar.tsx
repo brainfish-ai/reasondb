@@ -153,6 +153,16 @@ export function SearchBar({
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
       setSelectedIndex((prev) => Math.max(prev - 1, -1))
+    } else if (e.key === 'Tab' && showDropdown) {
+      // Tab cycles through modes when dropdown is open
+      e.preventDefault()
+      const modes: Array<'suggestions' | 'recent' | 'saved'> = ['suggestions', 'recent', 'saved']
+      const currentIndex = modes.indexOf(dropdownMode)
+      const nextIndex = e.shiftKey 
+        ? (currentIndex - 1 + modes.length) % modes.length 
+        : (currentIndex + 1) % modes.length
+      setDropdownMode(modes[nextIndex])
+      setSelectedIndex(-1)
     } else if (e.key === 'Enter') {
       e.preventDefault()
       if (selectedIndex >= 0) {
@@ -206,18 +216,29 @@ export function SearchBar({
     inputRef.current?.focus()
   }
   
+  // Generate unique ID for ARIA
+  const listboxId = 'search-listbox'
+  const activeDescendantId = selectedIndex >= 0 ? `search-option-${selectedIndex}` : undefined
+
   return (
-    <div className={cn('relative flex-1', className)}>
+    <div className={cn('relative flex-1', className)} role="search">
       {/* Input container */}
       <div className="relative flex items-center">
         <MagnifyingGlass
           size={14}
           className="absolute left-3 text-overlay-0 pointer-events-none"
+          aria-hidden="true"
         />
         
         <input
           ref={inputRef}
           type="text"
+          role="combobox"
+          aria-expanded={showDropdown}
+          aria-controls={listboxId}
+          aria-activedescendant={activeDescendantId}
+          aria-autocomplete="list"
+          aria-label="Search documents"
           value={inputValue}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
@@ -233,14 +254,15 @@ export function SearchBar({
         />
         
         {/* Action buttons */}
-        <div className="absolute right-1 flex items-center gap-0.5">
+        <div className="absolute right-1 flex items-center gap-0.5" role="toolbar" aria-label="Search actions">
           {(inputValue || activeFilter) && (
             <button
               onClick={handleClear}
-              className="p-1 rounded-full text-overlay-0 hover:text-text hover:bg-surface-1 transition-colors"
+              className="p-1 rounded-full text-overlay-0 hover:text-text hover:bg-surface-1 transition-colors focus:outline-none focus:ring-2 focus:ring-mauve focus:ring-offset-1 focus:ring-offset-base"
               title="Clear search"
+              aria-label="Clear search"
             >
-              <X size={12} weight="bold" />
+              <X size={12} weight="bold" aria-hidden="true" />
             </button>
           )}
           
@@ -248,40 +270,47 @@ export function SearchBar({
             onClick={() => {
               setShowDropdown(true)
               setDropdownMode('recent')
+              setSelectedIndex(-1)
             }}
             className={cn(
-              'p-1 rounded-full transition-colors',
+              'p-1 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-mauve focus:ring-offset-1 focus:ring-offset-base',
               dropdownMode === 'recent' && showDropdown
                 ? 'text-mauve bg-surface-1'
                 : 'text-overlay-0 hover:text-text hover:bg-surface-1'
             )}
             title="Recent searches"
+            aria-label="Recent searches"
+            aria-pressed={dropdownMode === 'recent' && showDropdown}
           >
-            <Clock size={12} weight="bold" />
+            <Clock size={12} weight="bold" aria-hidden="true" />
           </button>
           
           <button
             onClick={() => {
               setShowDropdown(true)
               setDropdownMode('saved')
+              setSelectedIndex(-1)
             }}
             className={cn(
-              'p-1 rounded-full transition-colors',
+              'p-1 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-mauve focus:ring-offset-1 focus:ring-offset-base',
               dropdownMode === 'saved' && showDropdown
                 ? 'text-mauve bg-surface-1'
                 : 'text-overlay-0 hover:text-text hover:bg-surface-1'
             )}
             title="Saved filters"
+            aria-label="Saved filters"
+            aria-pressed={dropdownMode === 'saved' && showDropdown}
           >
-            <Bookmarks size={12} weight="bold" />
+            <Bookmarks size={12} weight="bold" aria-hidden="true" />
           </button>
           
           <button
             onClick={toggleFilterBuilder}
-            className="p-1 rounded-full text-overlay-0 hover:text-text hover:bg-surface-1 transition-colors"
+            className="p-1 rounded-full text-overlay-0 hover:text-text hover:bg-surface-1 transition-colors focus:outline-none focus:ring-2 focus:ring-mauve focus:ring-offset-1 focus:ring-offset-base"
             title="Advanced filter builder"
+            aria-label="Open advanced filter builder"
           >
-            <Funnel size={12} weight="bold" />
+            <Funnel size={12} weight="bold" aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -290,14 +319,20 @@ export function SearchBar({
       {showDropdown && (
         <div
           ref={dropdownRef}
+          id={listboxId}
+          role="listbox"
+          aria-label="Search suggestions"
           className="absolute z-50 top-full left-0 right-0 mt-1 bg-surface-0 border border-border rounded-lg shadow-lg overflow-hidden"
         >
           {/* Mode tabs */}
-          <div className="flex border-b border-border">
+          <div className="flex border-b border-border" role="tablist" aria-label="Search modes">
             <button
-              onClick={() => setDropdownMode('suggestions')}
+              role="tab"
+              aria-selected={dropdownMode === 'suggestions'}
+              aria-controls="suggestions-panel"
+              onClick={() => { setDropdownMode('suggestions'); setSelectedIndex(-1) }}
               className={cn(
-                'flex-1 px-3 py-1.5 text-xs font-medium transition-colors',
+                'flex-1 px-3 py-1.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-mauve',
                 dropdownMode === 'suggestions'
                   ? 'text-text bg-surface-1'
                   : 'text-overlay-0 hover:text-text'
@@ -306,9 +341,12 @@ export function SearchBar({
               Suggestions
             </button>
             <button
-              onClick={() => setDropdownMode('recent')}
+              role="tab"
+              aria-selected={dropdownMode === 'recent'}
+              aria-controls="recent-panel"
+              onClick={() => { setDropdownMode('recent'); setSelectedIndex(-1) }}
               className={cn(
-                'flex-1 px-3 py-1.5 text-xs font-medium transition-colors',
+                'flex-1 px-3 py-1.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-mauve',
                 dropdownMode === 'recent'
                   ? 'text-text bg-surface-1'
                   : 'text-overlay-0 hover:text-text'
@@ -317,9 +355,12 @@ export function SearchBar({
               Recent
             </button>
             <button
-              onClick={() => setDropdownMode('saved')}
+              role="tab"
+              aria-selected={dropdownMode === 'saved'}
+              aria-controls="saved-panel"
+              onClick={() => { setDropdownMode('saved'); setSelectedIndex(-1) }}
               className={cn(
-                'flex-1 px-3 py-1.5 text-xs font-medium transition-colors',
+                'flex-1 px-3 py-1.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-mauve',
                 dropdownMode === 'saved'
                   ? 'text-text bg-surface-1'
                   : 'text-overlay-0 hover:text-text'
@@ -330,13 +371,16 @@ export function SearchBar({
           </div>
           
           {/* Content */}
-          <div className="max-h-64 overflow-y-auto">
+          <div className="max-h-64 overflow-y-auto" role="tabpanel" id={`${dropdownMode}-panel`}>
             {dropdownMode === 'suggestions' && (
               <>
                 {suggestions.length > 0 ? (
                   suggestions.map((suggestion, index) => (
                     <button
                       key={index}
+                      id={`search-option-${index}`}
+                      role="option"
+                      aria-selected={selectedIndex === index}
                       onClick={() => {
                         if (suggestion.type === 'column') {
                           setInputValue(suggestion.value + ' ')
@@ -351,7 +395,7 @@ export function SearchBar({
                       }}
                       className={cn(
                         'w-full px-3 py-2 text-left text-xs flex items-center gap-2',
-                        'hover:bg-surface-1 transition-colors',
+                        'hover:bg-surface-1 transition-colors focus:outline-none focus:bg-surface-1',
                         selectedIndex === index && 'bg-surface-1'
                       )}
                     >
@@ -362,6 +406,7 @@ export function SearchBar({
                           suggestion.type === 'operator' && 'bg-green/20 text-green',
                           suggestion.type === 'example' && 'bg-blue/20 text-blue'
                         )}
+                        aria-hidden="true"
                       >
                         {suggestion.type}
                       </span>
@@ -369,13 +414,13 @@ export function SearchBar({
                     </button>
                   ))
                 ) : inputValue ? (
-                  <div className="px-3 py-4 text-center text-xs text-overlay-0">
+                  <div className="px-3 py-4 text-center text-xs text-overlay-0" role="status">
                     Press Enter to search for "{inputValue}"
                   </div>
                 ) : (
                   <div className="px-3 py-4 text-center text-xs text-overlay-0">
                     <p className="mb-2">Try searching with:</p>
-                    <div className="space-y-1 text-text font-mono">
+                    <div className="space-y-1 text-text font-mono" aria-label="Search examples">
                       <p>title = "document"</p>
                       <p>content contains "search"</p>
                       <p>created_at {'>'} "2024-01-01"</p>
@@ -392,30 +437,34 @@ export function SearchBar({
                     {recentSearches.map((search, index) => (
                       <button
                         key={index}
+                        id={`search-option-${index}`}
+                        role="option"
+                        aria-selected={selectedIndex === index}
                         onClick={() => {
                           setInputValue(search)
                           handleSearch()
                         }}
                         className={cn(
                           'w-full px-3 py-2 text-left text-xs flex items-center gap-2',
-                          'hover:bg-surface-1 transition-colors',
+                          'hover:bg-surface-1 transition-colors focus:outline-none focus:bg-surface-1',
                           selectedIndex === index && 'bg-surface-1'
                         )}
                       >
-                        <Clock size={12} className="text-overlay-0 shrink-0" />
+                        <Clock size={12} className="text-overlay-0 shrink-0" aria-hidden="true" />
                         <span className="text-text truncate">{search}</span>
                       </button>
                     ))}
                     <button
                       onClick={clearRecentSearches}
-                      className="w-full px-3 py-2 text-left text-xs flex items-center gap-2 text-red hover:bg-surface-1"
+                      className="w-full px-3 py-2 text-left text-xs flex items-center gap-2 text-red hover:bg-surface-1 focus:outline-none focus:bg-surface-1"
+                      aria-label="Clear all recent searches"
                     >
-                      <Trash size={12} />
+                      <Trash size={12} aria-hidden="true" />
                       Clear recent searches
                     </button>
                   </>
                 ) : (
-                  <div className="px-3 py-4 text-center text-xs text-overlay-0">
+                  <div className="px-3 py-4 text-center text-xs text-overlay-0" role="status">
                     No recent searches
                   </div>
                 )}
@@ -428,6 +477,9 @@ export function SearchBar({
                   savedFilters.map((saved, index) => (
                     <button
                       key={saved.id}
+                      id={`search-option-${index}`}
+                      role="option"
+                      aria-selected={selectedIndex === index}
                       onClick={() => {
                         loadFilter(saved.id)
                         setShowDropdown(false)
@@ -435,12 +487,12 @@ export function SearchBar({
                       }}
                       className={cn(
                         'w-full px-3 py-2 text-left text-xs',
-                        'hover:bg-surface-1 transition-colors',
+                        'hover:bg-surface-1 transition-colors focus:outline-none focus:bg-surface-1',
                         selectedIndex === index && 'bg-surface-1'
                       )}
                     >
                       <div className="flex items-center gap-2">
-                        <Bookmarks size={12} className="text-mauve shrink-0" />
+                        <Bookmarks size={12} className="text-mauve shrink-0" aria-hidden="true" />
                         <span className="text-text font-medium">{saved.name}</span>
                       </div>
                       <p className="mt-0.5 text-[10px] text-overlay-0 truncate pl-5">
@@ -449,7 +501,7 @@ export function SearchBar({
                     </button>
                   ))
                 ) : (
-                  <div className="px-3 py-4 text-center text-xs text-overlay-0">
+                  <div className="px-3 py-4 text-center text-xs text-overlay-0" role="status">
                     No saved filters
                   </div>
                 )}
@@ -458,10 +510,14 @@ export function SearchBar({
           </div>
           
           {/* Footer hint */}
-          <div className="px-3 py-1.5 border-t border-border bg-mantle text-[10px] text-overlay-0 flex items-center gap-2">
-            <span>↑↓ Navigate</span>
-            <span>↵ Select</span>
-            <span>Esc Close</span>
+          <div 
+            className="px-3 py-1 border-t border-border/50 text-[9px] text-overlay-0/60 flex items-center gap-3"
+            aria-hidden="true"
+          >
+            <span>↑↓</span>
+            <span>Tab</span>
+            <span>↵</span>
+            <span>Esc</span>
           </div>
         </div>
       )}

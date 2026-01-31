@@ -69,8 +69,7 @@ Response:
 | `document_id` | string | null | Search within specific document |
 | `table_id` | string | null | Restrict to specific table |
 | `tags` | string[] | null | Filter by document tags |
-| `author` | string | null | Filter by author |
-| `metadata` | object | null | Filter by metadata fields |
+| `metadata` | object | null | Filter by metadata fields (e.g., author, department) |
 | `max_depth` | int | 10 | Maximum tree depth to traverse |
 | `beam_width` | int | 3 | Branches to explore in parallel |
 | `min_confidence` | float | 0.3 | Prune branches below this confidence |
@@ -233,7 +232,7 @@ For complex filtering combined with semantic search, use RQL with the REASON cla
 ```bash
 curl -X POST http://localhost:4444/v1/query \
   -d '{
-    "query": "SELECT * FROM legal WHERE author = '\''Alice'\'' REASON '\''What are the termination clauses?'\''"
+    "query": "SELECT * FROM legal WHERE metadata.author = '\''Alice'\'' REASON '\''What are the termination clauses?'\''"
   }'
 ```
 

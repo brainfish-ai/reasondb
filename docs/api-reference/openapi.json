@@ -1091,9 +1091,11 @@
               "type": "string"
             }
           },
-          "author": {
-            "type": "string",
-            "example": "Legal Team"
+          "metadata": {
+            "type": "object",
+            "description": "Custom metadata (author, etc.)",
+            "additionalProperties": true,
+            "example": {"author": "Legal Team"}
           },
           "created_at": {
             "type": "string",
@@ -1134,16 +1136,12 @@
             "description": "Document tags for filtering",
             "example": ["nda", "confidential"]
           },
-          "author": {
-            "type": "string",
-            "description": "Document author",
-            "example": "Legal Team"
-          },
           "metadata": {
             "type": "object",
-            "description": "Custom metadata (key-value pairs)",
+            "description": "Custom metadata (author, contract_type, etc.)",
             "additionalProperties": true,
             "example": {
+              "author": "Legal Team",
               "contract_type": "nda",
               "value_usd": 50000
             }
@@ -1257,16 +1255,12 @@
             "description": "Filter by document tags (any match)",
             "example": ["nda", "confidential"]
           },
-          "author": {
-            "type": "string",
-            "description": "Filter by document author",
-            "example": "Legal Team"
-          },
           "metadata": {
             "type": "object",
-            "description": "Filter by document metadata",
+            "description": "Filter by document metadata (author, contract_type, etc.)",
             "additionalProperties": true,
             "example": {
+              "author": "Legal Team",
               "contract_type": "nda"
             }
           },
@@ -1458,8 +1452,9 @@
               "type": "string"
             }
           },
-          "author": {
-            "type": "string"
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
           },
           "score": {
             "type": "number",
@@ -1582,8 +1577,9 @@
               "type": "string"
             }
           },
-          "author": {
-            "type": "string"
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
           },
           "created_at": {
             "type": "string",

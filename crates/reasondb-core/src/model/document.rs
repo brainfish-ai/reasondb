@@ -25,7 +25,7 @@ use super::{json_metadata, DocumentId, NodeId, TableId};
 /// // Create a document - table_id is required
 /// let mut doc = Document::new("NDA Agreement".to_string(), "legal-contracts");
 /// doc.tags = vec!["nda".to_string(), "confidential".to_string()];
-/// doc.author = Some("Legal Team".to_string());
+/// doc.set_metadata("author", serde_json::json!("Legal Team"));
 /// doc.set_metadata("contract_type", serde_json::json!("nda"));
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -74,9 +74,6 @@ pub struct Document {
     /// Tags for quick filtering
     pub tags: Vec<String>,
 
-    /// Document author
-    pub author: Option<String>,
-
     /// Original source URL (if ingested from web)
     pub source_url: Option<String>,
 
@@ -108,7 +105,6 @@ impl Document {
             table_id: table_id.to_string(),
             metadata: HashMap::new(),
             tags: Vec::new(),
-            author: None,
             source_url: None,
             language: None,
             version: None,

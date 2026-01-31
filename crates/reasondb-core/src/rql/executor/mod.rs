@@ -422,7 +422,6 @@ impl NodeStore {
                         "title" => a.title.cmp(&b.title),
                         "created_at" => a.created_at.cmp(&b.created_at),
                         "updated_at" => a.updated_at.cmp(&b.updated_at),
-                        "author" => a.author.cmp(&b.author),
                         _ => std::cmp::Ordering::Equal,
                     };
                     if order_by.direction == SortDirection::Desc {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   useReactTable,
   getCoreRowModel,
@@ -25,32 +25,36 @@ import {
   CheckCircle,
 } from '@phosphor-icons/react'
 import { useTableStore, type Document } from '@/stores/tableStore'
+import { useConnectionStore } from '@/stores/connectionStore'
 import { useFilterStore } from '@/stores/filterStore'
 import { Button } from '@/components/ui/Button'
 import { SearchBar, FilterBuilder } from '@/components/search'
 import { cn } from '@/lib/utils'
 import { filterDocuments } from '@/lib/filter-utils'
 import { detectColumnType, type ColumnInfo } from '@/lib/filter-types'
+import { createClient, type TableDocumentSummary } from '@/lib/api'
 
-// Mock documents for demo
-function generateMockDocuments(tableId: string): Document[] {
-  const count = Math.floor(Math.random() * 50) + 20
-  return Array.from({ length: count }, (_, i) => ({
-    id: `doc_${tableId}_${i + 1}`,
+// Convert API response to document store format
+function apiDocumentToStoreDocument(apiDoc: TableDocumentSummary): Document {
+  // Spread custom metadata into the data object for display
+  const customMetadata = apiDoc.metadata || {}
+  
+  return {
+    id: apiDoc.id,
     data: {
-      id: `${tableId}-${crypto.randomUUID().slice(0, 8)}`,
-      title: `Document ${i + 1}`,
-      content: `This is the content of document ${i + 1}. It contains some sample text for demonstration purposes.`,
-      embedding: '[0.123, 0.456, 0.789, ...]',
-      metadata: { tags: ['sample', 'demo'], priority: Math.floor(Math.random() * 5) + 1 },
-      created_at: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
+      id: apiDoc.id,
+      title: apiDoc.title,
+      total_nodes: apiDoc.total_nodes,
+      tags: apiDoc.tags,
+      ...customMetadata, // Include custom metadata fields
+      created_at: apiDoc.created_at,
     },
     metadata: {
-      createdAt: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
-      updatedAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-      version: Math.floor(Math.random() * 5) + 1,
+      createdAt: apiDoc.created_at,
+      updatedAt: apiDoc.created_at,
+      version: 1,
     },
-  }))
+  }
 }
 
 type ViewMode = 'table' | 'json' | 'card'
@@ -60,38 +64,68 @@ interface DocumentViewerProps {
 }
 
 export function DocumentViewer({ tableId }: DocumentViewerProps) {
+  const { activeConnectionId, connections } = useConnectionStore()
   const {
     documents,
     selectedDocumentId,
     isLoadingDocuments,
     totalDocuments,
     pageSize,
+    documentsError,
     setDocuments,
     selectDocument,
     setLoadingDocuments,
+    setDocumentsError,
   } = useTableStore()
 
   const {
     activeFilter,
     setDetectedColumns,
+    quickSearchText,
   } = useFilterStore()
 
   const [viewMode, setViewMode] = useState<ViewMode>('table')
   const [sorting, setSorting] = useState<SortingState>([])
   const [copied, setCopied] = useState(false)
 
+  // Get active connection details
+  const activeConnection = connections.find(c => c.id === activeConnectionId)
+
+  // Fetch documents from server
+  const fetchDocuments = useCallback(async () => {
+    if (!activeConnection || !tableId) return
+
+    setLoadingDocuments(true)
+    setDocumentsError(null)
+    // Clear documents at the start of fetch to avoid showing stale data
+    setDocuments([], 0)
+
+    try {
+      const client = createClient({
+        host: activeConnection.host,
+        port: activeConnection.port,
+        apiKey: activeConnection.apiKey,
+        useSsl: activeConnection.ssl,
+      })
+
+      const response = await client.getTableDocuments(tableId)
+      const storeDocs = response.documents.map(apiDocumentToStoreDocument)
+      setDocuments(storeDocs, response.total)
+    } catch (error) {
+      console.error('Failed to fetch documents:', error)
+      setDocumentsError(error instanceof Error ? error.message : 'Failed to fetch documents')
+      setDocuments([], 0)
+    } finally {
+      setLoadingDocuments(false)
+    }
+  }, [activeConnection, tableId, setLoadingDocuments, setDocuments, setDocumentsError])
+
   // Load documents when table is selected
   useEffect(() => {
-    if (tableId) {
-      setLoadingDocuments(true)
-      // Simulate API call
-      setTimeout(() => {
-        const docs = generateMockDocuments(tableId)
-        setDocuments(docs, docs.length)
-        setLoadingDocuments(false)
-      }, 300)
+    if (tableId && activeConnection) {
+      fetchDocuments()
     }
-  }, [tableId, setDocuments, setLoadingDocuments])
+  }, [tableId, activeConnection, fetchDocuments])
 
   // Detect columns from documents
   const detectedColumns = useMemo<ColumnInfo[]>(() => {
@@ -131,23 +165,56 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
     setDetectedColumns(detectedColumns)
   }, [detectedColumns, setDetectedColumns])
 
-  // Filter documents based on active filter
+  // Filter documents based on active filter (client-side filtering for now)
+  // TODO: Implement server-side search using the /api/v1/search endpoint
   const filteredDocuments = useMemo(() => {
-    if (!activeFilter) return documents
-    return filterDocuments(
-      documents.map((doc) => ({ ...doc, ...doc.data })),
-      activeFilter
-    ).map((filtered) => documents.find((d) => d.id === filtered.id)!).filter(Boolean)
-  }, [documents, activeFilter])
+    if (!activeFilter && !quickSearchText) return documents
+    
+    // If there's a quick search text but no structured filter, do simple text search
+    if (!activeFilter && quickSearchText) {
+      const searchLower = quickSearchText.toLowerCase()
+      return documents.filter((doc) =>
+        JSON.stringify(doc.data).toLowerCase().includes(searchLower)
+      )
+    }
+    
+    if (activeFilter) {
+      // Filter using the full document structure
+      return filterDocuments(documents as unknown as Record<string, unknown>[], activeFilter) as unknown as Document[]
+    }
+    
+    return documents
+  }, [documents, activeFilter, quickSearchText])
 
-  // Generate columns from table schema or document keys
+  // Generate columns from ALL document keys (to include custom metadata)
   const columns = useMemo<ColumnDef<Document>[]>(() => {
     if (documents.length === 0) return []
     
-    const sampleDoc = documents[0]
-    const keys = Object.keys(sampleDoc.data)
+    // Standard fields in preferred order
+    const standardFields = ['id', 'title', 'total_nodes', 'tags', 'created_at']
     
-    return keys.map((key) => ({
+    // Collect all unique keys from all documents
+    const allKeys = new Set<string>()
+    documents.forEach(doc => {
+      Object.keys(doc.data).forEach(key => allKeys.add(key))
+    })
+    
+    // Sort keys: standard fields first (in order), then custom metadata fields alphabetically
+    const sortedKeys = Array.from(allKeys).sort((a, b) => {
+      const aIndex = standardFields.indexOf(a)
+      const bIndex = standardFields.indexOf(b)
+      
+      // Both are standard fields - sort by their standard order
+      if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex
+      // Only a is standard - it comes first
+      if (aIndex !== -1) return -1
+      // Only b is standard - it comes first
+      if (bIndex !== -1) return 1
+      // Both are custom - sort alphabetically
+      return a.localeCompare(b)
+    })
+    
+    return sortedKeys.map((key) => ({
       accessorKey: `data.${key}`,
       header: ({ column }) => (
         <button
@@ -177,26 +244,31 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
     initialState: { pagination: { pageSize } },
   })
 
-  // Handle search
-  const handleSearch = () => {
-    // Search triggers filter update through the SearchBar component
-  }
+  // Handle search - for server-side search we'd call the API
+  const handleSearch = useCallback(async (searchText: string) => {
+    if (!activeConnection || !tableId || !searchText.trim()) {
+      // If search is cleared, just refetch all documents
+      fetchDocuments()
+      return
+    }
+
+    // TODO: Use server-side search when implemented
+    // For now, the filtering is done client-side in filteredDocuments
+    // 
+    // Server-side search would look like:
+    // const client = createClient({ ... })
+    // const results = await client.search({
+    //   query: searchText,
+    //   table_id: tableId,
+    //   limit: pageSize,
+    // })
+    // setDocuments(results.map(r => apiToStoreDoc(r)), results.length)
+  }, [activeConnection, tableId, fetchDocuments])
 
   const handleCopyDocument = async (doc: Document) => {
     await navigator.clipboard.writeText(JSON.stringify(doc.data, null, 2))
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
-  }
-
-  const handleRefresh = () => {
-    if (tableId) {
-      setLoadingDocuments(true)
-      setTimeout(() => {
-        const docs = generateMockDocuments(tableId)
-        setDocuments(docs, docs.length)
-        setLoadingDocuments(false)
-      }, 300)
-    }
   }
 
   if (!tableId) {
@@ -257,7 +329,7 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
 
         {/* Actions */}
         <div className="flex items-center gap-1 shrink-0">
-          <Button size="sm" variant="ghost" onClick={handleRefresh} title="Refresh">
+          <Button size="sm" variant="ghost" onClick={fetchDocuments} title="Refresh">
             <ArrowsClockwise size={16} className={isLoadingDocuments ? 'animate-spin' : ''} />
           </Button>
           
@@ -275,11 +347,33 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
       {/* Filter Builder */}
       <FilterBuilder columns={detectedColumns} onApply={() => {}} />
 
+      {/* Error state */}
+      {documentsError && (
+        <div className="px-4 py-3 mx-4 mt-2 rounded-md bg-red/10 border border-red/20">
+          <p className="text-sm text-red">{documentsError}</p>
+          <button 
+            onClick={fetchDocuments}
+            className="text-sm text-red underline mt-1 hover:text-red/80"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Content */}
       <div className="flex-1 min-h-0 overflow-auto">
         {isLoadingDocuments ? (
           <div className="flex items-center justify-center h-full">
             <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : documents.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-center p-8">
+            <Table size={48} weight="duotone" className="text-overlay-0 mb-3" />
+            <p className="text-sm text-subtext-0">No documents in this table</p>
+            <Button size="sm" variant="secondary" className="mt-4 gap-1.5">
+              <Plus size={14} />
+              Add Document
+            </Button>
           </div>
         ) : viewMode === 'table' ? (
           <table className="w-full text-sm">
@@ -357,7 +451,7 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
           </table>
         ) : (
           <div className="p-4 space-y-2">
-            {documents.map((doc) => (
+            {filteredDocuments.map((doc) => (
               <div
                 key={doc.id}
                 onClick={() => selectDocument(doc.id)}
@@ -378,10 +472,10 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
       </div>
 
       {/* Footer */}
-      {viewMode === 'table' && (
+      {viewMode === 'table' && documents.length > 0 && (
         <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-mantle">
           <div className="text-xs text-subtext-0">
-            {activeFilter ? (
+            {activeFilter || quickSearchText ? (
               <>
                 <span className="font-medium text-mauve">{filteredDocuments.length.toLocaleString()}</span>
                 <span className="text-overlay-0"> of </span>
@@ -441,6 +535,19 @@ function CellRenderer({ value }: { value: unknown }) {
   
   if (typeof value === 'number') {
     return <span className="text-peach font-mono">{value}</span>
+  }
+  
+  if (Array.isArray(value)) {
+    if (value.length === 0) return <span className="text-overlay-0 italic">[]</span>
+    const str = value.join(', ')
+    if (str.length > 50) {
+      return (
+        <span className="text-blue font-mono text-xs" title={str}>
+          [{str.slice(0, 50)}...]
+        </span>
+      )
+    }
+    return <span className="text-blue font-mono text-xs">[{str}]</span>
   }
   
   if (typeof value === 'object') {

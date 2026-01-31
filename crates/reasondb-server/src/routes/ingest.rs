@@ -27,7 +27,6 @@ fn index_document_nodes(
     store: &NodeStore,
     document_id: &str,
     table_id: &str,
-    author: Option<&str>,
     tags: &[String],
 ) -> Result<(), ApiError> {
     // Get all nodes for this document
@@ -50,7 +49,6 @@ fn index_document_nodes(
                 table_id,
                 &node.title,
                 content,
-                author,
                 tags,
             )
             .map_err(|e| ApiError::Internal(format!("Failed to index node: {}", e)))?;
@@ -139,10 +137,6 @@ pub struct IngestTextRequest {
     #[serde(default)]
     #[schema(example = json!(["nda", "confidential"]))]
     pub tags: Option<Vec<String>>,
-    /// Document author
-    #[serde(default)]
-    #[schema(example = "Legal Team")]
-    pub author: Option<String>,
     /// Custom metadata (key-value pairs)
     #[serde(default)]
     #[schema(example = json!({"contract_type": "nda", "value_usd": 50000}))]
@@ -272,7 +266,6 @@ pub async fn ingest_file<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         &state.store,
         &result.document.id,
         &result.document.table_id,
-        result.document.author.as_deref(),
         &result.document.tags,
     )?;
 
@@ -343,17 +336,12 @@ pub async fn ingest_text<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         .await
         .map_err(ApiError::from)?;
 
-    // Apply tags, author, and metadata if provided
+    // Apply tags and metadata if provided
     let mut doc = result.document.clone();
     let mut needs_update = false;
 
     if let Some(tags) = &request.tags {
         doc.tags = tags.clone();
-        needs_update = true;
-    }
-
-    if let Some(author) = &request.author {
-        doc.author = Some(author.clone());
         needs_update = true;
     }
 
@@ -373,7 +361,6 @@ pub async fn ingest_text<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         &state.store,
         &result.document.id,
         &result.document.table_id,
-        result.document.author.as_deref(),
         &result.document.tags,
     )?;
 
@@ -446,7 +433,6 @@ pub async fn ingest_url<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         &state.store,
         &result.document.id,
         &result.document.table_id,
-        result.document.author.as_deref(),
         &result.document.tags,
     )?;
 

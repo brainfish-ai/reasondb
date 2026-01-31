@@ -40,11 +40,6 @@ pub struct SearchRequest {
     #[schema(example = json!(["nda", "confidential"]))]
     pub tags: Option<Vec<String>>,
 
-    /// Filter by document author
-    #[serde(default)]
-    #[schema(example = "Legal Team")]
-    pub author: Option<String>,
-
     /// Filter by document metadata
     #[serde(default)]
     #[schema(example = json!({"contract_type": "nda"}))]
@@ -200,10 +195,6 @@ pub async fn search<R: ReasoningEngine + Send + Sync + 'static>(
         if let Some(tags) = &request.tags {
             let tags_ref: Vec<&str> = tags.iter().map(|s| s.as_str()).collect();
             filter = filter.with_tags(tags_ref);
-        }
-
-        if let Some(author) = &request.author {
-            filter = filter.with_author(author);
         }
 
         if let Some(metadata) = &request.metadata {

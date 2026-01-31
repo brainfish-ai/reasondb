@@ -103,7 +103,8 @@ export const useTableStore = create<TableState>((set, get) => ({
   
   selectTable: (id) => set({ 
     selectedTableId: id, 
-    documents: [], 
+    // Don't clear documents here - let DocumentViewer manage its own state
+    // Documents will be fetched when the DocumentViewer mounts with new tableId
     selectedDocumentId: null,
     currentPage: 1,
   }),

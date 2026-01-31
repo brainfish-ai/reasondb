@@ -45,8 +45,7 @@ In this tutorial, you'll master RQL (ReasonDB Query Language) by building querie
         "table_id": "TABLE_ID",
         "content": "# The Quantum Garden\n\nA science fiction novel about quantum computing and artificial intelligence.\n\n## Plot Summary\n\nIn 2150, Dr. Sarah Chen discovers a way to grow quantum computers organically. Her \"quantum gardens\" revolutionize computing but attract dangerous attention.\n\n## Themes\n\n### Technology and Nature\nThe book explores the boundary between organic and artificial systems.\n\n### Ethics of AI\nChen must decide whether to give her quantum AI consciousness.",
         "tags": ["science-fiction", "ai", "quantum"],
-        "author": "James Morrison",
-        "metadata": {"year": 2023, "pages": 342, "rating": 4.5}
+        "metadata": {"author": "James Morrison", "year": 2023, "pages": 342, "rating": 4.5}
       }'
 
     # Book 2: Mystery
@@ -57,8 +56,7 @@ In this tutorial, you'll master RQL (ReasonDB Query Language) by building querie
         "table_id": "TABLE_ID",
         "content": "# The Silent Witness\n\nA gripping mystery thriller set in Victorian London.\n\n## Plot Summary\n\nDetective Inspector Mills investigates a murder where the only witness is a parrot. The bird holds the key to solving the case.\n\n## Themes\n\n### Justice and Truth\nMills struggles with evidence that cannot speak for itself.\n\n### Victorian Society\nThe class divide affects how the investigation unfolds.",
         "tags": ["mystery", "thriller", "historical"],
-        "author": "Elizabeth Shaw",
-        "metadata": {"year": 2022, "pages": 298, "rating": 4.2}
+        "metadata": {"author": "Elizabeth Shaw", "year": 2022, "pages": 298, "rating": 4.2}
       }'
 
     # Book 3: Science Fiction
@@ -69,8 +67,7 @@ In this tutorial, you'll master RQL (ReasonDB Query Language) by building querie
         "table_id": "TABLE_ID",
         "content": "# Mars Colony One\n\nThe story of humanity first permanent settlement on Mars.\n\n## Plot Summary\n\nCommander Yuki Tanaka leads 200 colonists to Mars. When Earth goes silent, they must survive alone.\n\n## Themes\n\n### Human Resilience\nThe colonists face impossible odds but find strength in community.\n\n### Isolation\nCut off from Earth, they must redefine what home means.",
         "tags": ["science-fiction", "space", "survival"],
-        "author": "James Morrison",
-        "metadata": {"year": 2024, "pages": 410, "rating": 4.8}
+        "metadata": {"author": "James Morrison", "year": 2024, "pages": 410, "rating": 4.8}
       }'
     ```
   </Step>
@@ -90,9 +87,9 @@ curl -X POST http://localhost:4444/v1/query \
 ```json
 {
   "documents": [
-    {"id": "doc_1", "title": "The Quantum Garden", "author": "James Morrison", ...},
-    {"id": "doc_2", "title": "The Silent Witness", "author": "Elizabeth Shaw", ...},
-    {"id": "doc_3", "title": "Mars Colony One", "author": "James Morrison", ...}
+    {"id": "doc_1", "title": "The Quantum Garden", "metadata": {"author": "James Morrison"}, ...},
+    {"id": "doc_2", "title": "The Silent Witness", "metadata": {"author": "Elizabeth Shaw"}, ...},
+    {"id": "doc_3", "title": "Mars Colony One", "metadata": {"author": "James Morrison"}, ...}
   ],
   "total_count": 3,
   "execution_time_ms": 12
@@ -105,7 +102,7 @@ You can select only the fields you need:
 
 ```bash
 curl -X POST http://localhost:4444/v1/query \
-  -d '{"query": "SELECT title, author FROM books"}'
+  -d '{"query": "SELECT title, metadata.author FROM books"}'
 ```
 
 <Tip>
@@ -120,7 +117,7 @@ Find books by a specific author:
 
 ```bash
 curl -X POST http://localhost:4444/v1/query \
-  -d '{"query": "SELECT * FROM books WHERE author = '\''James Morrison'\''"}'
+  -d '{"query": "SELECT * FROM books WHERE metadata.author = '\''James Morrison'\''"}'
 ```
 
 **Result:** Returns "The Quantum Garden" and "Mars Colony One"
@@ -154,7 +151,7 @@ Use AND/OR for complex filters:
 ```bash
 # Science fiction books by James Morrison
 curl -X POST http://localhost:4444/v1/query \
-  -d '{"query": "SELECT * FROM books WHERE author = '\''James Morrison'\'' AND tags CONTAINS '\''science-fiction'\''"}'
+  -d '{"query": "SELECT * FROM books WHERE metadata.author = '\''James Morrison'\'' AND tags CONTAINS '\''science-fiction'\''"}'
 ```
 
 ### Pattern Matching
@@ -196,7 +193,7 @@ Filter first, then search:
 
 ```bash
 curl -X POST http://localhost:4444/v1/query \
-  -d '{"query": "SELECT * FROM books WHERE author = '\''James Morrison'\'' SEARCH '\''Mars survival'\''"}'
+  -d '{"query": "SELECT * FROM books WHERE metadata.author = '\''James Morrison'\'' SEARCH '\''Mars survival'\''"}'
 ```
 
 <Note>
@@ -260,15 +257,15 @@ Count books per author:
 
 ```bash
 curl -X POST http://localhost:4444/v1/query \
-  -d '{"query": "SELECT COUNT(*) AS book_count, author FROM books GROUP BY author"}'
+  -d '{"query": "SELECT COUNT(*) AS book_count, metadata.author FROM books GROUP BY metadata.author"}'
 ```
 
 **Response:**
 ```json
 {
   "aggregates": [
-    {"name": "book_count", "value": 2, "group_key": [["author", "James Morrison"]]},
-    {"name": "book_count", "value": 1, "group_key": [["author", "Elizabeth Shaw"]]}
+    {"name": "book_count", "value": 2, "group_key": [["metadata.author", "James Morrison"]]},
+    {"name": "book_count", "value": 1, "group_key": [["metadata.author", "Elizabeth Shaw"]]}
   ]
 }
 ```
@@ -327,7 +324,7 @@ Test your RQL skills with these exercises:
 
   <Accordion title="Challenge 4: Get average pages per author">
     ```sql
-    SELECT AVG(metadata.pages) AS avg_pages, author FROM books GROUP BY author
+    SELECT AVG(metadata.pages) AS avg_pages, metadata.author FROM books GROUP BY metadata.author
     ```
   </Accordion>
 </AccordionGroup>
