@@ -1,8 +1,8 @@
 {
   "$schema": "https://devdoc.sh/theme.json",
   "logo": {
-    "light": "/assets/logo.svg",
-    "dark": "/assets/logo.svg",
+    "light": "/assets/reason-db-logo.svg",
+    "dark": "/assets/reason-db-logo.svg",
     "alt": "ReasonDB",
     "width": 140,
     "height": 28
