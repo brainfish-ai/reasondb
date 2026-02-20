@@ -1,32 +1,14 @@
 import { create } from 'zustand'
 
-export interface TableColumn {
-  name: string
-  type: string
-  nullable: boolean
-  primaryKey: boolean
-  defaultValue?: string
-  description?: string
-}
-
-export interface TableIndex {
-  name: string
-  columns: string[]
-  unique: boolean
-  type: 'btree' | 'hash' | 'vector'
-}
-
 export interface Table {
   id: string
   name: string
-  schema: string
-  columns: TableColumn[]
-  indexes: TableIndex[]
-  rowCount: number
-  sizeBytes: number
-  createdAt: string
-  updatedAt: string
   description?: string
+  metadata: Record<string, unknown>
+  document_count: number
+  total_nodes: number
+  created_at: string
+  updated_at: string
 }
 
 export interface Document {

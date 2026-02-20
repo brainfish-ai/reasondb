@@ -1,70 +1,30 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   Table,
-  CaretRight,
-  CaretDown,
-  Columns,
-  Key,
-  Hash,
-  TextT,
-  Calendar,
-  ToggleLeft,
-  ListNumbers,
   Plus,
   DotsThree,
   MagnifyingGlass,
   Eye,
   ArrowClockwise,
 } from '@phosphor-icons/react'
-import { useTableStore, type Table as TableType, type TableColumn } from '@/stores/tableStore'
+import { useTableStore, type Table as TableType } from '@/stores/tableStore'
 import { useConnectionStore } from '@/stores/connectionStore'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
 import { createClient, type TableSummary } from '@/lib/api'
 import { setValueFetcher, useSchemaStore } from '@/lib/rql-language'
+import { CreateTableDialog } from '@/components/table/CreateTableDialog'
 
-function getTypeIcon(type: string) {
-  const lowerType = type.toLowerCase()
-  if (lowerType.includes('uuid') || lowerType.includes('id')) return Key
-  if (lowerType.includes('text') || lowerType.includes('varchar') || lowerType.includes('char')) return TextT
-  if (lowerType.includes('int') || lowerType.includes('numeric') || lowerType.includes('decimal')) return ListNumbers
-  if (lowerType.includes('timestamp') || lowerType.includes('date') || lowerType.includes('time')) return Calendar
-  if (lowerType.includes('bool')) return ToggleLeft
-  if (lowerType.includes('vector')) return Hash
-  return Columns
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
-}
-
-// Standard document fields in ReasonDB
-const DOCUMENT_FIELDS: TableColumn[] = [
-  { name: 'id', type: 'uuid', nullable: false, primaryKey: true },
-  { name: 'title', type: 'text', nullable: false, primaryKey: false },
-  { name: 'total_nodes', type: 'integer', nullable: false, primaryKey: false },
-  { name: 'tags', type: 'text[]', nullable: true, primaryKey: false },
-  { name: 'metadata', type: 'jsonb', nullable: true, primaryKey: false, description: 'Custom key-value pairs' },
-  { name: 'created_at', type: 'timestamp', nullable: false, primaryKey: false },
-]
-
-// Convert API response to table store format
 function apiTableToStoreTable(apiTable: TableSummary): TableType {
   return {
     id: apiTable.id,
     name: apiTable.name,
-    schema: 'default',
-    columns: DOCUMENT_FIELDS, // Standard document fields
-    indexes: [],
-    rowCount: apiTable.document_count,
-    sizeBytes: 0,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    description: apiTable.description || '',
+    description: apiTable.description,
+    metadata: {},
+    document_count: apiTable.document_count,
+    total_nodes: apiTable.total_nodes,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   }
 }
 
@@ -76,45 +36,29 @@ interface TableItemProps {
 }
 
 function TableItem({ table, isSelected, onSelect, onViewData }: TableItemProps) {
-  const [isExpanded, setIsExpanded] = useState(false)
-  const [showMenu, setShowMenu] = useState(false)
-
   return (
     <div className={cn('border-b border-border/30', isSelected && 'bg-surface-0/50')}>
-      {/* Table header */}
       <div
         className={cn(
           'flex items-center gap-2 px-3 py-2 cursor-pointer',
           'hover:bg-surface-0/50 transition-colors group'
         )}
-        onClick={() => {
-          onSelect()
-          setIsExpanded(!isExpanded)
-        }}
+        onClick={onSelect}
       >
-        <button className="p-0.5 hover:bg-surface-1 rounded">
-          {isExpanded ? (
-            <CaretDown size={12} weight="bold" className="text-overlay-0" />
-          ) : (
-            <CaretRight size={12} weight="bold" className="text-overlay-0" />
-          )}
-        </button>
-        
-        <Table 
-          size={16} 
-          weight={isSelected ? 'fill' : 'duotone'} 
-          className={isSelected ? 'text-mauve' : 'text-overlay-1'} 
+        <Table
+          size={16}
+          weight={isSelected ? 'fill' : 'duotone'}
+          className={isSelected ? 'text-mauve' : 'text-overlay-1'}
         />
-        
+
         <span className={cn('flex-1 text-sm truncate', isSelected ? 'text-text font-medium' : 'text-subtext-0')}>
           {table.name}
         </span>
-        
+
         <span className="text-xs text-overlay-0">
-          {table.rowCount.toLocaleString()} docs
+          {table.document_count.toLocaleString()} docs
         </span>
 
-        {/* Actions */}
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
             onClick={(e) => {
@@ -127,10 +71,7 @@ function TableItem({ table, isSelected, onSelect, onViewData }: TableItemProps) 
             <Eye size={14} />
           </button>
           <button
-            onClick={(e) => {
-              e.stopPropagation()
-              setShowMenu(!showMenu)
-            }}
+            onClick={(e) => e.stopPropagation()}
             className="p-1 hover:bg-surface-1 rounded text-overlay-0 hover:text-text"
           >
             <DotsThree size={14} weight="bold" />
@@ -138,70 +79,33 @@ function TableItem({ table, isSelected, onSelect, onViewData }: TableItemProps) 
         </div>
       </div>
 
-      {/* Expanded columns */}
-      {isExpanded && (
-        <div className="pl-8 pr-3 pb-2 space-y-0.5">
-          {table.columns.length > 0 ? (
-            table.columns.map((col) => (
-              <ColumnItem key={col.name} column={col} />
-            ))
-          ) : (
-            <p className="text-xs text-overlay-0 py-2">{table.description}</p>
-          )}
-          
-          {/* Table info */}
-          {table.sizeBytes > 0 && (
-            <div className="mt-2 pt-2 border-t border-border/30 flex items-center gap-4 text-xs text-overlay-0">
-              <span>{formatBytes(table.sizeBytes)}</span>
-              <span>{table.indexes.length} indexes</span>
-            </div>
-          )}
+      {isSelected && table.description && (
+        <div className="px-3 pb-2 pl-8">
+          <p className="text-xs text-overlay-0">{table.description}</p>
         </div>
       )}
     </div>
   )
 }
 
-function ColumnItem({ column }: { column: TableColumn }) {
-  const TypeIcon = getTypeIcon(column.type)
-  
-  return (
-    <div className="flex items-center gap-2 py-1 text-xs group">
-      <TypeIcon 
-        size={12} 
-        weight="duotone" 
-        className={column.primaryKey ? 'text-yellow' : 'text-overlay-0'} 
-      />
-      <span className={cn('flex-1', column.primaryKey ? 'text-text font-medium' : 'text-subtext-0')}>
-        {column.name}
-        {column.primaryKey && <Key size={10} weight="fill" className="inline ml-1 text-yellow" />}
-      </span>
-      <span className="text-overlay-0 font-mono">{column.type}</span>
-      {column.nullable && <span className="text-overlay-0 italic">null</span>}
-    </div>
-  )
-}
-
 export function TableBrowser() {
   const { activeConnectionId, connections } = useConnectionStore()
-  const { 
-    tables, 
-    selectedTableId, 
-    setTables, 
-    selectTable, 
+  const {
+    tables,
+    selectedTableId,
+    setTables,
+    selectTable,
     isLoadingTables,
     setLoadingTables,
     setTablesError,
     tablesError,
   } = useTableStore()
-  
+
   const [searchQuery, setSearchQuery] = useState('')
   const [showCreateDialog, setShowCreateDialog] = useState(false)
 
-  // Get active connection details
   const activeConnection = connections.find(c => c.id === activeConnectionId)
 
-  // Fetch tables from server
   const fetchTables = useCallback(async () => {
     if (!activeConnection) return
 
@@ -219,7 +123,6 @@ export function TableBrowser() {
       const response = await client.listTables()
       const storeTables = response.tables.map(apiTableToStoreTable)
       setTables(storeTables)
-      // Metadata schema fetching is handled by the separate useEffect below
     } catch (error) {
       console.error('Failed to fetch tables:', error)
       setTablesError(error instanceof Error ? error.message : 'Failed to fetch tables')
@@ -229,7 +132,6 @@ export function TableBrowser() {
     }
   }, [activeConnection, setLoadingTables, setTables, setTablesError])
 
-  // Load tables when connected
   useEffect(() => {
     if (activeConnectionId && activeConnection) {
       fetchTables()
@@ -238,12 +140,11 @@ export function TableBrowser() {
     }
   }, [activeConnectionId, activeConnection, fetchTables, setTables])
 
-  // Fetch metadata schema when tables are available (for autocompletion)
   useEffect(() => {
     if (!activeConnection || tables.length === 0) return
 
     const { addMetadataFields } = useSchemaStore.getState()
-    
+
     const fetchMetadataSchemas = async () => {
       const client = createClient({
         host: activeConnection.host,
@@ -264,12 +165,10 @@ export function TableBrowser() {
       }
     }
 
-    // Small delay to let QueryEditor set base schema first
     const timer = setTimeout(fetchMetadataSchemas, 300)
     return () => clearTimeout(timer)
   }, [activeConnection, tables])
 
-  // Set up value fetcher for autocompletion
   useEffect(() => {
     if (!activeConnection) return
 
@@ -280,7 +179,6 @@ export function TableBrowser() {
       useSsl: activeConnection.ssl,
     })
 
-    // Set up value fetcher (store handles table ID resolution)
     setValueFetcher(async (tableId: string, column: string) => {
       const response = await client.getColumnValues(tableId, column)
       return response.values.map(v => v.value)
@@ -293,7 +191,6 @@ export function TableBrowser() {
 
   const handleViewData = (tableId: string) => {
     selectTable(tableId)
-    // This would open the document viewer for this table
   }
 
   if (!activeConnectionId) {
@@ -361,7 +258,7 @@ export function TableBrowser() {
       {tablesError && (
         <div className="px-3 py-2 mx-2 mb-2 rounded-md bg-red/10 border border-red/20">
           <p className="text-xs text-red">{tablesError}</p>
-          <button 
+          <button
             onClick={fetchTables}
             className="text-xs text-red underline mt-1 hover:text-red/80"
           >
@@ -395,6 +292,11 @@ export function TableBrowser() {
           ))
         )}
       </div>
+
+      <CreateTableDialog
+        open={showCreateDialog}
+        onOpenChange={setShowCreateDialog}
+      />
     </div>
   )
 }

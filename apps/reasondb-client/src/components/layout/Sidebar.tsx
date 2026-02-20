@@ -11,7 +11,6 @@ import { useUiStore } from '@/stores/uiStore'
 import { ConnectionList } from '@/components/connection/ConnectionList'
 import { ConnectionForm } from '@/components/connection/ConnectionForm'
 import { TableBrowser } from '@/components/table/TableBrowser'
-import { CreateTableDialog } from '@/components/table/CreateTableDialog'
 import { createClient, setClient, removeClient } from '@/lib/api'
 
 export function Sidebar() {
@@ -22,7 +21,6 @@ export function Sidebar() {
     setConnectionError,
   } = useConnectionStore()
   const { showConnectionForm, setShowConnectionForm } = useUiStore()
-  const [showCreateTable, setShowCreateTable] = useState(false)
   const [editingConnection, setEditingConnection] = useState<Connection | undefined>()
 
   const handleConnect = async (connection: Connection) => {
@@ -146,10 +144,6 @@ export function Sidebar() {
         open={showConnectionForm}
         onOpenChange={setShowConnectionForm}
         editConnection={editingConnection}
-      />
-      <CreateTableDialog
-        open={showCreateTable}
-        onOpenChange={setShowCreateTable}
       />
     </div>
   )
