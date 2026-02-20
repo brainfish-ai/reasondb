@@ -1,7 +1,7 @@
 services:
   reasondb:
     build: .
-    image: reasondb/reasondb:latest
+    image: ajainvivek/reasondb:latest
     ports:
       - "4444:4444"
     volumes:
@@ -10,8 +10,9 @@ services:
       REASONDB_HOST: "0.0.0.0"
       REASONDB_PORT: "4444"
       REASONDB_PATH: "/data/reasondb.redb"
-      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
-      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      REASONDB_LLM_PROVIDER: "${REASONDB_LLM_PROVIDER:-mock}"
+      REASONDB_LLM_API_KEY: "${REASONDB_LLM_API_KEY:-}"
+      REASONDB_MODEL: "${REASONDB_MODEL:-}"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4444/health"]
       interval: 10s
