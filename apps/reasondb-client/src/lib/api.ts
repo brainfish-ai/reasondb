@@ -396,6 +396,49 @@ interface QueryServerResponse {
   }>
 }
 
+// Ingestion
+export interface IngestTextRequest {
+  title: string
+  content: string
+  table_id: string
+  generate_summaries?: boolean
+  tags?: string[]
+  metadata?: Record<string, unknown>
+}
+
+export interface IngestUrlRequest {
+  url: string
+  table_id: string
+  generate_summaries?: boolean
+}
+
+export interface IngestStats {
+  chars_extracted: number
+  chunks_created: number
+  nodes_created: number
+  summaries_generated: number
+  total_time_ms: number
+}
+
+export interface IngestResponse {
+  document_id: string
+  title: string
+  total_nodes: number
+  max_depth: number
+  stats: IngestStats
+}
+
+// Jobs
+export interface JobStatusResponse {
+  job_id: string
+  status: 'queued' | 'processing' | 'completed' | 'failed'
+  progress?: string
+  result?: IngestResponse
+  error?: string
+  created_at: string
+  updated_at: string
+}
+
 // Errors
 export interface ApiError {
   error: string
@@ -424,11 +467,10 @@ class ReasonDBClient {
   private async request<T>(
     endpoint: string,
     options: RequestInit = {},
-    skipCache: boolean = false
+    skipCache: boolean = false,
   ): Promise<T> {
     const method = options.method || 'GET'
     
-    // Check cache for GET requests (unless skipCache is true)
     if (method === 'GET' && !skipCache) {
       const cached = requestCache.get<T>(this.baseUrl, endpoint, options)
       if (cached !== null) {
@@ -445,7 +487,9 @@ class ReasonDBClient {
       headers['X-API-Key'] = this.apiKey
     }
 
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+    const url = `${this.baseUrl}${endpoint}`
+
+    const response = await fetch(url, {
       ...options,
       headers,
     })
@@ -460,11 +504,9 @@ class ReasonDBClient {
 
     const data = await response.json() as T
     
-    // Cache GET responses
     if (method === 'GET') {
       requestCache.set(this.baseUrl, endpoint, data, options)
     } else {
-      // Invalidate related cache entries for mutations
       requestCache.invalidate(method, endpoint)
     }
 
@@ -741,6 +783,40 @@ class ReasonDBClient {
       rowCount: 0,
       executionTime: response.execution_time_ms,
     }
+  }
+
+  // ==================== Ingestion ====================
+
+  async ingestText(request: IngestTextRequest): Promise<JobStatusResponse> {
+    return this.request<JobStatusResponse>('/v1/ingest/text', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    })
+  }
+
+  async ingestUrl(request: IngestUrlRequest): Promise<JobStatusResponse> {
+    return this.request<JobStatusResponse>('/v1/ingest/url', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    })
+  }
+
+  // ==================== Jobs ====================
+
+  async getJobStatus(jobId: string): Promise<JobStatusResponse> {
+    return this.request<JobStatusResponse>(
+      `/v1/jobs/${encodeURIComponent(jobId)}`,
+      {},
+      true, // always skip cache for job status
+    )
+  }
+
+  async listJobs(limit = 50): Promise<JobStatusResponse[]> {
+    return this.request<JobStatusResponse[]>(
+      `/v1/jobs?limit=${limit}`,
+      {},
+      true,
+    )
   }
 }
 

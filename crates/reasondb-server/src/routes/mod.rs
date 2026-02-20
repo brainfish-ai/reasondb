@@ -7,6 +7,7 @@ pub mod backup;
 pub mod cluster;
 pub mod documents;
 pub mod ingest;
+pub mod jobs;
 pub mod query;
 pub mod relations;
 pub mod search;
@@ -48,6 +49,9 @@ fn v1_routes<R: ReasoningEngine + Clone + Send + Sync + 'static>(state: Arc<AppS
         .route("/ingest/file", post(ingest::ingest_file::<R>))
         .route("/ingest/text", post(ingest::ingest_text::<R>))
         .route("/ingest/url", post(ingest::ingest_url::<R>))
+        // Jobs
+        .route("/jobs", get(jobs::list_jobs::<R>))
+        .route("/jobs/:id", get(jobs::get_job::<R>))
         // Search
         .route("/search", post(search::search::<R>))
         // RQL Query

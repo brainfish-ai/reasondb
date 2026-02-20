@@ -140,6 +140,13 @@ export function TableBrowser() {
     }
   }, [activeConnectionId, activeConnection, fetchTables, setTables])
 
+  // Refresh table list when ingestion completes
+  useEffect(() => {
+    const handler = () => fetchTables()
+    window.addEventListener('reasondb:tables-changed', handler)
+    return () => window.removeEventListener('reasondb:tables-changed', handler)
+  }, [fetchTables])
+
   useEffect(() => {
     if (!activeConnection || tables.length === 0) return
 

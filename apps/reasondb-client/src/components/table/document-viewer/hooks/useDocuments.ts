@@ -82,7 +82,6 @@ export function useDocuments(tableId: string) {
           // Schema endpoint might not exist on older servers, fail silently
           // Remove from set so it can be retried later
           fetchedSchemas.delete(tableId)
-          console.warn('Failed to fetch metadata schema:', schemaError)
         }
       }
     } catch (error) {
@@ -100,6 +99,18 @@ export function useDocuments(tableId: string) {
       fetchDocuments()
     }
   }, [tableId, activeConnection, fetchDocuments])
+
+  // Listen for background ingestion completions
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (detail?.tableId === tableId) {
+        fetchDocuments(true)
+      }
+    }
+    window.addEventListener('reasondb:documents-changed', handler)
+    return () => window.removeEventListener('reasondb:documents-changed', handler)
+  }, [tableId, fetchDocuments])
 
   return {
     documents,

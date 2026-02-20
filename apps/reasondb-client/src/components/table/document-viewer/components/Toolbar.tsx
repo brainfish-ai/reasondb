@@ -21,6 +21,7 @@ interface ToolbarProps {
   onViewModeChange: (mode: ViewMode) => void
   onRefresh: () => void
   onSearch: (text: string) => void
+  onAddDocument?: () => void
 }
 
 export function Toolbar({
@@ -32,6 +33,7 @@ export function Toolbar({
   onViewModeChange,
   onRefresh,
   onSearch,
+  onAddDocument,
 }: ToolbarProps) {
   return (
     <div className="flex items-center gap-3 px-4 py-2 border-b border-border bg-mantle">
@@ -91,7 +93,7 @@ export function Toolbar({
           <DownloadSimple size={16} />
         </Button>
 
-        <Button size="sm" variant="ghost" className="gap-1.5">
+        <Button size="sm" variant="ghost" className="gap-1.5" onClick={onAddDocument}>
           <Plus size={14} />
           Add
         </Button>
