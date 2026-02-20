@@ -56,6 +56,7 @@ pub mod jobs;
 pub mod metrics;
 pub mod openapi;
 pub mod ratelimit;
+pub mod replication;
 pub mod routes;
 pub mod state;
 
@@ -282,6 +283,33 @@ pub async fn run_server() -> anyhow::Result<()> {
     let reasoner = Reasoner::new(provider);
     let (app_state, job_rx) = AppState::new(store, text_index, reasoner, api_key_store, config);
     let state = Arc::new(app_state);
+
+    // Restore rate limit state from previous run
+    match state.store.load_all_rate_limits() {
+        Ok(snapshots) if !snapshots.is_empty() => {
+            info!("Restoring {} rate limit entries from database", snapshots.len());
+            state.rate_limit_store.import_snapshots(&snapshots);
+        }
+        _ => {}
+    }
+
+    // Periodically snapshot rate limit state to redb
+    let snapshot_store = state.store.clone();
+    let snapshot_rl = state.rate_limit_store.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+        loop {
+            interval.tick().await;
+            let snapshots = snapshot_rl.export_snapshots();
+            if !snapshots.is_empty() {
+                let refs: Vec<(&str, _)> = snapshots.iter().map(|(k, v)| (k.as_str(), v.clone())).collect();
+                if let Err(e) = snapshot_store.save_rate_limits(&refs) {
+                    tracing::warn!("Failed to persist rate limit snapshots: {}", e);
+                }
+            }
+            snapshot_rl.cleanup();
+        }
+    });
 
     tokio::spawn(jobs::run_worker(state.clone(), job_rx));
 

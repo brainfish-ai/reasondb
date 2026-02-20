@@ -9,6 +9,7 @@ use reasondb_core::{
     cluster::{ClusterConfig, ClusterStateMachine, NodeId, RaftNode},
     llm::{provider::Reasoner, ReasoningEngine},
     ratelimit::RateLimitStore,
+    shard::ShardRouter,
     store::NodeStore,
     text_index::TextIndex,
 };
@@ -35,6 +36,8 @@ pub struct AppState<R: ReasoningEngine = Reasoner> {
     pub config: ServerConfig,
     /// Background ingestion job queue
     pub job_queue: Arc<JobQueue>,
+    /// Shard router for table-level partitioning
+    pub shard_router: Arc<ShardRouter>,
 }
 
 impl<R: ReasoningEngine> AppState<R> {
@@ -47,7 +50,8 @@ impl<R: ReasoningEngine> AppState<R> {
         config: ServerConfig,
     ) -> (Self, mpsc::Receiver<String>) {
         let rate_limit_store = RateLimitStore::new(config.rate_limit.clone());
-        let (job_queue, job_rx) = JobQueue::new();
+        let store = Arc::new(store);
+        let (job_queue, job_rx) = JobQueue::new(store.clone());
         
         let cluster_node = if config.cluster.enabled {
             let node_id = NodeId::new(config.cluster.node_id.clone());
@@ -58,14 +62,17 @@ impl<R: ReasoningEngine> AppState<R> {
                 enable_read_scaling: config.cluster.enable_read_scaling,
                 ..Default::default()
             };
-            let state_machine = Arc::new(ClusterStateMachine::new());
+            let apply_cb = crate::replication::create_apply_callback(store.clone());
+            let state_machine = Arc::new(ClusterStateMachine::with_callback(apply_cb));
             Some(Arc::new(RaftNode::new(node_id, cluster_config, state_machine)))
         } else {
             None
         };
         
+        let shard_router = Arc::new(ShardRouter::single_node(&config.cluster.node_id));
+
         (Self {
-            store: Arc::new(store),
+            store,
             text_index: Arc::new(text_index),
             reasoner: Arc::new(reasoner),
             query_cache: Arc::new(QueryCache::new()),
@@ -74,6 +81,7 @@ impl<R: ReasoningEngine> AppState<R> {
             cluster_node,
             config,
             job_queue,
+            shard_router,
         }, job_rx)
     }
     

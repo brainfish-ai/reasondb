@@ -208,6 +208,35 @@ impl TokenBucket {
         }
     }
 
+    /// Restore a bucket from a persisted snapshot.
+    pub fn from_snapshot(
+        tokens: f64,
+        max_tokens: f64,
+        refill_rate: f64,
+        hourly_count: u32,
+        last_update: Instant,
+        hour_start: Instant,
+    ) -> Self {
+        Self {
+            tokens,
+            max_tokens,
+            refill_rate,
+            last_update,
+            hourly_count,
+            hour_start,
+        }
+    }
+
+    /// Get current raw token count (without refilling).
+    pub fn tokens_count(&self) -> f64 {
+        self.tokens
+    }
+
+    /// Get the hour start instant.
+    pub fn hour_start_instant(&self) -> Instant {
+        self.hour_start
+    }
+
     /// Try to consume a token, returns remaining tokens if successful
     pub fn try_consume(&mut self, hourly_limit: u32) -> Option<u32> {
         self.refill();

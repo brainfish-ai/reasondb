@@ -34,7 +34,6 @@ pub async fn get_job<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     state
         .job_queue
         .get_status(&job_id)
-        .await
         .map(Json)
         .ok_or_else(|| ApiError::NotFound(format!("Job '{}' not found", job_id)))
 }
@@ -45,5 +44,5 @@ pub async fn list_jobs<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     Query(params): Query<ListJobsQuery>,
 ) -> Json<Vec<JobStatusResponse>> {
     let limit = params.limit.min(200);
-    Json(state.job_queue.list_jobs(limit).await)
+    Json(state.job_queue.list_jobs(limit))
 }

@@ -285,23 +285,7 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
         let result = self.ingest_file(path, table_id).await?;
 
         if self.config.store_in_db {
-            // Store document
-            store
-                .insert_document(&result.document)
-                .map_err(IngestError::Storage)?;
-
-            // Store nodes
-            for node in &result.nodes {
-                store
-                    .insert_node(node)
-                    .map_err(IngestError::Storage)?;
-            }
-
-            info!(
-                "Stored document {} with {} nodes",
-                result.document.id,
-                result.nodes.len()
-            );
+            Self::store_result(&result, store)?;
         }
 
         Ok(result)
@@ -320,21 +304,7 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
         let result = self.ingest_text(title, table_id, text).await?;
 
         if self.config.store_in_db {
-            store
-                .insert_document(&result.document)
-                .map_err(IngestError::Storage)?;
-
-            for node in &result.nodes {
-                store
-                    .insert_node(node)
-                    .map_err(IngestError::Storage)?;
-            }
-
-            info!(
-                "Stored document {} with {} nodes",
-                result.document.id,
-                result.nodes.len()
-            );
+            Self::store_result(&result, store)?;
         }
 
         Ok(result)
@@ -352,24 +322,28 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
         let result = self.ingest_url(url, table_id).await?;
 
         if self.config.store_in_db {
-            store
-                .insert_document(&result.document)
-                .map_err(IngestError::Storage)?;
-
-            for node in &result.nodes {
-                store
-                    .insert_node(node)
-                    .map_err(IngestError::Storage)?;
-            }
-
-            info!(
-                "Stored document {} with {} nodes",
-                result.document.id,
-                result.nodes.len()
-            );
+            Self::store_result(&result, store)?;
         }
 
         Ok(result)
+    }
+
+    /// Store an ingestion result (document + nodes) in a single batch transaction
+    fn store_result(result: &IngestResult, store: &NodeStore) -> Result<()> {
+        store
+            .insert_document(&result.document)
+            .map_err(IngestError::Storage)?;
+
+        store
+            .insert_nodes(&result.nodes)
+            .map_err(IngestError::Storage)?;
+
+        info!(
+            "Stored document {} with {} nodes (batch)",
+            result.document.id,
+            result.nodes.len()
+        );
+        Ok(())
     }
 }
 

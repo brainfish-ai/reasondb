@@ -40,4 +40,4 @@ pub use log::{LogEntry, LogEntryType, ReplicationLog};
 pub use network::{NetworkClient, NetworkMessage, NetworkServer};
 pub use node::{ClusterNode, NodeId, NodeRole, NodeStatus};
 pub use raft::{ClusterStatus, RaftId, RaftNode, RaftNodeInfo, RaftTypeConfig};
-pub use state::{ClusterState, ClusterStateMachine};
+pub use state::{ApplyResult, ClusterState, ClusterStateMachine};

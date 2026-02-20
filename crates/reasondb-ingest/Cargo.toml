@@ -12,6 +12,7 @@ reasondb-core = { path = "../reasondb-core" }
 # Async
 tokio.workspace = true
 async-trait.workspace = true
+futures.workspace = true
 
 # Serialization
 serde.workspace = true

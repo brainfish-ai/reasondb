@@ -9,7 +9,8 @@ import {
 import { useConnectionStore } from '@/stores/connectionStore'
 import { useTableStore } from '@/stores/tableStore'
 
-const POLL_INTERVAL_MS = 2000
+const POLL_INTERVAL_INITIAL_MS = 1000
+const POLL_INTERVAL_PROCESSING_MS = 4000
 const AUTO_DISMISS_MS = 60_000
 const MAX_POLL_FAILURES = 5
 
@@ -97,13 +98,23 @@ export const useIngestionStore = create<IngestionState>((set, get) => {
       useSsl: conn.ssl,
     })
 
-    const timer = setInterval(async () => {
+    let isProcessing = false
+
+    function schedulePoll() {
+      const delay = isProcessing ? POLL_INTERVAL_PROCESSING_MS : POLL_INTERVAL_INITIAL_MS
+      const timer = setTimeout(poll, delay)
+      pollingTimers.set(localId, timer)
+    }
+
+    async function poll() {
       try {
         const status = await client.getJobStatus(serverJobId)
         pollFailureCounts.set(localId, 0)
 
         if (status.status === 'processing') {
+          isProcessing = true
           updateJob(localId, { progress: status.progress })
+          schedulePoll()
         } else if (status.status === 'completed') {
           stopPolling(localId)
           updateJob(localId, {
@@ -121,6 +132,8 @@ export const useIngestionStore = create<IngestionState>((set, get) => {
             error: status.error || 'Ingestion failed on server',
             completedAt: Date.now(),
           })
+        } else {
+          schedulePoll()
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : ''
@@ -146,17 +159,19 @@ export const useIngestionStore = create<IngestionState>((set, get) => {
             error: 'Server unreachable — connection lost',
             completedAt: Date.now(),
           })
+        } else {
+          schedulePoll()
         }
       }
-    }, POLL_INTERVAL_MS)
+    }
 
-    pollingTimers.set(localId, timer)
+    schedulePoll()
   }
 
   function stopPolling(localId: string) {
     const timer = pollingTimers.get(localId)
     if (timer) {
-      clearInterval(timer)
+      clearTimeout(timer)
       pollingTimers.delete(localId)
     }
     pollFailureCounts.delete(localId)

@@ -116,6 +116,11 @@ pub fn extract_client_id(headers: &HeaderMap, addr: Option<SocketAddr>) -> Clien
     }
 }
 
+/// Paths exempt from rate limiting (polling and health endpoints)
+fn is_rate_limit_exempt(path: &str) -> bool {
+    path.starts_with("/v1/jobs") || path == "/health" || path == "/metrics"
+}
+
 /// Rate limiting middleware
 pub async fn rate_limit_middleware(
     State(store): State<Arc<RateLimitStore>>,
@@ -124,6 +129,11 @@ pub async fn rate_limit_middleware(
 ) -> Response {
     // Skip rate limiting if disabled
     if !store.is_enabled() {
+        return next.run(request).await;
+    }
+
+    // Skip rate limiting for exempt endpoints
+    if is_rate_limit_exempt(request.uri().path()) {
         return next.run(request).await;
     }
 
@@ -197,5 +207,27 @@ mod tests {
 
         let client_id = extract_client_id(&headers, None);
         assert!(matches!(client_id, ClientId::IpAddress(ip) if ip == "10.0.0.1"));
+    }
+
+    #[test]
+    fn test_rate_limit_exempt_jobs_path() {
+        assert!(is_rate_limit_exempt("/v1/jobs"));
+        assert!(is_rate_limit_exempt("/v1/jobs/job_123"));
+        assert!(is_rate_limit_exempt("/v1/jobs/job_abc/status"));
+    }
+
+    #[test]
+    fn test_rate_limit_exempt_health_and_metrics() {
+        assert!(is_rate_limit_exempt("/health"));
+        assert!(is_rate_limit_exempt("/metrics"));
+    }
+
+    #[test]
+    fn test_rate_limit_not_exempt_api_paths() {
+        assert!(!is_rate_limit_exempt("/v1/tables"));
+        assert!(!is_rate_limit_exempt("/v1/documents"));
+        assert!(!is_rate_limit_exempt("/v1/ingest/text"));
+        assert!(!is_rate_limit_exempt("/v1/search"));
+        assert!(!is_rate_limit_exempt("/"));
     }
 }

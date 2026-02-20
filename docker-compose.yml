@@ -13,6 +13,10 @@ services:
       REASONDB_LLM_PROVIDER: "${REASONDB_LLM_PROVIDER}"
       REASONDB_LLM_API_KEY: "${REASONDB_LLM_API_KEY:-}"
       REASONDB_MODEL: "${REASONDB_MODEL:-}"
+      REASONDB_RATE_LIMIT_RPM: "300"
+      REASONDB_RATE_LIMIT_RPH: "5000"
+      REASONDB_RATE_LIMIT_BURST: "30"
+      REASONDB_WORKER_COUNT: "2"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4444/health"]
       interval: 10s

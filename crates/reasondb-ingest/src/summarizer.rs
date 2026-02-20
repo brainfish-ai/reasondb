@@ -4,6 +4,9 @@
 //! working bottom-up from leaves to root.
 
 use std::collections::HashMap;
+use std::sync::Arc;
+use futures::stream::{FuturesUnordered, StreamExt};
+use tokio::sync::Semaphore;
 use tracing::{debug, info};
 
 use reasondb_core::llm::{ReasoningEngine, SummarizationContext};
@@ -53,23 +56,21 @@ impl<'a, R: ReasoningEngine> NodeSummarizer<'a, R> {
         self
     }
 
-    /// Summarize all nodes in a document tree (bottom-up)
+    /// Summarize all nodes in a document tree (bottom-up, concurrent per depth level)
     pub async fn summarize_tree(&self, nodes: &mut [PageNode]) -> Result<()> {
-        info!("Summarizing {} nodes", nodes.len());
+        info!("Summarizing {} nodes (max_concurrent: {})", nodes.len(), self.config.max_concurrent);
 
-        // Build a map for quick lookup
         let node_map: HashMap<String, usize> = nodes
             .iter()
             .enumerate()
             .map(|(i, n)| (n.id.clone(), i))
             .collect();
 
-        // Find max depth
         let max_depth = nodes.iter().map(|n| n.depth).max().unwrap_or(0);
+        let semaphore = Arc::new(Semaphore::new(self.config.max_concurrent));
 
-        // Process bottom-up (leaves first)
         for depth in (0..=max_depth).rev() {
-            let nodes_at_depth: Vec<usize> = nodes
+            let indices_at_depth: Vec<usize> = nodes
                 .iter()
                 .enumerate()
                 .filter(|(_, n)| n.depth == depth)
@@ -77,13 +78,52 @@ impl<'a, R: ReasoningEngine> NodeSummarizer<'a, R> {
                 .collect();
 
             debug!(
-                "Summarizing {} nodes at depth {}",
-                nodes_at_depth.len(),
+                "Summarizing {} nodes at depth {} (concurrent)",
+                indices_at_depth.len(),
                 depth
             );
 
-            for idx in nodes_at_depth {
-                let summary = self.summarize_node(&nodes[idx], nodes, &node_map).await?;
+            // Collect all inputs for this depth level (immutable reads)
+            let work_items: Vec<(usize, String, SummarizationContext)> = indices_at_depth
+                .iter()
+                .map(|&idx| {
+                    let node = &nodes[idx];
+                    let content = self.get_summarization_content(node, nodes, &node_map);
+                    let parent_summary = node.parent_id.as_ref().and_then(|pid| {
+                        node_map.get(pid).map(|&i| nodes[i].summary.clone())
+                    });
+                    let context = SummarizationContext {
+                        title: Some(node.title.clone()),
+                        parent_summary,
+                        depth: node.depth,
+                        is_leaf: node.is_leaf(),
+                    };
+                    (idx, content, context)
+                })
+                .collect();
+
+            // Run LLM calls concurrently, bounded by semaphore
+            let mut futures = FuturesUnordered::new();
+
+            for (idx, content, context) in work_items {
+                let permit = semaphore.clone();
+                futures.push(async move {
+                    let _permit = permit.acquire().await.unwrap();
+                    if content.is_empty() {
+                        return Ok((idx, format!("Section: {}", context.title.as_deref().unwrap_or("Untitled"))));
+                    }
+                    let truncated: String = content.chars().take(self.config.max_content_length).collect();
+                    let summary = self.reasoner
+                        .summarize(&truncated, &context)
+                        .await
+                        .map_err(|e| IngestError::Summarization(e.to_string()))?;
+                    Ok::<(usize, String), IngestError>((idx, summary))
+                });
+            }
+
+            // Collect results and write back
+            while let Some(result) = futures.next().await {
+                let (idx, summary) = result?;
                 nodes[idx].summary = summary;
             }
         }
@@ -92,49 +132,20 @@ impl<'a, R: ReasoningEngine> NodeSummarizer<'a, R> {
         Ok(())
     }
 
-    /// Summarize a single node
-    async fn summarize_node(
+    /// Get the content to summarize for a node
+    fn get_summarization_content(
         &self,
         node: &PageNode,
         all_nodes: &[PageNode],
         node_map: &HashMap<String, usize>,
-    ) -> Result<String> {
-        // Get parent summary if available
-        let parent_summary = node.parent_id.as_ref().and_then(|pid| {
-            node_map.get(pid).map(|&idx| all_nodes[idx].summary.clone())
-        });
-
-        let context = SummarizationContext {
-            title: Some(node.title.clone()),
-            parent_summary,
-            depth: node.depth,
-            is_leaf: node.is_leaf(),
-        };
-
-        // Build content to summarize
-        let content = if node.is_leaf() {
-            // Leaf node: use actual content
+    ) -> String {
+        if node.is_leaf() {
             node.content.clone().unwrap_or_default()
         } else if self.config.include_child_summaries {
-            // Non-leaf: combine child summaries
             self.combine_child_summaries(node, all_nodes, node_map)
         } else {
-            // Just use title
             node.title.clone()
-        };
-
-        if content.is_empty() {
-            return Ok(format!("Section: {}", node.title));
         }
-
-        // Truncate if needed
-        let truncated: String = content.chars().take(self.config.max_content_length).collect();
-
-        // Call LLM for summarization
-        self.reasoner
-            .summarize(&truncated, &context)
-            .await
-            .map_err(|e| IngestError::Summarization(e.to_string()))
     }
 
     /// Combine child summaries for a parent node

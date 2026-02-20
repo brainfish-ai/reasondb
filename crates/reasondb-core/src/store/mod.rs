@@ -15,8 +15,10 @@
 
 mod documents;
 mod indexes;
+mod jobs;
 mod nodes;
 mod queries;
+pub mod rate_limits;
 mod relations;
 mod tables;
 
@@ -60,6 +62,17 @@ pub(crate) const IDX_METADATA: MultimapTableDefinition<&str, &str> =
 /// Table slug-to-ID index (slug -> TableId) for unique name enforcement
 pub(crate) const IDX_TABLE_SLUG: TableDefinition<&str, &str> =
     TableDefinition::new("idx_table_slug");
+
+/// Primary table for ingestion jobs (JobId -> bincode bytes)
+pub(crate) const JOBS_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("jobs");
+
+/// Job ordering index (timestamp_jobId -> JobId) for FIFO ordering
+pub(crate) const JOBS_ORDER_TABLE: TableDefinition<&str, &str> =
+    TableDefinition::new("jobs_order");
+
+/// Rate limit snapshots (ClientId -> bincode bytes) for persistence across restarts
+pub(crate) const RATE_LIMITS_TABLE: TableDefinition<&str, &[u8]> =
+    TableDefinition::new("rate_limits");
 
 // ==================== NodeStore ====================
 
@@ -163,6 +176,19 @@ impl NodeStore {
                 .map_err(StorageError::from)?;
             let _ = write_txn
                 .open_table(IDX_TABLE_SLUG)
+                .map_err(StorageError::from)?;
+
+            // Job tables
+            let _ = write_txn
+                .open_table(JOBS_TABLE)
+                .map_err(StorageError::from)?;
+            let _ = write_txn
+                .open_table(JOBS_ORDER_TABLE)
+                .map_err(StorageError::from)?;
+
+            // Rate limit snapshot table
+            let _ = write_txn
+                .open_table(RATE_LIMITS_TABLE)
                 .map_err(StorageError::from)?;
 
             // Relation tables

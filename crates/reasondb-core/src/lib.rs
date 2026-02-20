@@ -53,6 +53,7 @@ pub mod llm;
 pub mod model;
 pub mod ratelimit;
 pub mod rql;
+pub mod shard;
 pub mod store;
 pub mod text_index;
 
@@ -71,6 +72,7 @@ pub use cluster::{
     NetworkClient, NetworkMessage, NodeConfig, NodeId as ClusterNodeId, NodeRole, NodeStatus, RaftNode,
 };
 pub use ratelimit::{RateLimitConfig, RateLimitResult, RateLimitStore, RateLimitTier, RateLimiter};
+pub use shard::{ScatterGatherResult, ShardMap, ShardRouter};
 pub use store::{NodeStore, StoreStats};
 pub use text_index::{TextIndex, TextSearchResult};
 pub use backup::{

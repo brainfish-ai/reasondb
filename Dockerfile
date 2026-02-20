@@ -20,6 +20,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     gosu \
+    python3 \
+    python3-pip \
+    && pip3 install --no-cache-dir --break-system-packages 'markitdown[all]' \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd -r reasondb && useradd -r -g reasondb reasondb

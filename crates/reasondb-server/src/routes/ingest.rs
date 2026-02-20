@@ -69,7 +69,7 @@ fn index_document_nodes(
 }
 
 /// Response for ingestion operations
-#[derive(Debug, Clone, Serialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct IngestResponse {
     /// Unique document ID
     #[schema(example = "doc_abc123")]
@@ -88,7 +88,7 @@ pub struct IngestResponse {
 }
 
 /// Statistics from ingestion
-#[derive(Debug, Clone, Serialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct IngestStats {
     /// Characters extracted from source
     #[schema(example = 50000)]
@@ -120,7 +120,7 @@ impl From<reasondb_ingest::IngestStats> for IngestStats {
 }
 
 /// Request for text ingestion
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct IngestTextRequest {
     /// Document title
     #[schema(example = "My Research Notes")]
@@ -145,7 +145,7 @@ pub struct IngestTextRequest {
 }
 
 /// Request for URL ingestion
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct IngestUrlRequest {
     /// URL to ingest (web page, YouTube video, etc.)
     #[schema(example = "https://en.wikipedia.org/wiki/Machine_learning")]
@@ -325,8 +325,10 @@ pub async fn ingest_text<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         request.table_id
     );
 
-    let job_id = state.job_queue.enqueue(JobRequest::Text(request)).await;
-    let status = state.job_queue.get_status(&job_id).await.unwrap();
+    let job_id = state.job_queue.enqueue(JobRequest::Text(request))
+        .map_err(|e| ApiError::Internal(e))?;
+    let status = state.job_queue.get_status(&job_id)
+        .ok_or_else(|| ApiError::Internal("Job not found after enqueue".to_string()))?;
 
     Ok(Json(status))
 }
@@ -372,8 +374,10 @@ pub async fn ingest_url<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         request.url, request.table_id
     );
 
-    let job_id = state.job_queue.enqueue(JobRequest::Url(request)).await;
-    let status = state.job_queue.get_status(&job_id).await.unwrap();
+    let job_id = state.job_queue.enqueue(JobRequest::Url(request))
+        .map_err(|e| ApiError::Internal(e))?;
+    let status = state.job_queue.get_status(&job_id)
+        .ok_or_else(|| ApiError::Internal("Job not found after enqueue".to_string()))?;
 
     Ok(Json(status))
 }
