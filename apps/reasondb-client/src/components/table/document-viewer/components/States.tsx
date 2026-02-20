@@ -15,12 +15,16 @@ export function LoadingState() {
 /**
  * Empty table state
  */
-export function EmptyState() {
+interface EmptyStateProps {
+  onAddDocument?: () => void
+}
+
+export function EmptyState({ onAddDocument }: EmptyStateProps) {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center p-8">
       <Table size={48} weight="duotone" className="text-overlay-0 mb-3" />
       <p className="text-sm text-subtext-0">No documents in this table</p>
-      <Button size="sm" variant="secondary" className="mt-4 gap-1.5">
+      <Button size="sm" variant="secondary" className="mt-4 gap-1.5" onClick={onAddDocument}>
         <Plus size={14} />
         Add Document
       </Button>

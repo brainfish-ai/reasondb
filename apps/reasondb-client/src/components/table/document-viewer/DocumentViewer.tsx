@@ -9,6 +9,7 @@ import {
 import { FilterBuilder } from '@/components/search'
 import { JsonDetailSidebar } from '../JsonDetailSidebar'
 import { NodeViewerSidebar } from '@/components/shared/NodeViewerSidebar'
+import { AddDocumentDialog } from '../AddDocumentDialog'
 import { createClient, type TreeNode } from '@/lib/api'
 import type { Document } from '@/stores/tableStore'
 import {
@@ -54,6 +55,9 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
   const [deleteTarget, setDeleteTarget] = useState<Document | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   
+  // Add document dialog state
+  const [showAddDocument, setShowAddDocument] = useState(false)
+
   // Node viewer sidebar state
   const [nodeViewerOpen, setNodeViewerOpen] = useState(false)
   const [nodeViewerTitle, setNodeViewerTitle] = useState('')
@@ -225,6 +229,7 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
           onViewModeChange={setViewMode}
           onRefresh={() => fetchDocuments(true)}
           onSearch={handleSearch}
+          onAddDocument={() => setShowAddDocument(true)}
         />
 
         {/* Filter Builder */}
@@ -240,7 +245,7 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
           {isLoadingDocuments ? (
             <LoadingState />
           ) : documents.length === 0 ? (
-            <EmptyState />
+            <EmptyState onAddDocument={() => setShowAddDocument(true)} />
           ) : viewMode === 'table' ? (
             <TableView
               table={table}
@@ -289,6 +294,13 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
         title={nodeViewerTitle}
         treeData={nodeViewerTree ?? undefined}
         isLoading={nodeViewerLoading}
+      />
+
+      {/* Add Document Dialog */}
+      <AddDocumentDialog
+        open={showAddDocument}
+        onOpenChange={setShowAddDocument}
+        tableId={tableId}
       />
 
       {/* Delete Confirmation Dialog */}

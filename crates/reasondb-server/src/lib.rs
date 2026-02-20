@@ -44,7 +44,7 @@
 //!     let text_index = TextIndex::open("./search_index").unwrap();
 //!     let api_key_store = ApiKeyStore::new(db).unwrap();
 //!     let reasoner = Reasoner::new(LLMProvider::openai("sk-..."));
-//!     let state = AppState::new(store, text_index, reasoner, api_key_store, config.clone());
+//!     let (state, _job_rx) = AppState::new(store, text_index, reasoner, api_key_store, config.clone());
 //!     
 //!     // Server would be started here
 //! }
@@ -52,6 +52,7 @@
 
 pub mod auth;
 pub mod error;
+pub mod jobs;
 pub mod metrics;
 pub mod openapi;
 pub mod ratelimit;
@@ -279,7 +280,11 @@ pub async fn run_server() -> anyhow::Result<()> {
     info!("LLM provider: {} | model: {}", provider.provider_name(), provider.model());
 
     let reasoner = Reasoner::new(provider);
-    let state = Arc::new(AppState::new(store, text_index, reasoner, api_key_store, config));
+    let (app_state, job_rx) = AppState::new(store, text_index, reasoner, api_key_store, config);
+    let state = Arc::new(app_state);
+
+    tokio::spawn(jobs::run_worker(state.clone(), job_rx));
+
     let app = create_server(state);
 
     info!("Server listening on http://{}", addr);

@@ -9,7 +9,7 @@ use reasondb_core::{
     store::NodeStore,
     text_index::TextIndex,
 };
-use reasondb_server::{create_server, init_metrics, AppState, AuthConfig, ClusterNodeConfig, RateLimitConfig, ServerConfig};
+use reasondb_server::{create_server, init_metrics, jobs, AppState, AuthConfig, ClusterNodeConfig, RateLimitConfig, ServerConfig};
 use redb::Database;
 use std::sync::Arc;
 use tracing::{info, Level};
@@ -269,7 +269,11 @@ async fn main() -> anyhow::Result<()> {
     info!("LLM provider: {} | model: {}", provider.provider_name(), provider.model());
 
     let reasoner = Reasoner::new(provider);
-    let state = Arc::new(AppState::new(store, text_index, reasoner, api_key_store, config));
+    let (app_state, job_rx) = AppState::new(store, text_index, reasoner, api_key_store, config);
+    let state = Arc::new(app_state);
+
+    tokio::spawn(jobs::run_worker(state.clone(), job_rx));
+
     let app = create_server(state);
 
     let addr = format!("{}:{}", args.host, args.port);

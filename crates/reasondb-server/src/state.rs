@@ -2,6 +2,7 @@
 //!
 //! Shared state accessible to all request handlers.
 
+use crate::jobs::JobQueue;
 use reasondb_core::{
     auth::ApiKeyStore,
     cache::QueryCache,
@@ -12,6 +13,7 @@ use reasondb_core::{
     text_index::TextIndex,
 };
 use std::sync::Arc;
+use tokio::sync::mpsc;
 
 /// Application state shared across handlers
 pub struct AppState<R: ReasoningEngine = Reasoner> {
@@ -31,20 +33,22 @@ pub struct AppState<R: ReasoningEngine = Reasoner> {
     pub cluster_node: Option<Arc<RaftNode>>,
     /// Server configuration
     pub config: ServerConfig,
+    /// Background ingestion job queue
+    pub job_queue: Arc<JobQueue>,
 }
 
 impl<R: ReasoningEngine> AppState<R> {
-    /// Create new app state
+    /// Create new app state, returning the state and a receiver for job notifications.
     pub fn new(
         store: NodeStore,
         text_index: TextIndex,
         reasoner: R,
         api_key_store: ApiKeyStore,
         config: ServerConfig,
-    ) -> Self {
+    ) -> (Self, mpsc::Receiver<String>) {
         let rate_limit_store = RateLimitStore::new(config.rate_limit.clone());
+        let (job_queue, job_rx) = JobQueue::new();
         
-        // Initialize cluster node if clustering is enabled
         let cluster_node = if config.cluster.enabled {
             let node_id = NodeId::new(config.cluster.node_id.clone());
             let cluster_config = ClusterConfig {
@@ -60,7 +64,7 @@ impl<R: ReasoningEngine> AppState<R> {
             None
         };
         
-        Self {
+        (Self {
             store: Arc::new(store),
             text_index: Arc::new(text_index),
             reasoner: Arc::new(reasoner),
@@ -69,7 +73,8 @@ impl<R: ReasoningEngine> AppState<R> {
             rate_limit_store: Arc::new(rate_limit_store),
             cluster_node,
             config,
-        }
+            job_queue,
+        }, job_rx)
     }
     
     /// Check if this node is the leader

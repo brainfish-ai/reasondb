@@ -18,6 +18,7 @@ use utoipa::ToSchema;
 
 use crate::{
     error::{ApiError, ApiResult, ErrorResponse},
+    jobs::{JobRequest, JobStatusResponse},
     state::AppState,
 };
 
@@ -68,7 +69,7 @@ fn index_document_nodes(
 }
 
 /// Response for ingestion operations
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct IngestResponse {
     /// Unique document ID
     #[schema(example = "doc_abc123")]
@@ -87,7 +88,7 @@ pub struct IngestResponse {
 }
 
 /// Statistics from ingestion
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct IngestStats {
     /// Characters extracted from source
     #[schema(example = 50000)]
@@ -119,7 +120,7 @@ impl From<reasondb_ingest::IngestStats> for IngestStats {
 }
 
 /// Request for text ingestion
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct IngestTextRequest {
     /// Document title
     #[schema(example = "My Research Notes")]
@@ -144,7 +145,7 @@ pub struct IngestTextRequest {
 }
 
 /// Request for URL ingestion
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct IngestUrlRequest {
     /// URL to ingest (web page, YouTube video, etc.)
     #[schema(example = "https://en.wikipedia.org/wiki/Machine_learning")]
@@ -280,26 +281,25 @@ pub async fn ingest_file<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     }))
 }
 
-/// Ingest raw text or markdown
+/// Ingest raw text or markdown (async — returns a job ID immediately)
 ///
-/// Ingest plain text or Markdown content directly. The content will be
-/// chunked, organized into a tree structure, and optionally summarized.
-/// You can optionally assign it to a table and add metadata/tags.
+/// Enqueues text for background ingestion. The content will be chunked,
+/// organized into a tree structure, and optionally summarized. Poll
+/// `GET /v1/jobs/{job_id}` for progress and results.
 #[utoipa::path(
     post,
     path = "/v1/ingest/text",
     tag = "ingestion",
     request_body = IngestTextRequest,
     responses(
-        (status = 200, description = "Text ingested successfully", body = IngestResponse),
+        (status = 202, description = "Ingestion job queued", body = JobStatusResponse),
         (status = 422, description = "Validation failed", body = ErrorResponse),
-        (status = 500, description = "Ingestion failed", body = ErrorResponse),
     )
 )]
 pub async fn ingest_text<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     State(state): State<Arc<AppState<R>>>,
     Json(request): Json<IngestTextRequest>,
-) -> ApiResult<Json<IngestResponse>> {
+) -> ApiResult<Json<JobStatusResponse>> {
     if request.title.is_empty() {
         return Err(ApiError::ValidationError("Title is required".to_string()));
     }
@@ -312,86 +312,44 @@ pub async fn ingest_text<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         return Err(ApiError::ValidationError("Table ID is required".to_string()));
     }
 
-    // Verify the table exists
-    state.store.get_table(&request.table_id)
+    state
+        .store
+        .get_table(&request.table_id)
         .map_err(ApiError::from)?
         .ok_or_else(|| ApiError::NotFound(format!("Table '{}' not found", request.table_id)))?;
 
-    info!("Ingesting text: {} ({} chars) into table: {}", 
-          request.title, request.content.len(), request.table_id);
+    info!(
+        "Queuing text ingestion: {} ({} chars) into table: {}",
+        request.title,
+        request.content.len(),
+        request.table_id
+    );
 
-    let generate_summaries = request.generate_summaries.unwrap_or(state.config.generate_summaries);
+    let job_id = state.job_queue.enqueue(JobRequest::Text(request)).await;
+    let status = state.job_queue.get_status(&job_id).await.unwrap();
 
-    let config = PipelineConfig {
-        generate_summaries,
-        store_in_db: true,
-        ..Default::default()
-    };
-
-    let pipeline = IngestPipeline::new((*state.reasoner).clone())
-        .with_config(config);
-
-    let mut result = pipeline
-        .ingest_text_and_store(&request.title, &request.table_id, &request.content, &state.store)
-        .await
-        .map_err(ApiError::from)?;
-
-    // Apply tags and metadata if provided
-    let mut doc = result.document.clone();
-    let mut needs_update = false;
-
-    if let Some(tags) = &request.tags {
-        doc.tags = tags.clone();
-        needs_update = true;
-    }
-
-    if let Some(metadata) = &request.metadata {
-        doc.metadata = metadata.clone();
-        needs_update = true;
-    }
-
-    if needs_update {
-        state.store.update_document(&doc).map_err(ApiError::from)?;
-        result.document = doc;
-    }
-
-    // Index document content for BM25 search
-    index_document_nodes(
-        &state.text_index,
-        &state.store,
-        &result.document.id,
-        &result.document.table_id,
-        &result.document.tags,
-    )?;
-
-    Ok(Json(IngestResponse {
-        document_id: result.document.id.clone(),
-        title: result.document.title.clone(),
-        total_nodes: result.document.total_nodes,
-        max_depth: result.document.max_depth as usize,
-        stats: result.stats.into(),
-    }))
+    Ok(Json(status))
 }
 
-/// Ingest from URL
+/// Ingest from URL (async — returns a job ID immediately)
 ///
-/// Ingest content from a URL. Supports web pages, YouTube videos (with transcription),
-/// and other online resources. The content will be extracted, chunked, and organized.
+/// Enqueues a URL for background ingestion. Supports web pages, YouTube
+/// videos (with transcription), and other online resources. Poll
+/// `GET /v1/jobs/{job_id}` for progress and results.
 #[utoipa::path(
     post,
     path = "/v1/ingest/url",
     tag = "ingestion",
     request_body = IngestUrlRequest,
     responses(
-        (status = 200, description = "URL content ingested successfully", body = IngestResponse),
+        (status = 202, description = "Ingestion job queued", body = JobStatusResponse),
         (status = 422, description = "Validation failed (invalid URL)", body = ErrorResponse),
-        (status = 500, description = "Ingestion failed", body = ErrorResponse),
     )
 )]
 pub async fn ingest_url<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     State(state): State<Arc<AppState<R>>>,
     Json(request): Json<IngestUrlRequest>,
-) -> ApiResult<Json<IngestResponse>> {
+) -> ApiResult<Json<JobStatusResponse>> {
     if request.url.is_empty() {
         return Err(ApiError::ValidationError("URL is required".to_string()));
     }
@@ -400,47 +358,22 @@ pub async fn ingest_url<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         return Err(ApiError::ValidationError("Table ID is required".to_string()));
     }
 
-    // Validate URL
     url::Url::parse(&request.url)
         .map_err(|e| ApiError::ValidationError(format!("Invalid URL: {}", e)))?;
 
-    // Verify the table exists
-    state.store.get_table(&request.table_id)
+    state
+        .store
+        .get_table(&request.table_id)
         .map_err(ApiError::from)?
         .ok_or_else(|| ApiError::NotFound(format!("Table '{}' not found", request.table_id)))?;
 
-    info!("Ingesting URL: {} into table: {}", request.url, request.table_id);
+    info!(
+        "Queuing URL ingestion: {} into table: {}",
+        request.url, request.table_id
+    );
 
-    let generate_summaries = request.generate_summaries.unwrap_or(state.config.generate_summaries);
+    let job_id = state.job_queue.enqueue(JobRequest::Url(request)).await;
+    let status = state.job_queue.get_status(&job_id).await.unwrap();
 
-    let config = PipelineConfig {
-        generate_summaries,
-        store_in_db: true,
-        ..Default::default()
-    };
-
-    let pipeline = IngestPipeline::new((*state.reasoner).clone())
-        .with_config(config);
-
-    let result = pipeline
-        .ingest_url_and_store(&request.url, &request.table_id, &state.store)
-        .await
-        .map_err(ApiError::from)?;
-
-    // Index document content for BM25 search
-    index_document_nodes(
-        &state.text_index,
-        &state.store,
-        &result.document.id,
-        &result.document.table_id,
-        &result.document.tags,
-    )?;
-
-    Ok(Json(IngestResponse {
-        document_id: result.document.id.clone(),
-        title: result.document.title.clone(),
-        total_nodes: result.document.total_nodes,
-        max_depth: result.document.max_depth as usize,
-        stats: result.stats.into(),
-    }))
+    Ok(Json(status))
 }

@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/Dialog'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { Textarea } from '@/components/ui/Textarea'
 import { Label } from '@/components/ui/Label'
 import { useTableStore } from '@/stores/tableStore'
 import { useConnectionStore } from '@/stores/connectionStore'
@@ -87,8 +88,8 @@ export function CreateTableDialog({ open, onOpenChange }: CreateTableDialogProps
           <DialogTitle>Create New Table</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
-          <div className="space-y-2">
+        <div className="grid gap-4 py-2">
+          <div className="grid gap-2">
             <Label htmlFor="tableName">Table Name</Label>
             <Input
               id="tableName"
@@ -102,17 +103,17 @@ export function CreateTableDialog({ open, onOpenChange }: CreateTableDialogProps
             />
           </div>
 
-          <div className="space-y-2">
+          <div className="grid gap-2">
             <Label htmlFor="description">
               Description <span className="text-overlay-0 font-normal">(optional)</span>
             </Label>
-            <textarea
+            <Textarea
               id="description"
               placeholder="What kind of documents will this table store?"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
-              className="w-full rounded-md bg-surface-0 border border-border px-3 py-2 text-sm text-text placeholder-overlay-0 focus:outline-none focus:ring-1 focus:ring-primary focus:border-transparent resize-none"
+              className="resize-none"
             />
           </div>
 
