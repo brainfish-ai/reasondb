@@ -32,7 +32,7 @@
 //!
 //! ```no_run
 //! use reasondb_server::{AppState, ServerConfig, create_server};
-//! use reasondb_core::{store::NodeStore, llm::mock::MockReasoner, TextIndex, ApiKeyStore};
+//! use reasondb_core::{store::NodeStore, llm::provider::{LLMProvider, Reasoner}, TextIndex, ApiKeyStore};
 //! use std::sync::Arc;
 //! use redb::Database;
 //!
@@ -43,7 +43,7 @@
 //!     let store = NodeStore::open(&config.db_path).unwrap();
 //!     let text_index = TextIndex::open("./search_index").unwrap();
 //!     let api_key_store = ApiKeyStore::new(db).unwrap();
-//!     let reasoner = MockReasoner::new();
+//!     let reasoner = Reasoner::new(LLMProvider::openai("sk-..."));
 //!     let state = AppState::new(store, text_index, reasoner, api_key_store, config.clone());
 //!     
 //!     // Server would be started here
@@ -63,13 +63,13 @@ pub use metrics::{init_metrics, init_tracing, metrics_handler, metrics_middlewar
 pub use openapi::ApiDoc;
 pub use ratelimit::{rate_limit_middleware, RateLimitError};
 pub use routes::create_routes;
-pub use state::{AppState, AuthConfig, ClusterNodeConfig, MockAppState, RealAppState, ServerConfig};
+pub use state::{AppState, AuthConfig, ClusterNodeConfig, RealAppState, ServerConfig};
 pub use reasondb_core::ratelimit::RateLimitConfig;
 
 use axum::Router;
 use reasondb_core::{
     auth::ApiKeyStore,
-    llm::{mock::MockReasoner, provider::LLMProvider, provider::Reasoner, ReasoningEngine},
+    llm::{provider::{LLMProvider, Reasoner}, ReasoningEngine},
     store::NodeStore,
     text_index::TextIndex,
 };
@@ -229,38 +229,62 @@ pub async fn run_server() -> anyhow::Result<()> {
 
     let addr = format!("{}:{}", host, port);
 
-    // Check for API keys
-    let openai_key = std::env::var("OPENAI_API_KEY").ok();
-    let anthropic_key = std::env::var("ANTHROPIC_API_KEY").ok();
+    let provider_name = std::env::var("REASONDB_LLM_PROVIDER")
+        .map(|s| s.to_lowercase())
+        .unwrap_or_default();
+    let api_key = std::env::var("REASONDB_LLM_API_KEY").ok().filter(|k| !k.is_empty());
+    let model = std::env::var("REASONDB_MODEL").ok().filter(|m| !m.is_empty());
 
-    if let Some(api_key) = openai_key {
-        info!("Using OpenAI provider (gpt-4o model)");
-        let reasoner = Reasoner::new(LLMProvider::openai(&api_key));
-        let state = Arc::new(AppState::new(store, text_index, reasoner, api_key_store, config));
-        let app = create_server(state);
+    let require_key = |name: &str| -> anyhow::Result<String> {
+        api_key.clone().ok_or_else(|| {
+            anyhow::anyhow!("{} provider requires an API key — set REASONDB_LLM_API_KEY", name)
+        })
+    };
 
-        info!("Server listening on http://{}", addr);
-        let listener = tokio::net::TcpListener::bind(&addr).await?;
-        axum::serve(listener, app).await?;
-    } else if let Some(api_key) = anthropic_key {
-        info!("Using Anthropic provider (Claude Sonnet)");
-        let reasoner = Reasoner::new(LLMProvider::claude_sonnet(&api_key));
-        let state = Arc::new(AppState::new(store, text_index, reasoner, api_key_store, config));
-        let app = create_server(state);
+    let provider = match provider_name.as_str() {
+        "openai" => {
+            let key = require_key("OpenAI")?;
+            match &model {
+                Some(m) => LLMProvider::OpenAI { api_key: key, model: m.clone() },
+                None => LLMProvider::openai(&key),
+            }
+        }
+        "anthropic" => {
+            let key = require_key("Anthropic")?;
+            match &model {
+                Some(m) => LLMProvider::anthropic_custom(&key, m),
+                None => LLMProvider::claude_sonnet(&key),
+            }
+        }
+        "gemini" => {
+            let key = require_key("Gemini")?;
+            match &model {
+                Some(m) => LLMProvider::Gemini { api_key: key, model: m.clone() },
+                None => LLMProvider::gemini(&key),
+            }
+        }
+        "cohere" => {
+            let key = require_key("Cohere")?;
+            match &model {
+                Some(m) => LLMProvider::Cohere { api_key: key, model: m.clone() },
+                None => LLMProvider::cohere(&key),
+            }
+        }
+        other => anyhow::bail!(
+            "Unknown or missing LLM provider '{}'. Set REASONDB_LLM_PROVIDER to one of: openai, anthropic, gemini, cohere",
+            other
+        ),
+    };
 
-        info!("Server listening on http://{}", addr);
-        let listener = tokio::net::TcpListener::bind(&addr).await?;
-        axum::serve(listener, app).await?;
-    } else {
-        info!("No API key provided - using mock reasoner");
-        let reasoner = MockReasoner::new();
-        let state = Arc::new(AppState::new(store, text_index, reasoner, api_key_store, config));
-        let app = create_server(state);
+    info!("LLM provider: {} | model: {}", provider.provider_name(), provider.model());
 
-        info!("Server listening on http://{}", addr);
-        let listener = tokio::net::TcpListener::bind(&addr).await?;
-        axum::serve(listener, app).await?;
-    }
+    let reasoner = Reasoner::new(provider);
+    let state = Arc::new(AppState::new(store, text_index, reasoner, api_key_store, config));
+    let app = create_server(state);
+
+    info!("Server listening on http://{}", addr);
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    axum::serve(listener, app).await?;
 
     Ok(())
 }

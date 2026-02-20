@@ -6,7 +6,7 @@ use reasondb_core::{
     auth::ApiKeyStore,
     cache::QueryCache,
     cluster::{ClusterConfig, ClusterStateMachine, NodeId, RaftNode},
-    llm::{mock::MockReasoner, provider::Reasoner, ReasoningEngine},
+    llm::{provider::Reasoner, ReasoningEngine},
     ratelimit::RateLimitStore,
     store::NodeStore,
     text_index::TextIndex,
@@ -241,8 +241,5 @@ impl Default for ServerConfig {
     }
 }
 
-/// Type alias for state with mock reasoner (testing)
-pub type MockAppState = AppState<MockReasoner>;
-
-/// Type alias for state with real reasoner
+/// Type alias for state with the default reasoner
 pub type RealAppState = AppState<Reasoner>;

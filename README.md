@@ -124,14 +124,23 @@ docker compose build --no-cache
 docker compose ps
 ```
 
-To pass an LLM API key, either export it as an environment variable or create a `.env` file in the project root:
+Configure the LLM provider via environment variables or a `.env` file in the project root:
+
+| Variable | Description | Required |
+|---|---|---|
+| `REASONDB_LLM_PROVIDER` | `openai`, `anthropic`, `gemini`, or `cohere` | Yes |
+| `REASONDB_LLM_API_KEY` | API key for the chosen provider | Yes |
+| `REASONDB_MODEL` | Override the default model for the provider | No |
 
 ```bash
 # Option 1: export before running
-OPENAI_API_KEY=sk-... docker compose up --build
+REASONDB_LLM_PROVIDER=openai REASONDB_LLM_API_KEY=sk-... docker compose up --build
 
 # Option 2: create a .env file (git-ignored)
-echo 'OPENAI_API_KEY=sk-...' > .env
+cat > .env <<'EOF'
+REASONDB_LLM_PROVIDER=anthropic
+REASONDB_LLM_API_KEY=sk-ant-...
+EOF
 docker compose up --build
 ```
 

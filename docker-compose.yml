@@ -10,7 +10,7 @@ services:
       REASONDB_HOST: "0.0.0.0"
       REASONDB_PORT: "4444"
       REASONDB_PATH: "/data/reasondb.redb"
-      REASONDB_LLM_PROVIDER: "${REASONDB_LLM_PROVIDER:-mock}"
+      REASONDB_LLM_PROVIDER: "${REASONDB_LLM_PROVIDER}"
       REASONDB_LLM_API_KEY: "${REASONDB_LLM_API_KEY:-}"
       REASONDB_MODEL: "${REASONDB_MODEL:-}"
     healthcheck:
@@ -20,6 +20,14 @@ services:
       retries: 3
       start_period: 5s
     restart: unless-stopped
+    develop:
+      watch:
+        - action: rebuild
+          path: ./crates
+        - action: rebuild
+          path: ./Cargo.toml
+        - action: rebuild
+          path: ./Cargo.lock
 
 volumes:
   reasondb_data:

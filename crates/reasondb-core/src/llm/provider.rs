@@ -97,6 +97,26 @@ impl LLMProvider {
             model: "command-r-plus".to_string(),
         }
     }
+
+    /// The provider name (e.g. "openai", "anthropic")
+    pub fn provider_name(&self) -> &str {
+        match self {
+            Self::OpenAI { .. } => "openai",
+            Self::Anthropic { .. } => "anthropic",
+            Self::Gemini { .. } => "gemini",
+            Self::Cohere { .. } => "cohere",
+        }
+    }
+
+    /// The model identifier (e.g. "gpt-4o", "claude-sonnet-4-5-20250929")
+    pub fn model(&self) -> &str {
+        match self {
+            Self::OpenAI { model, .. }
+            | Self::Anthropic { model, .. }
+            | Self::Gemini { model, .. }
+            | Self::Cohere { model, .. } => model,
+        }
+    }
 }
 
 /// Multi-provider reasoning engine.
