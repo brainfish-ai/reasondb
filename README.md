@@ -157,7 +157,7 @@ SELECT * FROM contracts REASON 'What are the late fees and penalties?'
 
 -- Combine filters, search, and reasoning in one query
 SELECT * FROM contracts
-WHERE tags CONTAINS 'nda' AND metadata.value_usd > 10000
+WHERE tags CONTAINS ANY ('nda') AND metadata.value_usd > 10000
 SEARCH 'termination clause'
 REASON 'What are the exit conditions?'
 LIMIT 5

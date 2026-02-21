@@ -19,7 +19,7 @@ In this tutorial, you'll master RQL (ReasonDB Query Language) by building querie
 <Steps>
   <Step title="Start ReasonDB">
     ```bash
-    ANTHROPIC_API_KEY=your-key cargo run -p reasondb-server
+    REASONDB_LLM_PROVIDER=anthropic REASONDB_LLM_API_KEY=your-key cargo run -p reasondb-server
     ```
   </Step>
 
@@ -133,7 +133,7 @@ SELECT title, metadata.rating FROM books WHERE metadata.rating > 4.3
 Find books with a specific tag:
 
 ```sql
-SELECT * FROM books WHERE tags CONTAINS 'science-fiction'
+SELECT * FROM books WHERE tags CONTAINS ANY ('science-fiction')
 ```
 
 **Result:** Returns the two sci-fi books
@@ -145,7 +145,7 @@ Use AND/OR for complex filters:
 ```sql
 -- Science fiction books by James Morrison
 SELECT * FROM books
-WHERE metadata.author = 'James Morrison' AND tags CONTAINS 'science-fiction'
+WHERE metadata.author = 'James Morrison' AND tags CONTAINS ANY ('science-fiction')
 ```
 
 ### Pattern Matching
@@ -230,7 +230,7 @@ The most powerful queries combine WHERE, SEARCH, and REASON:
 
 ```sql
 SELECT * FROM books
-WHERE tags CONTAINS 'science-fiction'
+WHERE tags CONTAINS ANY ('science-fiction')
 REASON 'What ethical dilemmas do the protagonists face?'
 ```
 

@@ -177,7 +177,7 @@ Filter to specific documentation areas:
 
 ```sql
 SELECT * FROM knowledge_base
-WHERE tags CONTAINS 'getting-started'
+WHERE tags CONTAINS ANY ('getting-started')
 REASON 'How do I invite team members?'
 ```
 
@@ -193,7 +193,7 @@ REASON 'Why is the app slow?'
 
 ```sql
 SELECT * FROM knowledge_base
-WHERE tags CONTAINS 'billing'
+WHERE tags CONTAINS ANY ('billing')
 REASON 'Do you offer any discounts?'
 ```
 
@@ -312,7 +312,7 @@ SELECT DISTINCT metadata.category FROM knowledge_base SEARCH 'payment credit car
     After answering a question, suggest related content:
 
 ```sql
-SELECT title FROM knowledge_base WHERE tags CONTAINS 'billing' LIMIT 3
+SELECT title FROM knowledge_base WHERE tags CONTAINS ANY ('billing') LIMIT 3
 ```
   </Accordion>
 </AccordionGroup>

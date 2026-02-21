@@ -22,7 +22,7 @@ docker-compose up -d
 reasondb serve
 
 # With OpenTelemetry tracing
-reasondb serve --otlp-endpoint http://localhost:4317
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 reasondb serve
 ```
 
 ### 3. Access Dashboards
@@ -152,7 +152,7 @@ ReasonDB supports distributed tracing via OpenTelemetry.
 docker-compose up -d jaeger
 
 # Start ReasonDB with tracing
-reasondb serve --otlp-endpoint http://localhost:4317
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 reasondb serve
 ```
 
 ### Traced Operations
@@ -273,7 +273,7 @@ spec:
 curl http://localhost:4444/metrics
 
 # Verify server started with metrics
-reasondb serve --metrics-enabled
+REASONDB_METRICS_ENABLED=true reasondb serve
 ```
 
 ### No data in Grafana

@@ -264,7 +264,7 @@ Find specific contract types and extract key terms:
 
 ```sql
 SELECT * FROM contracts
-WHERE tags CONTAINS 'active' AND metadata.value_usd > 0
+WHERE tags CONTAINS ANY ('active') AND metadata.value_usd > 0
 REASON 'What are our key financial obligations?'
 ```
 

@@ -49,7 +49,7 @@ SELECT title, metadata.author, tags FROM legal
 
 ```sql
 SELECT COUNT(*) FROM legal
-SELECT COUNT(*) AS total, metadata.author FROM legal GROUP BY metadata.author
+SELECT COUNT(*) AS total FROM legal GROUP BY metadata.author
 ```
 
 ## WHERE Clause
@@ -72,8 +72,8 @@ SELECT * FROM docs WHERE metadata.confidential = true
 ### Array Contains (Tags)
 
 ```sql
--- Documents with 'nda' tag
-SELECT * FROM legal WHERE tags CONTAINS 'nda'
+-- Documents with a specific tag
+SELECT * FROM legal WHERE tags CONTAINS ANY ('nda')
 
 -- Documents with any of these tags
 SELECT * FROM legal WHERE tags CONTAINS ANY ('nda', 'confidential')
@@ -84,7 +84,7 @@ SELECT * FROM legal WHERE tags CONTAINS ANY ('nda', 'confidential')
 ```sql
 -- AND
 SELECT * FROM legal
-WHERE metadata.author = 'Alice' AND tags CONTAINS 'nda'
+WHERE metadata.author = 'Alice' AND tags CONTAINS ANY ('nda')
 
 -- OR
 SELECT * FROM contracts
@@ -153,7 +153,7 @@ This uses the LLM to find relevant content and extract answers.
 
 ```sql
 SELECT * FROM legal
-WHERE tags CONTAINS 'nda'
+WHERE tags CONTAINS ANY ('nda')
 REASON 'What are the confidentiality obligations?'
 ```
 
@@ -219,6 +219,8 @@ SELECT * FROM legal SUPERSEDES 'doc_old_version'
 | `REFERENCED_BY` | Document is cited by another |
 | `SUPERSEDES` | Document replaces another |
 | `SUPERSEDED_BY` | Document is replaced by another |
+| `FOLLOWS_UP` | Document is a follow-up to another |
+| `FOLLOWED_UP_BY` | Document has a follow-up |
 | `PARENT_OF` | Document is parent of another |
 | `CHILD_OF` | Document is child of another |
 
@@ -305,7 +307,7 @@ Result:
 ```sql
 SELECT * FROM legal_contracts
 WHERE metadata.author = 'Legal Team'
-  AND tags CONTAINS 'nda'
+  AND tags CONTAINS ANY ('nda')
   AND metadata.value_usd > 10000
 SEARCH 'termination clause'
 LIMIT 5
@@ -323,9 +325,7 @@ LIMIT 1
 ### Document Statistics
 
 ```sql
-SELECT COUNT(*) AS total,
-       AVG(total_nodes) AS avg_nodes,
-       metadata.author
+SELECT COUNT(*) AS total
 FROM all_documents
 GROUP BY metadata.author
 ORDER BY total DESC
@@ -336,7 +336,7 @@ ORDER BY total DESC
 ```sql
 SELECT title, metadata.author, created_at
 FROM research_papers
-WHERE tags CONTAINS 'machine-learning'
+WHERE tags CONTAINS ANY ('machine-learning')
 ORDER BY created_at DESC
 LIMIT 20 OFFSET 40
 ```

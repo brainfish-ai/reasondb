@@ -16,14 +16,7 @@ When authentication is enabled:
 
 ## Enabling Authentication
 
-### Via CLI Flags
-
-```bash
-# Enable auth with a master key
-reasondb serve --auth-enabled --master-key "your-secret-master-key"
-```
-
-### Via Environment Variables
+### Via Environment Variables (Recommended)
 
 ```bash
 REASONDB_AUTH_ENABLED=true \
@@ -31,15 +24,17 @@ REASONDB_MASTER_KEY="your-secret-master-key" \
 reasondb serve
 ```
 
-### Via Configuration File
+### Via Server Binary Flags
 
-Add to your `~/.config/reasondb/config.toml`:
+When running the `reasondb-server` binary directly:
 
-```toml
-[auth]
-enabled = true
-master_key = "your-secret-master-key"
+```bash
+reasondb-server --auth-enabled --master-key "your-secret-master-key"
 ```
+
+<Note>
+The `reasondb serve` CLI subcommand does not accept auth flags. Use environment variables for the CLI, or run the `reasondb-server` binary directly for flag-based configuration.
+</Note>
 
 <Warning>
 The master key has full admin access. Keep it secure and never expose it in client applications.
@@ -157,7 +152,7 @@ Revoked keys are immediately invalidated:
 reasondb auth keys revoke key_abc123
 
 # API
-curl -X POST http://localhost:4444/v1/auth/keys/key_abc123/revoke \
+curl -X DELETE http://localhost:4444/v1/auth/keys/key_abc123 \
   -H "Authorization: Bearer $MASTER_KEY"
 ```
 
@@ -327,7 +322,7 @@ For development or internal deployments, you can run without authentication:
 reasondb serve
 
 # Or explicitly disable
-reasondb serve --auth-enabled=false
+REASONDB_AUTH_ENABLED=false reasondb serve
 ```
 
 <Warning>
@@ -341,8 +336,7 @@ Never disable authentication in production or publicly accessible deployments.
 | `POST` | `/v1/auth/keys` | Create a new API key | `admin` |
 | `GET` | `/v1/auth/keys` | List all API keys | `admin` |
 | `GET` | `/v1/auth/keys/{id}` | Get key details | `admin` |
-| `POST` | `/v1/auth/keys/{id}/revoke` | Revoke a key | `admin` |
-| `DELETE` | `/v1/auth/keys/{id}` | Delete a key | `admin` |
+| `DELETE` | `/v1/auth/keys/{id}` | Revoke a key | `admin` |
 | `POST` | `/v1/auth/keys/{id}/rotate` | Rotate a key | `admin` |
 
 ## Next Steps

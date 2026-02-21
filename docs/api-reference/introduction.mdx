@@ -102,9 +102,8 @@ Authentication is optional in development. Enable for production with `--auth-en
 | `POST` | `/v1/auth/keys` | Create API key |
 | `GET` | `/v1/auth/keys` | List all keys |
 | `GET` | `/v1/auth/keys/{id}` | Get key details |
-| `POST` | `/v1/auth/keys/{id}/revoke` | Revoke key |
+| `DELETE` | `/v1/auth/keys/{id}` | Revoke key |
 | `POST` | `/v1/auth/keys/{id}/rotate` | Rotate key (new secret) |
-| `DELETE` | `/v1/auth/keys/{id}` | Delete key permanently |
 
 ## Common Workflows
 
@@ -144,23 +143,45 @@ curl -X POST http://localhost:4444/v1/query \
 
 ## Response Format
 
-### Success Response
+### Search Response (`/v1/search`)
 
 ```json
 {
   "results": [{
     "node_id": "node_abc123",
     "document_id": "doc_xyz789",
+    "path": [{"node_id": "node_root", "title": "Service Agreement", "reasoning": "Root"}],
     "content": "Payment is due within 30 days of invoice...",
     "answer": "Payment is due within 30 days of receiving the invoice.",
-    "confidence": 0.94,
-    "path": ["Service Agreement", "Payment Terms"]
+    "confidence": 0.94
   }],
   "stats": {
     "nodes_visited": 4,
+    "nodes_pruned": 8,
     "llm_calls": 3,
     "total_time_ms": 1250
   }
+}
+```
+
+### Query Response (`/v1/query`)
+
+```json
+{
+  "documents": [{
+    "id": "doc_xyz789",
+    "title": "Service Agreement",
+    "table_id": "tbl_legal",
+    "tags": ["contract"],
+    "metadata": {},
+    "total_nodes": 15,
+    "score": 0.94,
+    "highlights": ["Payment is due within 30 days..."],
+    "answer": "Payment is due within 30 days of receiving the invoice.",
+    "confidence": 0.94
+  }],
+  "total_count": 1,
+  "execution_time_ms": 1250
 }
 ```
 

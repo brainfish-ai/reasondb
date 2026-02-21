@@ -143,14 +143,14 @@ Every result includes the navigation path—this is explainability built in:
 ```json
 {
   "path": [
-    "Service Agreement",
-    "Section 5: Payment Terms", 
-    "5.2 Late Payment Penalties"
+    {"node_id": "node_root", "title": "Service Agreement", "reasoning": "Root document"},
+    {"node_id": "node_sec5", "title": "Section 5: Payment Terms", "reasoning": "Relevant to payment query"},
+    {"node_id": "node_5_2", "title": "5.2 Late Payment Penalties", "reasoning": "Directly answers the question"}
   ]
 }
 ```
 
-You know exactly which sections the LLM traversed. This is invaluable for:
+Each path entry includes the node ID, title, and the LLM's reasoning for choosing that branch. You know exactly which sections the LLM traversed. This is invaluable for:
 - Debugging unexpected results
 - Building trust in AI-generated answers
 - Providing citations in downstream applications
@@ -234,7 +234,7 @@ LIMIT 1
 
 ```sql
 SELECT * FROM research_papers
-WHERE tags CONTAINS 'machine-learning'
+WHERE tags CONTAINS ANY ('machine-learning')
 REASON 'What methods have been used for sentiment analysis?'
 LIMIT 5
 ```

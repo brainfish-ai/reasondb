@@ -27,19 +27,6 @@ ReasonDB uses a **token bucket algorithm**:
 
 ## Configuration
 
-### Via CLI Flags
-
-```bash
-# Custom rate limits
-reasondb serve \
-  --rate-limit-rpm 100 \
-  --rate-limit-rph 2000 \
-  --rate-limit-burst 20
-
-# Disable rate limiting
-reasondb serve --rate-limit-enabled=false
-```
-
 ### Via Environment Variables
 
 ```bash
@@ -185,7 +172,7 @@ reasondb serve \
 
 ```bash
 # Disable for trusted internal services
-reasondb serve --rate-limit-enabled=false
+REASONDB_RATE_LIMIT_ENABLED=false reasondb serve
 ```
 
 <Warning>

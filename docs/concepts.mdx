@@ -311,7 +311,7 @@ BM25 full-text search for known terms:
 
 ```sql
 SELECT * FROM legal_contracts
-WHERE tags CONTAINS 'nda'
+WHERE tags CONTAINS ANY ('nda')
 SEARCH 'confidentiality obligations'
 LIMIT 10
 ```

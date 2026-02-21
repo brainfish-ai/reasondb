@@ -183,7 +183,7 @@ Use RQL to search within a specific table:
 SELECT * FROM legal SEARCH 'confidentiality clause'
 
 -- Filter by tags
-SELECT * FROM legal WHERE tags CONTAINS 'nda'
+SELECT * FROM legal WHERE tags CONTAINS ANY ('nda')
 
 -- LLM-guided reasoning
 SELECT * FROM legal REASON 'What are the confidentiality obligations?'

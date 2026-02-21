@@ -126,7 +126,7 @@ curl -X POST http://localhost:4444/v1/ingest/text \
 
 ```sql
 SELECT title, metadata.author, metadata.year FROM research_papers
-WHERE tags CONTAINS 'transformers'
+WHERE tags CONTAINS ANY ('transformers')
 ```
 
 ### Search by Keywords

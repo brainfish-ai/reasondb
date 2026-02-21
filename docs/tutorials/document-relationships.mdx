@@ -403,7 +403,7 @@ Here's what you've built:
 
 ```sql
 SELECT * FROM contracts 
-WHERE tags CONTAINS 'acme'
+WHERE tags CONTAINS ANY ('acme')
 ```
 
 ### 2. Compliance Check: "Is this contract still valid?"
@@ -430,8 +430,8 @@ SELECT * FROM contracts RELATED TO 'MSA_ID'
 
 ```sql
 SELECT * FROM contracts 
-WHERE tags CONTAINS 'acme' 
-  AND tags CONTAINS 'active'
+WHERE tags CONTAINS ANY ('acme') 
+  AND tags CONTAINS ANY ('active')
 REASON 'What are the payment terms and any discounts?'
 ```
 

@@ -118,13 +118,12 @@ Environment variables override config file values. This is useful for:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `ANTHROPIC_API_KEY` | Anthropic Claude API key | - |
-| `OPENAI_API_KEY` | OpenAI API key | - |
-| `GOOGLE_API_KEY` | Google Gemini API key | - |
-| `COHERE_API_KEY` | Cohere API key | - |
+| `REASONDB_LLM_PROVIDER` | LLM provider (`anthropic`, `openai`, `gemini`, `cohere`) | - |
+| `REASONDB_LLM_API_KEY` | API key for the chosen LLM provider | - |
+| `REASONDB_MODEL` | Override the default model | - |
 | `REASONDB_PORT` | Server port | `4444` |
 | `REASONDB_HOST` | Server host | `127.0.0.1` |
-| `REASONDB_PATH` | Database file path | `reasondb.redb` |
+| `REASONDB_PATH` | Database file path | `data/reasondb.redb` |
 | `REASONDB_URL` | Server URL for CLI | `http://localhost:4444` |
 
 ### Priority Order
@@ -140,10 +139,10 @@ Environment variables override config file values. This is useful for:
 
 | Provider | Config Value | Environment Variable |
 |----------|-------------|---------------------|
-| Anthropic Claude | `anthropic` or `claude` | `ANTHROPIC_API_KEY` |
-| OpenAI GPT-4 | `openai` or `gpt` | `OPENAI_API_KEY` |
-| Google Gemini | `gemini` or `google` | `GOOGLE_API_KEY` |
-| Cohere | `cohere` | `COHERE_API_KEY` |
+| Anthropic Claude | `anthropic` or `claude` | Best reasoning quality |
+| OpenAI GPT-4 | `openai` or `gpt` | Widely available |
+| Google Gemini | `gemini` or `google` | Cost-effective |
+| Cohere | `cohere` | Enterprise features |
 
 ### Using Config (Recommended)
 
@@ -160,17 +159,14 @@ reasondb serve
 
 ```bash
 # Per-session
-export ANTHROPIC_API_KEY=sk-ant-xxxxx
+export REASONDB_LLM_PROVIDER=anthropic
+export REASONDB_LLM_API_KEY=sk-ant-xxxxx
 reasondb serve
 ```
 
-### Auto-Detection
-
-If no provider is configured but an API key is set via environment variable, ReasonDB auto-detects in this order:
-1. Anthropic (if `ANTHROPIC_API_KEY` is set)
-2. OpenAI (if `OPENAI_API_KEY` is set)
-3. Gemini (if `GOOGLE_API_KEY` is set)
-4. Cohere (if `COHERE_API_KEY` is set)
+<Info>
+Both `REASONDB_LLM_PROVIDER` and `REASONDB_LLM_API_KEY` must be set when using environment variables. There is no auto-detection from provider-specific env vars.
+</Info>
 
 ## Server Configuration
 
@@ -392,21 +388,22 @@ curl http://localhost:4444/health
 
 ## Authentication Configuration
 
-For production deployments, enable API key authentication:
+For production deployments, enable API key authentication via environment variables:
 
 ```bash
-# Enable authentication
-reasondb config set auth.enabled true
-reasondb config set auth.master_key "your-secret-master-key"
-
-# Or via CLI flags
-reasondb serve --auth-enabled --master-key "your-secret-master-key"
+REASONDB_AUTH_ENABLED=true \
+REASONDB_MASTER_KEY="your-secret-master-key" \
+reasondb serve
 ```
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `REASONDB_AUTH_ENABLED` | Enable API key authentication | `false` |
 | `REASONDB_MASTER_KEY` | Admin master key for key management | - |
+
+<Note>
+Auth is configured via environment variables or the `reasondb-server` binary flags (`--auth-enabled`, `--master-key`). The `reasondb config set` command does not support auth settings.
+</Note>
 
 <Card title="Authentication Guide" icon="key" href="/guides/authentication">
   Learn how to manage API keys, permissions, and secure your deployment.

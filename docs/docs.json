@@ -20,18 +20,36 @@
             ]
           },
           {
-            "group": "Guides",
+            "group": "Data & Querying",
             "icon": "book-open",
             "pages": [
               "guides/ingestion",
               "guides/search",
               "guides/rql",
               "guides/tables",
-              "guides/relationships",
-              "guides/plugins",
+              "guides/relationships"
+            ]
+          },
+          {
+            "group": "Plugins",
+            "icon": "puzzle-piece",
+            "pages": [
+              "guides/plugins"
+            ]
+          },
+          {
+            "group": "Configuration & Security",
+            "icon": "gear",
+            "pages": [
               "guides/configuration",
               "guides/authentication",
-              "guides/rate-limiting",
+              "guides/rate-limiting"
+            ]
+          },
+          {
+            "group": "Infrastructure",
+            "icon": "cloud-arrow-up",
+            "pages": [
               "guides/clustering",
               "guides/monitoring",
               "guides/backup"
@@ -39,7 +57,7 @@
           },
           {
             "group": "Advanced",
-            "icon": "gear",
+            "icon": "terminal",
             "pages": [
               "advanced/architecture"
             ]

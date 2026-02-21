@@ -51,7 +51,7 @@ Save the returned `id` (e.g., `tbl_abc123`) for use in ingestion requests.
 
 ## Ingest Text
 
-The simplest method is ingesting plain text or Markdown directly:
+The simplest method is ingesting plain text or Markdown directly. Text ingestion is **async** — it returns a job ID immediately (HTTP 202) and processes in the background:
 
 ```bash
 curl -X POST http://localhost:4444/v1/ingest/text \
@@ -64,6 +64,19 @@ curl -X POST http://localhost:4444/v1/ingest/text \
     "metadata": {"author": "Engineering Team", "department": "Engineering"}
   }'
 ```
+
+Response (HTTP 202):
+
+```json
+{
+  "job_id": "job_abc123",
+  "status": "queued",
+  "created_at": "2026-01-30T10:00:00Z",
+  "updated_at": "2026-01-30T10:00:00Z"
+}
+```
+
+Poll `GET /v1/jobs/{job_id}` until the job completes. The final result contains the document ID, tree structure, and ingestion stats.
 
 ### Parameters
 
@@ -156,7 +169,7 @@ Response:
 
 ## Ingest URLs
 
-Fetch and ingest content from web pages or YouTube videos:
+Fetch and ingest content from web pages or YouTube videos. Like text ingestion, URL ingestion is **async**:
 
 ```bash
 curl -X POST http://localhost:4444/v1/ingest/url \
@@ -166,6 +179,21 @@ curl -X POST http://localhost:4444/v1/ingest/url \
     "table_id": "tbl_abc123"
   }'
 ```
+
+Response (HTTP 202):
+
+```json
+{
+  "job_id": "job_def456",
+  "status": "queued",
+  "created_at": "2026-01-30T10:00:00Z",
+  "updated_at": "2026-01-30T10:00:00Z"
+}
+```
+
+<Note>
+URL ingestion accepts `url`, `table_id`, and `generate_summaries` parameters. Tags and metadata are not supported for URL ingestion — use the text ingestion endpoint if you need those.
+</Note>
 
 ### Supported URL Types
 
@@ -215,7 +243,7 @@ You can then filter by these in RQL queries:
 ```sql
 -- Search within tagged documents
 SELECT * FROM legal
-WHERE tags CONTAINS 'nda'
+WHERE tags CONTAINS ANY ('nda')
 SEARCH 'confidentiality clause'
 
 -- Filter by metadata
@@ -275,14 +303,18 @@ Returns the full hierarchical tree with summaries:
   "id": "node_root",
   "title": "Document Title",
   "summary": "This document covers...",
+  "content": "Full text content of this node...",
   "depth": 0,
+  "is_leaf": false,
   "children": [
     {
       "id": "node_ch1",
       "title": "Chapter 1",
       "summary": "Introduction to...",
+      "content": "Chapter content...",
       "depth": 1,
-      "children": [...]
+      "is_leaf": true,
+      "children": []
     }
   ]
 }

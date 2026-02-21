@@ -70,53 +70,53 @@ export REASONDB_MIN_QUORUM=2
 export REASONDB_READ_SCALING=true
 ```
 
-### CLI Arguments
+### Environment Variables
 
 ```bash
-reasondb serve \
-  --cluster-enabled \
-  --node-id node-1 \
-  --cluster-name my-cluster \
-  --raft-addr 10.0.0.1:4445 \
-  --cluster-members "node-1@10.0.0.1:4445,node-2@10.0.0.2:4445"
+REASONDB_CLUSTER_ENABLED=true \
+REASONDB_NODE_ID=node-1 \
+REASONDB_CLUSTER_NAME=my-cluster \
+REASONDB_RAFT_ADDR=10.0.0.1:4445 \
+REASONDB_CLUSTER_MEMBERS="node-1@10.0.0.1:4445,node-2@10.0.0.2:4445" \
+reasondb serve
 ```
+
+<Note>
+Cluster flags (`--cluster-enabled`, `--node-id`, `--raft-addr`, etc.) are available on the `reasondb-server` binary. When using the `reasondb` CLI, configure clustering via environment variables.
+</Note>
 
 ## Setting Up a 3-Node Cluster
 
 ### Node 1 (Initial Leader)
 
 ```bash
-# Start the first node
-reasondb serve \
-  --host 10.0.0.1 \
-  --port 4444 \
-  --cluster-enabled \
-  --node-id node-1 \
-  --raft-addr 10.0.0.1:4445
+REASONDB_HOST=10.0.0.1 \
+REASONDB_CLUSTER_ENABLED=true \
+REASONDB_NODE_ID=node-1 \
+REASONDB_RAFT_ADDR=10.0.0.1:4445 \
+reasondb serve
 ```
 
 ### Node 2
 
 ```bash
-reasondb serve \
-  --host 10.0.0.2 \
-  --port 4444 \
-  --cluster-enabled \
-  --node-id node-2 \
-  --raft-addr 10.0.0.2:4445 \
-  --cluster-members "node-1@10.0.0.1:4445"
+REASONDB_HOST=10.0.0.2 \
+REASONDB_CLUSTER_ENABLED=true \
+REASONDB_NODE_ID=node-2 \
+REASONDB_RAFT_ADDR=10.0.0.2:4445 \
+REASONDB_CLUSTER_MEMBERS="node-1@10.0.0.1:4445" \
+reasondb serve
 ```
 
 ### Node 3
 
 ```bash
-reasondb serve \
-  --host 10.0.0.3 \
-  --port 4444 \
-  --cluster-enabled \
-  --node-id node-3 \
-  --raft-addr 10.0.0.3:4445 \
-  --cluster-members "node-1@10.0.0.1:4445,node-2@10.0.0.2:4445"
+REASONDB_HOST=10.0.0.3 \
+REASONDB_CLUSTER_ENABLED=true \
+REASONDB_NODE_ID=node-3 \
+REASONDB_RAFT_ADDR=10.0.0.3:4445 \
+REASONDB_CLUSTER_MEMBERS="node-1@10.0.0.1:4445,node-2@10.0.0.2:4445" \
+reasondb serve
 ```
 
 ## Managing the Cluster

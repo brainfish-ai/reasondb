@@ -192,16 +192,41 @@ curl -X POST http://localhost:4444/v1/ingest/text \
   }'
 ```
 
+Text ingestion is **async** — it returns immediately with a job ID (HTTP 202):
+
 ```json
 {
-  "document_id": "doc_xyz789",
-  "title": "Machine Learning Guide",
-  "total_nodes": 7,
-  "max_depth": 3,
-  "stats": {
-    "chunks_created": 6,
-    "summaries_generated": 7,
-    "total_time_ms": 4200
+  "job_id": "job_abc123",
+  "status": "queued",
+  "created_at": "2026-01-30T10:00:00Z",
+  "updated_at": "2026-01-30T10:00:00Z"
+}
+```
+
+Poll for completion:
+
+```bash
+curl http://localhost:4444/v1/jobs/job_abc123
+```
+
+When complete, the job result contains:
+
+```json
+{
+  "job_id": "job_abc123",
+  "status": "completed",
+  "result": {
+    "document_id": "doc_xyz789",
+    "title": "Machine Learning Guide",
+    "total_nodes": 7,
+    "max_depth": 3,
+    "stats": {
+      "chars_extracted": 1250,
+      "chunks_created": 6,
+      "nodes_created": 7,
+      "summaries_generated": 7,
+      "total_time_ms": 4200
+    }
   }
 }
 ```
@@ -231,29 +256,27 @@ REASON 'What algorithms are used for classification?'
 
 ```json
 {
-  "results": [{
-    "node_id": "node_abc",
-    "document_id": "doc_xyz789",
-    "title": "Classification",
-    "content": "Classification predicts discrete categories...",
+  "documents": [{
+    "id": "doc_xyz789",
+    "title": "Machine Learning Guide",
+    "table_id": "tbl_abc123",
+    "tags": [],
+    "metadata": {},
+    "total_nodes": 7,
+    "score": 0.94,
+    "highlights": ["Classification predicts discrete categories..."],
     "answer": "Common classification algorithms include logistic regression, decision trees, random forests, and neural networks. These are used for tasks like spam detection, image recognition, and medical diagnosis.",
-    "confidence": 0.94,
-    "path": ["Machine Learning Guide", "Supervised Learning", "Classification"]
+    "confidence": 0.94
   }],
-  "stats": {
-    "nodes_visited": 4,
-    "nodes_pruned": 3,
-    "llm_calls": 3,
-    "total_time_ms": 1650
-  }
+  "total_count": 1,
+  "execution_time_ms": 1650
 }
 ```
 
 **Notice the difference from vector search:**
-- ReasonDB navigated the tree structure (see the `path`)
-- It found the exact relevant section, not just "similar" chunks
-- You get a synthesized answer with confidence score
-- Stats show the reasoning process (4 nodes visited, 3 pruned)
+- ReasonDB navigated the document tree to find the exact relevant section
+- You get a synthesized `answer` with a `confidence` score
+- `highlights` show the matched content within the document
 
 ### Try More Queries
 
@@ -267,7 +290,7 @@ SELECT * FROM knowledge_base SEARCH 'K-means clustering' LIMIT 5
 
 -- Combine filters with reasoning
 SELECT * FROM knowledge_base
-WHERE tags CONTAINS 'unsupervised'
+WHERE tags CONTAINS ANY ('unsupervised')
 REASON 'How does dimensionality reduction help with visualization?'
 ```
 
@@ -287,7 +310,7 @@ reasondb query -q "SELECT * FROM 'Knowledge Base' SEARCH 'clustering' LIMIT 5"
 
 # Manage tables
 reasondb tables list
-reasondb tables show tbl_abc123
+reasondb tables get tbl_abc123
 
 # Health check
 reasondb health
