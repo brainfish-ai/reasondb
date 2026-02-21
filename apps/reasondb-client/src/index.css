@@ -1,36 +1,36 @@
 @import "tailwindcss";
 
-/* Catppuccin Mocha (Dark) Theme */
+/* Dark Theme — near-black & white, zinc-neutral, WCAG AAA */
 @theme {
-  /* Base colors */
-  --color-base: #1e1e2e;
-  --color-mantle: #181825;
-  --color-crust: #11111b;
-  --color-surface-0: #313244;
-  --color-surface-1: #45475a;
-  --color-surface-2: #585b70;
-  --color-overlay-0: #6c7086;
-  --color-overlay-1: #7f849c;
-  --color-overlay-2: #9399b2;
-  --color-text: #cdd6f4;
-  --color-subtext-0: #a6adc8;
-  --color-subtext-1: #bac2de;
+  /* Base colors — true neutral zinc scale */
+  --color-base: #09090b;
+  --color-mantle: #0c0c0e;
+  --color-crust: #050507;
+  --color-surface-0: #18181b;
+  --color-surface-1: #27272a;
+  --color-surface-2: #3f3f46;
+  --color-overlay-0: #a1a1aa;
+  --color-overlay-1: #d4d4d8;
+  --color-overlay-2: #e4e4e7;
+  --color-text: #fafafa;
+  --color-subtext-0: #d4d4d8;
+  --color-subtext-1: #e4e4e7;
 
-  /* Accent colors */
-  --color-rosewater: #f5e0dc;
-  --color-flamingo: #f2cdcd;
-  --color-pink: #f5c2e7;
-  --color-mauve: #cba6f7;
-  --color-red: #f38ba8;
-  --color-maroon: #eba0ac;
-  --color-peach: #fab387;
-  --color-yellow: #f9e2af;
-  --color-green: #a6e3a1;
-  --color-teal: #94e2d5;
-  --color-sky: #89dceb;
-  --color-sapphire: #74c7ec;
-  --color-blue: #89b4fa;
-  --color-lavender: #b4befe;
+  /* Accent colors — vivid on near-black for clear meaning */
+  --color-rosewater: #fecdd3;
+  --color-flamingo: #fda4af;
+  --color-pink: #f9a8d4;
+  --color-mauve: #a78bfa;
+  --color-red: #f87171;
+  --color-maroon: #fca5a5;
+  --color-peach: #fdba74;
+  --color-yellow: #fde047;
+  --color-green: #4ade80;
+  --color-teal: #5eead4;
+  --color-sky: #38bdf8;
+  --color-sapphire: #22d3ee;
+  --color-blue: #60a5fa;
+  --color-lavender: #c4b5fd;
 
   /* Semantic colors */
   --color-primary: var(--color-mauve);
@@ -64,33 +64,44 @@
   --radius-xl: 1rem;
 
   /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.2);
+  --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.3), 0 1px 2px -1px rgb(0 0 0 / 0.2);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.2);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.2);
+}
+
+/* Light theme — near-white & black, neutral scale */
+[data-theme="light"] {
+  --color-base: #fafafa;
+  --color-mantle: #f5f5f5;
+  --color-crust: #e5e5e5;
+  --color-surface-0: #e5e5e5;
+  --color-surface-1: #d4d4d4;
+  --color-surface-2: #a3a3a3;
+  --color-overlay-0: #525252;
+  --color-overlay-1: #404040;
+  --color-overlay-2: #262626;
+  --color-text: #0a0a0a;
+  --color-subtext-0: #262626;
+  --color-subtext-1: #171717;
+  --color-mauve: #7c3aed;
+  --color-blue: #2563eb;
+  --color-sapphire: #0891b2;
+  --color-red: #dc2626;
+  --color-green: #16a34a;
+  --color-yellow: #ca8a04;
+  --color-sky: #0284c7;
+  --color-pink: #db2777;
+  --color-peach: #ea580c;
+  --color-teal: #0d9488;
+  --color-lavender: #6d28d9;
+  --color-rosewater: #9f1239;
+  --color-flamingo: #be123c;
+  --color-maroon: #b91c1c;
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-}
-
-/* Light theme overrides */
-[data-theme="light"] {
-  --color-base: #eff1f5;
-  --color-mantle: #e6e9ef;
-  --color-crust: #dce0e8;
-  --color-surface-0: #ccd0da;
-  --color-surface-1: #bcc0cc;
-  --color-surface-2: #acb0be;
-  --color-overlay-0: #9ca0b0;
-  --color-overlay-1: #8c8fa1;
-  --color-overlay-2: #7c7f93;
-  --color-text: #4c4f69;
-  --color-subtext-0: #6c6f85;
-  --color-subtext-1: #5c5f77;
-  --color-mauve: #8839ef;
-  --color-blue: #1e66f5;
-  --color-sapphire: #209fb5;
-  --color-red: #d20f39;
-  --color-green: #40a02b;
-  --color-yellow: #df8e1d;
-  --color-sky: #04a5e5;
 }
 
 /* Base styles */
@@ -115,6 +126,31 @@ body {
   flex-direction: column;
 }
 
+/* Skip navigation link */
+.skip-nav {
+  position: absolute;
+  left: -10000px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  z-index: 100;
+}
+.skip-nav:focus {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: auto;
+  height: auto;
+  padding: 0.75rem 1.5rem;
+  background: var(--color-text);
+  color: var(--color-base);
+  font-size: 0.875rem;
+  font-weight: 600;
+  z-index: 100;
+  outline: 2px solid transparent;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
@@ -137,11 +173,32 @@ body {
 /* Selection */
 ::selection {
   background: var(--color-mauve);
-  color: var(--color-base);
+  color: var(--color-crust);
 }
 
-/* Focus visible — only apply to non-input elements to avoid double ring */
-:focus-visible:not(input):not(textarea):not(select):not(button) {
+/* Focus visible — universal ring */
+:focus-visible {
   outline: 2px solid var(--color-ring);
   outline-offset: 2px;
+}
+
+/* Inputs get an inset ring instead of an outline */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--color-ring);
+  border-color: var(--color-ring);
+}
+
+/* Respect reduced-motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

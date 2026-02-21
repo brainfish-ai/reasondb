@@ -8,26 +8,41 @@ import { useUiStore } from '@/stores/uiStore'
 import { useConnectionStore } from '@/stores/connectionStore'
 
 function App() {
-  const { theme, sidebarOpen } = useUiStore()
+  const { theme, setTheme, sidebarOpen } = useUiStore()
   const { activeConnectionId, connections } = useConnectionStore()
 
   const activeConnection = connections.find((c) => c.id === activeConnectionId)
 
   useEffect(() => {
     const root = document.documentElement
+    const applyTheme = () => {
+      if (theme === 'system') {
+        const systemTheme = window.matchMedia('(prefers-color-scheme: dark)')
+          .matches
+          ? 'dark'
+          : 'light'
+        root.setAttribute('data-theme', systemTheme)
+      } else {
+        root.setAttribute('data-theme', theme)
+      }
+    }
+
+    applyTheme()
+
     if (theme === 'system') {
-      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)')
-        .matches
-        ? 'dark'
-        : 'light'
-      root.setAttribute('data-theme', systemTheme)
-    } else {
-      root.setAttribute('data-theme', theme)
+      const mq = window.matchMedia('(prefers-color-scheme: dark)')
+      const handler = () => applyTheme()
+      mq.addEventListener('change', handler)
+      return () => mq.removeEventListener('change', handler)
     }
   }, [theme])
 
   return (
     <>
+      <a href="#main-content" className="skip-nav">
+        Skip to main content
+      </a>
+
       <div className="flex flex-col h-screen bg-background text-foreground">
         <TitleBar connection={activeConnection} />
 
@@ -41,9 +56,12 @@ function App() {
               <Sidebar />
             </div>
           </div>
-          <div className="flex-1 overflow-hidden transition-all duration-300 ease-in-out">
+          <main
+            id="main-content"
+            className="flex-1 overflow-hidden transition-all duration-300 ease-in-out"
+          >
             <MainPanel />
-          </div>
+          </main>
         </div>
 
         <StatusBar connection={activeConnection} />
