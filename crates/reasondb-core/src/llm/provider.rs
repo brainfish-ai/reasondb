@@ -324,7 +324,9 @@ impl Reasoner {
             }
             LLMProvider::Kimi { api_key, model } => {
                 let client = rig::providers::openai::Client::from_url(api_key, "https://api.moonshot.ai/v1");
-                let extractor = client.extractor::<T>(model).build();
+                let extractor = client.extractor::<T>(model)
+                    .preamble("You are a structured data extraction assistant. Extract the requested information accurately.")
+                    .build();
 
                 extractor.extract(prompt).await.map_err(|e| {
                     ReasonError::Reasoning(format!("Kimi extraction error: {}", e))
@@ -394,7 +396,9 @@ impl Reasoner {
             }
             LLMProvider::Kimi { api_key, model } => {
                 let client = rig::providers::openai::Client::from_url(api_key, "https://api.moonshot.ai/v1");
-                let agent = client.agent(model).build();
+                let agent = client.agent(model)
+                    .preamble("You are a helpful assistant.")
+                    .build();
 
                 agent.prompt(prompt).await.map_err(|e| {
                     ReasonError::Reasoning(format!("Kimi completion error: {}", e))
