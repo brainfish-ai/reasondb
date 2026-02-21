@@ -40,6 +40,7 @@ pub use ast::*;
 pub use error::{RqlError, RqlResult};
 pub use executor::{
     AggregateResult, AggregateValue, DocumentMatch, PlanStep, QueryPlan, QueryResult, QueryStats,
+    ReasonPhase, ReasonPhaseStatus, ReasonProgress,
 };
 
 use crate::model::SearchFilter;

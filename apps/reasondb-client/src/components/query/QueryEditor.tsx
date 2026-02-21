@@ -21,7 +21,7 @@ export function QueryEditor({ onExecute, initialQuery, onQueryChange }: QueryEdi
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
   const monacoRef = useRef<typeof Monaco | null>(null)
   
-  const { currentQuery, setCurrentQuery, isExecuting, setIsExecuting, setResult, setError, addToHistory } = useQueryStore()
+  const { currentQuery, setCurrentQuery, isExecuting, setIsExecuting, setResult, setError, setReasonProgress, addToHistory } = useQueryStore()
   
   // Use initialQuery if provided (even if empty), otherwise fall back to global currentQuery
   const query = initialQuery !== undefined ? initialQuery : currentQuery
@@ -94,11 +94,12 @@ export function QueryEditor({ onExecute, initialQuery, onQueryChange }: QueryEdi
     
     const startTime = Date.now()
 
+    const isReasonQuery = /\bREASON\b/i.test(queryText)
+
     try {
       if (onExecute) {
         await onExecute(queryText)
       } else {
-        // Execute query against the server
         const client = createClient({
           host: activeConnection.host,
           port: activeConnection.port,
@@ -106,7 +107,16 @@ export function QueryEditor({ onExecute, initialQuery, onQueryChange }: QueryEdi
           useSsl: activeConnection.ssl,
         })
         
-        const result = await client.executeQuery(queryText)
+        let result
+        if (isReasonQuery) {
+          setReasonProgress(null)
+          result = await client.executeQueryStream(queryText, (progress) => {
+            setReasonProgress(progress)
+          })
+        } else {
+          result = await client.executeQuery(queryText)
+        }
+
         const executionTime = Date.now() - startTime
         
         setResult({
@@ -140,8 +150,9 @@ export function QueryEditor({ onExecute, initialQuery, onQueryChange }: QueryEdi
       })
     } finally {
       setIsExecuting(false)
+      setReasonProgress(null)
     }
-  }, [query, isExecuting, activeConnectionId, activeConnection, onExecute, setIsExecuting, setError, setResult, addToHistory])
+  }, [query, isExecuting, activeConnectionId, activeConnection, onExecute, setIsExecuting, setError, setResult, setReasonProgress, addToHistory])
 
   // Keyboard shortcut for execute
   useHotkeys('mod+enter', () => handleExecute(), {

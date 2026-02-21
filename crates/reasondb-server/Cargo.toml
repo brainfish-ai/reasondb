@@ -29,6 +29,8 @@ tower-http = { version = "0.5", features = ["cors", "trace", "limit"] }
 
 # Async
 tokio.workspace = true
+tokio-stream = "0.1"
+futures.workspace = true
 
 # Serialization
 serde.workspace = true

@@ -6,13 +6,20 @@ import { useQueryStore } from '@/stores/queryStore'
 import { RecordTable } from '@/components/shared/data-table'
 
 export function QueryResults() {
-  const { result, error, isExecuting } = useQueryStore()
+  const { result, error, isExecuting, reasonProgress } = useQueryStore()
 
   if (isExecuting) {
+    const message = reasonProgress?.message ?? 'Executing query...'
+
     return (
       <div className="flex flex-col items-center justify-center h-full bg-base text-subtext-0">
-        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mb-3" />
-        <p className="text-sm">Executing query...</p>
+        <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mb-4" />
+        <p
+          key={message}
+          className="text-sm animate-[fadeIn_0.3s_ease-in-out]"
+        >
+          {message}
+        </p>
       </div>
     )
   }

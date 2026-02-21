@@ -3,6 +3,7 @@
 //! This module contains all the data structures returned from query execution.
 
 use crate::model::{Document, NodeId};
+use serde::Serialize;
 
 /// Result of executing a query.
 #[derive(Debug, Clone)]
@@ -53,6 +54,36 @@ pub struct QueryStats {
     pub reason_executed: bool,
     /// Number of LLM calls made (for REASON)
     pub llm_calls: usize,
+}
+
+// ==================== REASON Progress Types ====================
+
+/// Phase of the REASON query execution pipeline.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ReasonPhase {
+    Candidates,
+    Ranking,
+    Reasoning,
+}
+
+/// Status within a phase.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ReasonPhaseStatus {
+    Started,
+    Progress,
+    Completed,
+}
+
+/// Progress event emitted during REASON query execution.
+#[derive(Debug, Clone, Serialize)]
+pub struct ReasonProgress {
+    pub phase: ReasonPhase,
+    pub status: ReasonPhaseStatus,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<serde_json::Value>,
 }
 
 // ==================== Aggregate Types ====================

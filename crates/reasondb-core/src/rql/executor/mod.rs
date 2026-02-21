@@ -246,6 +246,32 @@ impl NodeStore {
         self.execute_rql_with_search(query, text_index)
     }
 
+    /// Execute an RQL query with progress reporting for REASON queries.
+    ///
+    /// Same as `execute_rql_async` but accepts an optional progress channel
+    /// to stream REASON execution progress to the caller (e.g. SSE endpoints).
+    pub async fn execute_rql_async_with_progress<R: ReasoningEngine + Send + Sync + 'static>(
+        self: &Arc<Self>,
+        query: &Query,
+        text_index: Option<&TextIndex>,
+        reasoner: Arc<R>,
+        progress_tx: Option<tokio::sync::mpsc::Sender<ReasonProgress>>,
+    ) -> Result<QueryResult> {
+        if let Some(ref reason_clause) = query.reason {
+            return reason::execute_reason_query_with_progress(
+                self,
+                query,
+                &reason_clause.query,
+                reason_clause.min_confidence,
+                text_index,
+                reasoner,
+                progress_tx,
+            ).await;
+        }
+
+        self.execute_rql_with_search(query, text_index)
+    }
+
     // ==================== Helper Methods ====================
 
     /// Resolve a table name to its ID.

@@ -14,7 +14,7 @@
 use async_trait::async_trait;
 use rig::completion::Prompt;
 use serde::Serialize;
-use tracing::{debug, info};
+use tracing::{debug, error, info, warn};
 
 use super::{
     BatchSummaryResult, DocumentRanking, DocumentRankings, DocumentSummary, NodeSummary,
@@ -323,8 +323,15 @@ impl Reasoner {
                 );
 
                 let response = agent.prompt(&extraction_prompt).await.map_err(|e| {
+                    error!("Anthropic API call failed: {}", e);
                     ReasonError::Reasoning(format!("Anthropic completion error: {}", e))
                 })?;
+
+                debug!(
+                    response_len = response.len(),
+                    "Anthropic raw response (first 500 chars): {}",
+                    &response[..response.len().min(500)]
+                );
 
                 let json_str = response
                     .trim()
@@ -337,6 +344,11 @@ impl Reasoner {
                     .trim();
 
                 serde_json::from_str(json_str).map_err(|e| {
+                    warn!(
+                        "Anthropic JSON parse failed: {}. Raw response: {}",
+                        e,
+                        &json_str[..json_str.len().min(500)]
+                    );
                     ReasonError::Reasoning(format!("Failed to parse Anthropic JSON response: {}. Response was: {}", e, json_str))
                 })
             }
@@ -450,6 +462,7 @@ impl Reasoner {
 
                 let agent = builder.build();
                 agent.prompt(prompt).await.map_err(|e| {
+                    error!("Anthropic completion call failed: {}", e);
                     ReasonError::Reasoning(format!("Anthropic completion error: {}", e))
                 })
             }

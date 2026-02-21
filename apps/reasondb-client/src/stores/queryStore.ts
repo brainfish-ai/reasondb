@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import type { ReasonProgressEvent } from '@/lib/api'
 
 export interface QueryResult {
   columns: string[]
@@ -36,6 +37,9 @@ interface QueryState {
   result: QueryResult | null
   error: string | null
 
+  // REASON progress tracking
+  reasonProgress: ReasonProgressEvent | null
+
   // History
   history: QueryHistoryItem[]
   maxHistoryItems: number
@@ -48,6 +52,7 @@ interface QueryState {
   setIsExecuting: (isExecuting: boolean) => void
   setResult: (result: QueryResult | null) => void
   setError: (error: string | null) => void
+  setReasonProgress: (progress: ReasonProgressEvent | null) => void
 
   // History actions
   addToHistory: (item: Omit<QueryHistoryItem, 'id'>) => void
@@ -69,6 +74,7 @@ const initialState = {
   isExecuting: false,
   result: null,
   error: null,
+  reasonProgress: null,
   history: [],
   maxHistoryItems: 100,
   savedQueries: [],
@@ -81,8 +87,9 @@ export const useQueryStore = create<QueryState>()(
 
       setCurrentQuery: (query) => set({ currentQuery: query }),
       setIsExecuting: (isExecuting) => set({ isExecuting }),
-      setResult: (result) => set({ result, error: null }),
-      setError: (error) => set({ error, result: null }),
+      setResult: (result) => set({ result, error: null, reasonProgress: null }),
+      setError: (error) => set({ error, result: null, reasonProgress: null }),
+      setReasonProgress: (progress) => set({ reasonProgress: progress }),
 
       addToHistory: (item) =>
         set((state) => {

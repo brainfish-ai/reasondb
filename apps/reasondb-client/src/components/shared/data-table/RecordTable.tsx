@@ -49,11 +49,17 @@ interface SidebarState {
   isLoading: boolean
 }
 
-// Preferred column order (same as DocumentViewer)
+// Preferred column order for regular queries
 const COLUMN_ORDER = ['id', 'title', 'total_nodes', 'tags', 'metadata', 'created_at']
 
-// Columns to exclude from display
-const EXCLUDED_COLUMNS = ['table_id', 'score', 'highlights', 'answer', 'confidence']
+// Preferred column order when REASON fields are present (answer first)
+const REASON_COLUMN_ORDER = ['title', 'answer', 'confidence', 'id', 'total_nodes', 'tags', 'metadata', 'created_at']
+
+// Columns always excluded
+const BASE_EXCLUDED = ['table_id', 'score', 'highlights']
+
+// Additional columns excluded only when NOT a REASON result
+const NON_REASON_EXCLUDED = ['answer', 'confidence']
 
 // ==================== Cell Renderers ====================
 
@@ -64,8 +70,11 @@ function SortableHeader({
   column: { toggleSorting: () => void; getIsSorted: () => false | 'asc' | 'desc' }
   label: string
 }) {
-  // Use "content" label for total_nodes to match DocumentViewer
-  const displayLabel = label === 'total_nodes' ? 'content' : label
+  const displayLabels: Record<string, string> = {
+    total_nodes: 'content',
+    created_at: 'created_at',
+  }
+  const displayLabel = displayLabels[label] ?? label
   
   return (
     <button
@@ -173,6 +182,25 @@ function CellRenderer({ columnName, value, row, onMetadataClick, onContentClick 
     )
   }
 
+  // Answer column (REASON) - the extracted answer text
+  if (columnName === 'answer') {
+    if (!value) return <span className="text-overlay-0 italic">—</span>
+    const text = String(value)
+    return (
+      <span className="text-sm text-text leading-snug" title={text}>
+        {text.length > 200 ? text.slice(0, 200) + '...' : text}
+      </span>
+    )
+  }
+
+  // Confidence column (REASON) - percentage badge
+  if (columnName === 'confidence') {
+    if (value == null) return <span className="text-overlay-0 italic">—</span>
+    const pct = Math.round((value as number) * 100)
+    const color = pct >= 70 ? 'text-green' : pct >= 40 ? 'text-yellow' : 'text-overlay-1'
+    return <span className={`font-mono text-xs ${color}`}>{pct}%</span>
+  }
+
   // Date columns - formatted and colored
   if (columnName === 'created_at' || columnName.endsWith('_at')) {
     if (!value) return <span className="text-overlay-0 italic">—</span>
@@ -231,6 +259,7 @@ export function RecordTable({
 }: RecordTableProps) {
   const [sorting, setSorting] = useState<SortingState>([])
   const [globalFilter, setGlobalFilter] = useState('')
+  const [selectedRowId, setSelectedRowId] = useState<string | null>(null)
   const [sidebar, setSidebar] = useState<SidebarState>({
     isOpen: false,
     title: '',
@@ -245,6 +274,7 @@ export function RecordTable({
   // Close sidebar
   const closeSidebar = useCallback(() => {
     setSidebar(prev => ({ ...prev, isOpen: false }))
+    setSelectedRowId(null)
   }, [])
 
   // Handle metadata click - show metadata in sidebar
@@ -268,7 +298,8 @@ export function RecordTable({
     
     if (!activeConnection || !docId) return
 
-    // Show loading state
+    setSelectedRowId(docId)
+
     setSidebar({
       isOpen: true,
       title: `${title} → content`,
@@ -306,9 +337,19 @@ export function RecordTable({
     }
   }, [activeConnection])
 
+  // Row click handler - opens content sidebar for the clicked row
+  const handleRowClick = useCallback((row: Record<string, unknown>) => {
+    handleContentClick(row)
+  }, [handleContentClick])
+
+  // Detect whether results contain REASON fields
+  const isReasonResult = useMemo(() => {
+    if (records.length === 0) return false
+    return records.some(r => r.answer != null || r.confidence != null)
+  }, [records])
+
   // Order and filter columns
   const orderedColumns = useMemo(() => {
-    // Get all available columns
     let availableColumns: string[]
     if (columnNames) {
       availableColumns = columnNames
@@ -318,27 +359,30 @@ export function RecordTable({
       return []
     }
 
-    // Filter out excluded columns
-    const filtered = availableColumns.filter(col => !EXCLUDED_COLUMNS.includes(col))
+    const excluded = isReasonResult
+      ? BASE_EXCLUDED
+      : [...BASE_EXCLUDED, ...NON_REASON_EXCLUDED]
 
-    // Sort by preferred order
+    const filtered = availableColumns.filter(col => !excluded.includes(col))
+
+    const preferredOrder = isReasonResult ? REASON_COLUMN_ORDER : COLUMN_ORDER
     const ordered: string[] = []
     const remaining: string[] = []
 
-    for (const col of COLUMN_ORDER) {
+    for (const col of preferredOrder) {
       if (filtered.includes(col)) {
         ordered.push(col)
       }
     }
 
     for (const col of filtered) {
-      if (!COLUMN_ORDER.includes(col)) {
+      if (!preferredOrder.includes(col)) {
         remaining.push(col)
       }
     }
 
     return [...ordered, ...remaining]
-  }, [columnNames, records])
+  }, [columnNames, records, isReasonResult])
 
   // Generate column definitions
   const columns = useMemo<ColumnDef<Record<string, unknown>>[]>(() => {
@@ -394,7 +438,12 @@ export function RecordTable({
         />
 
         <div className="flex-1 overflow-auto">
-          <DataTable table={table} />
+          <DataTable
+            table={table}
+            onRowClick={handleRowClick}
+            getRowId={(row) => String(row.id || '')}
+            selectedRowId={selectedRowId}
+          />
         </div>
 
         <TablePagination table={table} />

@@ -8,6 +8,8 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use tokio::sync::mpsc;
+
 use crate::engine::{SearchConfig, SearchEngine};
 use crate::error::Result;
 use crate::llm::{DocumentSummary, ReasoningEngine};
@@ -16,12 +18,22 @@ use crate::store::NodeStore;
 use crate::text_index::TextIndex;
 use crate::rql::ast::Query;
 
-use super::types::{DocumentMatch, QueryResult, QueryStats};
+use super::types::{
+    DocumentMatch, QueryResult, QueryStats,
+    ReasonPhase, ReasonPhaseStatus, ReasonProgress,
+};
 
 /// Configuration constants
 const MAX_CANDIDATES: usize = 100;
 const SAFE_TABLE_SIZE: usize = 1000;
 const MAX_CONCURRENT: usize = 5;
+
+/// Send a progress event, ignoring channel errors (receiver may have dropped).
+async fn send_progress(tx: &Option<mpsc::Sender<ReasonProgress>>, event: ReasonProgress) {
+    if let Some(tx) = tx {
+        let _ = tx.send(event).await;
+    }
+}
 
 /// Execute a REASON (semantic search) query using the LLM.
 pub async fn execute_reason_query<R: ReasoningEngine + Send + Sync + 'static>(
@@ -31,6 +43,31 @@ pub async fn execute_reason_query<R: ReasoningEngine + Send + Sync + 'static>(
     min_confidence: Option<f32>,
     text_index: Option<&TextIndex>,
     reasoner: Arc<R>,
+) -> Result<QueryResult> {
+    execute_reason_query_with_progress(
+        store,
+        query,
+        reason_query,
+        min_confidence,
+        text_index,
+        reasoner,
+        None,
+    )
+    .await
+}
+
+/// Execute a REASON query with optional progress reporting via an mpsc channel.
+///
+/// When `progress_tx` is `Some`, progress events are emitted at each phase boundary
+/// so callers (e.g. SSE endpoints) can stream them to clients.
+pub async fn execute_reason_query_with_progress<R: ReasoningEngine + Send + Sync + 'static>(
+    store: &Arc<NodeStore>,
+    query: &Query,
+    reason_query: &str,
+    min_confidence: Option<f32>,
+    text_index: Option<&TextIndex>,
+    reasoner: Arc<R>,
+    progress_tx: Option<mpsc::Sender<ReasonProgress>>,
 ) -> Result<QueryResult> {
     let start = std::time::Instant::now();
 
@@ -51,9 +88,35 @@ pub async fn execute_reason_query<R: ReasoningEngine + Send + Sync + 'static>(
     let engine = SearchEngine::with_config(store.clone(), reasoner.clone(), config);
 
     // PHASE 1: Get candidate documents
+    send_progress(&progress_tx, ReasonProgress {
+        phase: ReasonPhase::Candidates,
+        status: ReasonPhaseStatus::Started,
+        message: "Searching for candidates...".to_string(),
+        detail: None,
+    }).await;
+
     let candidates = get_candidates(store, query, reason_query, text_index, &table_id)?;
+    tracing::info!(
+        candidate_count = candidates.len(),
+        reason_query = %reason_query,
+        "REASON Phase 1: candidates retrieved"
+    );
+
+    send_progress(&progress_tx, ReasonProgress {
+        phase: ReasonPhase::Candidates,
+        status: ReasonPhaseStatus::Completed,
+        message: format!("Found {} candidates", candidates.len()),
+        detail: Some(serde_json::json!({ "count": candidates.len() })),
+    }).await;
 
     // PHASE 2: Agentic summary scan (rank by relevance)
+    send_progress(&progress_tx, ReasonProgress {
+        phase: ReasonPhase::Ranking,
+        status: ReasonPhaseStatus::Started,
+        message: "Ranking documents by relevance...".to_string(),
+        detail: None,
+    }).await;
+
     let documents = rank_documents_by_summary(
         store,
         candidates,
@@ -61,15 +124,41 @@ pub async fn execute_reason_query<R: ReasoningEngine + Send + Sync + 'static>(
         target_docs,
         &reasoner,
     ).await;
+    tracing::info!(
+        ranked_count = documents.len(),
+        "REASON Phase 2: documents ranked"
+    );
+
+    send_progress(&progress_tx, ReasonProgress {
+        phase: ReasonPhase::Ranking,
+        status: ReasonPhaseStatus::Completed,
+        message: format!("Selected top {} documents", documents.len()),
+        detail: Some(serde_json::json!({ "count": documents.len() })),
+    }).await;
 
     // PHASE 3: Deep LLM reasoning (parallel)
+    send_progress(&progress_tx, ReasonProgress {
+        phase: ReasonPhase::Reasoning,
+        status: ReasonPhaseStatus::Started,
+        message: format!("Deep reasoning on {} documents...", documents.len()),
+        detail: Some(serde_json::json!({ "total": documents.len() })),
+    }).await;
+
     let (all_matches, total_llm_calls, docs_processed) = execute_parallel_reasoning(
         &engine,
         documents,
         reason_query,
         min_confidence,
         query,
+        &progress_tx,
     ).await;
+
+    send_progress(&progress_tx, ReasonProgress {
+        phase: ReasonPhase::Reasoning,
+        status: ReasonPhaseStatus::Completed,
+        message: "Reasoning complete".to_string(),
+        detail: Some(serde_json::json!({ "matches": all_matches.len() })),
+    }).await;
 
     // Sort by confidence
     let mut sorted_matches = all_matches;
@@ -209,8 +298,8 @@ async fn rank_documents_by_summary<R: ReasoningEngine>(
     let rankings = reasoner
         .rank_documents(reason_query, &doc_summaries, target_docs)
         .await
-        .unwrap_or_else(|_| {
-            // Fallback on error
+        .unwrap_or_else(|e| {
+            tracing::warn!("LLM ranking failed, using fallback ordering: {}", e);
             doc_summaries
                 .iter()
                 .take(target_docs)
@@ -239,10 +328,12 @@ async fn execute_parallel_reasoning<R: ReasoningEngine + Send + Sync + 'static>(
     reason_query: &str,
     min_confidence: Option<f32>,
     query: &Query,
+    progress_tx: &Option<mpsc::Sender<ReasonProgress>>,
 ) -> (Vec<DocumentMatch>, usize, usize) {
     let total_docs = documents.len();
     let mut all_matches: Vec<DocumentMatch> = Vec::new();
     let mut total_llm_calls = 1; // Count the ranking call
+    let mut docs_completed: usize = 0;
 
     // Process in batches for controlled parallelism
     for chunk in documents.chunks(MAX_CONCURRENT) {
@@ -264,25 +355,50 @@ async fn execute_parallel_reasoning<R: ReasoningEngine + Send + Sync + 'static>(
 
         // Collect results
         for (doc, search_result) in results {
-            if let Ok(response) = search_result {
-                total_llm_calls += response.stats.llm_calls;
+            docs_completed += 1;
 
-                for result in response.results {
-                    // Apply min_confidence filter
-                    if let Some(min_conf) = min_confidence {
-                        if result.confidence < min_conf {
-                            continue;
+            send_progress(progress_tx, ReasonProgress {
+                phase: ReasonPhase::Reasoning,
+                status: ReasonPhaseStatus::Progress,
+                message: format!(
+                    "Analyzing document {}/{}: '{}'",
+                    docs_completed, total_docs, doc.title
+                ),
+                detail: Some(serde_json::json!({
+                    "current": docs_completed,
+                    "total": total_docs,
+                    "doc_title": doc.title,
+                })),
+            }).await;
+
+            match search_result {
+                Ok(response) => {
+                    total_llm_calls += response.stats.llm_calls;
+
+                    for result in response.results {
+                        if let Some(min_conf) = min_confidence {
+                            if result.confidence < min_conf {
+                                continue;
+                            }
                         }
-                    }
 
-                    all_matches.push(DocumentMatch {
-                        document: doc.clone(),
-                        score: Some(result.confidence),
-                        matched_nodes: vec![result.node_id.clone()],
-                        highlights: vec![result.content.clone()],
-                        answer: result.extracted_answer,
-                        confidence: Some(result.confidence),
-                    });
+                        all_matches.push(DocumentMatch {
+                            document: doc.clone(),
+                            score: Some(result.confidence),
+                            matched_nodes: vec![result.node_id.clone()],
+                            highlights: vec![result.content.clone()],
+                            answer: result.extracted_answer,
+                            confidence: Some(result.confidence),
+                        });
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        doc_id = %doc.id,
+                        doc_title = %doc.title,
+                        "LLM search failed for document: {}",
+                        e
+                    );
                 }
             }
         }

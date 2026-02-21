@@ -59,6 +59,7 @@ fn v1_routes<R: ReasoningEngine + Clone + Send + Sync + 'static>(state: Arc<AppS
         .route("/search", post(search::search::<R>))
         // RQL Query
         .route("/query", post(query::execute_query::<R>))
+        .route("/query/stream", post(query::execute_query_stream::<R>))
         // Documents
         .route("/documents", get(documents::list_documents::<R>))
         .route("/documents/:id", get(documents::get_document::<R>))

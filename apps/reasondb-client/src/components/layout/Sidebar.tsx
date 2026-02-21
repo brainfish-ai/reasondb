@@ -5,11 +5,13 @@ import {
   Plus,
   CaretLeft,
   Gear,
+  WarningCircle,
 } from '@phosphor-icons/react'
 import { cn } from '@/lib/utils'
 import { useConnectionStore, type Connection } from '@/stores/connectionStore'
 import { useUiStore } from '@/stores/uiStore'
 import { useTabsStore } from '@/stores/tabsStore'
+import { useLlmHealthStore } from '@/stores/llmHealthStore'
 import { ConnectionList } from '@/components/connection/ConnectionList'
 import { ConnectionForm } from '@/components/connection/ConnectionForm'
 import { TableBrowser } from '@/components/table/TableBrowser'
@@ -70,6 +72,15 @@ export function Sidebar() {
   }
 
   const { tabs, addTab, setActiveTab } = useTabsStore()
+  const { hasError: llmHasError, testResult } = useLlmHealthStore()
+
+  const llmWarningTooltip = (() => {
+    if (!testResult) return undefined
+    const problems: string[] = []
+    if (!testResult.ingestion.ok) problems.push(`Ingestion: ${testResult.ingestion.error ?? 'failed'}`)
+    if (!testResult.retrieval.ok) problems.push(`Retrieval: ${testResult.retrieval.error ?? 'failed'}`)
+    return problems.length > 0 ? problems.join('\n') : undefined
+  })()
 
   const openSettingsTab = () => {
     const existing = tabs.find((t) => t.type === 'settings')
@@ -151,13 +162,17 @@ export function Sidebar() {
         {activeConnectionId && (
           <button
             onClick={openSettingsTab}
+            title={llmWarningTooltip}
             className={cn(
               'w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md',
               'text-subtext-1 hover:text-text hover:bg-surface-0 transition-colors'
             )}
           >
             <Gear size={16} weight="duotone" aria-hidden="true" />
-            Agent Settings
+            <span className="flex-1 text-left">Agent Settings</span>
+            {llmHasError && (
+              <WarningCircle size={16} weight="fill" className="text-peach" aria-label="LLM configuration error" />
+            )}
           </button>
         )}
       </div>

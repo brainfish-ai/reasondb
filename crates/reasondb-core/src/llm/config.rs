@@ -90,7 +90,7 @@ impl LlmModelConfig {
                 })?;
                 Ok(LLMProvider::Anthropic {
                     api_key: key,
-                    model: model_or("claude-sonnet-4-5-20250929"),
+                    model: model_or("claude-sonnet-4-6"),
                 })
             }
             "gemini" => {

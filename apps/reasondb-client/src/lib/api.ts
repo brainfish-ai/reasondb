@@ -373,6 +373,20 @@ export interface QueryResult {
 }
 
 // Server query response (internal)
+// SSE progress events from REASON query execution
+export interface ReasonProgressEvent {
+  phase: 'candidates' | 'ranking' | 'reasoning'
+  status: 'started' | 'progress' | 'completed'
+  message: string
+  detail?: {
+    count?: number
+    total?: number
+    current?: number
+    doc_title?: string
+    matches?: number
+  }
+}
+
 interface QueryServerResponse {
   documents: Array<{
     id: string
@@ -466,6 +480,18 @@ export interface LlmSettings {
 export interface PatchLlmSettings {
   ingestion?: LlmModelConfig
   retrieval?: LlmModelConfig
+}
+
+// LLM Health Test
+export interface LlmTestStatus {
+  ok: boolean
+  error?: string
+  latency_ms?: number
+}
+
+export interface LlmTestResult {
+  ingestion: LlmTestStatus
+  retrieval: LlmTestStatus
 }
 
 // Errors
@@ -767,7 +793,6 @@ class ReasonDBClient {
    * Execute RQL query
    */
   async executeQuery(query: string): Promise<QueryResult> {
-    // Strip trailing semicolons - RQL doesn't use them
     const cleanQuery = query.trim().replace(/;+$/, '').trim()
     
     const response = await this.request<QueryServerResponse>('/v1/query', {
@@ -775,12 +800,109 @@ class ReasonDBClient {
       body: JSON.stringify({ query: cleanQuery }),
     })
     
-    // Transform server response to frontend format
+    return this.transformQueryResponse(response)
+  }
+
+  /**
+   * Execute RQL query with SSE progress streaming (for REASON queries).
+   * Emits progress events via the callback and returns the final result.
+   */
+  async executeQueryStream(
+    query: string,
+    onProgress: (event: ReasonProgressEvent) => void,
+  ): Promise<QueryResult> {
+    const cleanQuery = query.trim().replace(/;+$/, '').trim()
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    }
+    if (this.apiKey) {
+      headers['X-API-Key'] = this.apiKey
+    }
+
+    const url = `${this.baseUrl}/v1/query/stream`
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ query: cleanQuery }),
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({
+        error: 'Unknown error',
+        message: response.statusText,
+      }))
+      throw new Error(error.message || error.error || 'Request failed')
+    }
+
+    return new Promise<QueryResult>((resolve, reject) => {
+      const reader = response.body?.getReader()
+      if (!reader) {
+        reject(new Error('No response body'))
+        return
+      }
+
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      const processChunk = async () => {
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+
+            buffer += decoder.decode(value, { stream: true })
+
+            // Parse SSE events from buffer
+            const lines = buffer.split('\n')
+            buffer = lines.pop() || ''
+
+            let eventType = ''
+            let eventData = ''
+
+            for (const line of lines) {
+              if (line.startsWith('event:')) {
+                eventType = line.slice(6).trim()
+              } else if (line.startsWith('data:')) {
+                eventData = line.slice(5).trim()
+              } else if (line === '' && eventType && eventData) {
+                // End of an event block
+                try {
+                  if (eventType === 'progress') {
+                    const progress = JSON.parse(eventData) as ReasonProgressEvent
+                    onProgress(progress)
+                  } else if (eventType === 'complete') {
+                    const serverResponse = JSON.parse(eventData) as QueryServerResponse
+                    resolve(this.transformQueryResponse(serverResponse))
+                    return
+                  } else if (eventType === 'error') {
+                    reject(new Error(eventData))
+                    return
+                  }
+                } catch {
+                  // Ignore malformed events
+                }
+                eventType = ''
+                eventData = ''
+              }
+            }
+          }
+
+          // Stream ended without a complete event
+          reject(new Error('Stream ended without results'))
+        } catch (err) {
+          reject(err)
+        }
+      }
+
+      processChunk()
+    })
+  }
+
+  private transformQueryResponse(response: QueryServerResponse): QueryResult {
     if (response.documents && response.documents.length > 0) {
-      // Get columns from first document
       const firstDoc = response.documents[0]
       const columns = Object.keys(firstDoc)
-      
       return {
         columns,
         rows: response.documents,
@@ -788,15 +910,13 @@ class ReasonDBClient {
         executionTime: response.execution_time_ms,
       }
     }
-    
-    // Handle aggregate results
+
     if (response.aggregates && response.aggregates.length > 0) {
       const columns = response.aggregates.map(a => a.name)
       const row: Record<string, unknown> = {}
       response.aggregates.forEach(a => {
         row[a.name] = a.value
       })
-      
       return {
         columns,
         rows: [row],
@@ -804,8 +924,7 @@ class ReasonDBClient {
         executionTime: response.execution_time_ms,
       }
     }
-    
-    // Empty result
+
     return {
       columns: [],
       rows: [],
@@ -871,6 +990,15 @@ class ReasonDBClient {
    */
   async updateRetrievalConfig(config: LlmModelConfig): Promise<LlmSettings> {
     return this.patchLlmConfig({ retrieval: config })
+  }
+
+  /**
+   * Test both ingestion and retrieval LLM connectivity
+   */
+  async testLlmConfig(): Promise<LlmTestResult> {
+    return this.request<LlmTestResult>('/v1/config/llm/test', {
+      method: 'POST',
+    })
   }
 
   // ==================== Jobs ====================

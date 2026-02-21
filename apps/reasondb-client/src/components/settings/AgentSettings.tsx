@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Gear, FloppyDisk, ArrowCounterClockwise, CircleNotch } from '@phosphor-icons/react'
+import { Gear, FloppyDisk, ArrowCounterClockwise, CircleNotch, CheckCircle, WarningCircle, Plugs } from '@phosphor-icons/react'
 import { cn } from '@/lib/utils'
 import { useConnectionStore } from '@/stores/connectionStore'
-import { getClient, createClient, setClient, type LlmModelConfig, type LlmSettings as LlmSettingsType } from '@/lib/api'
+import { getClient, createClient, setClient, type LlmModelConfig, type LlmSettings as LlmSettingsType, type LlmTestStatus } from '@/lib/api'
+import { useLlmHealthStore } from '@/stores/llmHealthStore'
 import {
   Select,
   SelectContent,
@@ -21,14 +22,44 @@ const PROVIDERS = [
   { value: 'ollama', label: 'Ollama (Local)' },
 ]
 
+function StatusBadge({ status, testing }: { status?: LlmTestStatus; testing: boolean }) {
+  if (testing) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-overlay-0">
+        <CircleNotch size={12} className="animate-spin" />
+        Testing…
+      </span>
+    )
+  }
+  if (!status) return null
+  if (status.ok) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-green">
+        <CheckCircle size={14} weight="fill" />
+        Connected{status.latency_ms != null && ` (${status.latency_ms}ms)`}
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-xs text-peach cursor-default" title={status.error ?? 'Connection test failed'}>
+      <WarningCircle size={14} weight="fill" />
+      Unhealthy
+    </span>
+  )
+}
+
 function ModelConfigForm({
   label,
   config,
   onChange,
+  status,
+  testing,
 }: {
   label: string
   config: LlmModelConfig
   onChange: (config: LlmModelConfig) => void
+  status?: LlmTestStatus
+  testing: boolean
 }) {
   const isOllama = config.provider === 'ollama'
 
@@ -45,7 +76,10 @@ function ModelConfigForm({
 
   return (
     <div className="space-y-4">
-      <h3 className="text-sm font-semibold text-text uppercase tracking-wide">{label}</h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-text uppercase tracking-wide">{label}</h3>
+        <StatusBadge status={status} testing={testing} />
+      </div>
 
       <div className="space-y-3">
         <div>
@@ -177,22 +211,47 @@ export function AgentSettings() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
+  const { testResult, testing, setTestResult, setTesting } = useLlmHealthStore()
+
+  const getOrCreateClient = useCallback(() => {
+    if (!activeConnectionId) return null
+    let client = getClient(activeConnectionId)
+    if (!client) {
+      const conn = connections.find((c) => c.id === activeConnectionId)
+      if (!conn) return null
+      client = createClient({ host: conn.host, port: conn.port, apiKey: conn.apiKey, useSsl: conn.ssl })
+      setClient(activeConnectionId, client)
+    }
+    return client
+  }, [activeConnectionId, connections])
+
+  const runTest = useCallback(async () => {
+    const client = getOrCreateClient()
+    if (!client) return
+    setTesting(true)
+    try {
+      const result = await client.testLlmConfig()
+      setTestResult(result)
+    } catch {
+      setTestResult({
+        ingestion: { ok: false, error: 'Test request failed' },
+        retrieval: { ok: false, error: 'Test request failed' },
+      })
+    } finally {
+      setTesting(false)
+    }
+  }, [getOrCreateClient, setTestResult, setTesting])
+
   const loadSettings = useCallback(async () => {
     if (!activeConnectionId) {
       setLoading(false)
       return
     }
-    let client = getClient(activeConnectionId)
+    const client = getOrCreateClient()
     if (!client) {
-      const conn = connections.find((c) => c.id === activeConnectionId)
-      if (conn) {
-        client = createClient({ host: conn.host, port: conn.port, apiKey: conn.apiKey, useSsl: conn.ssl })
-        setClient(activeConnectionId, client)
-      } else {
-        setLoading(false)
-        setError('Not connected to server')
-        return
-      }
+      setLoading(false)
+      setError('Not connected to server')
+      return
     }
 
     setLoading(true)
@@ -213,21 +272,18 @@ export function AgentSettings() {
     } finally {
       setLoading(false)
     }
-  }, [activeConnectionId, connections])
+  }, [activeConnectionId, getOrCreateClient])
 
   useEffect(() => {
-    loadSettings()
-  }, [loadSettings])
+    loadSettings().then(() => {
+      runTest()
+    })
+  }, [loadSettings, runTest])
 
   const handleSave = async () => {
     if (!activeConnectionId || !settings) return
-    let client = getClient(activeConnectionId)
-    if (!client) {
-      const conn = connections.find((c) => c.id === activeConnectionId)
-      if (!conn) return
-      client = createClient({ host: conn.host, port: conn.port, apiKey: conn.apiKey, useSsl: conn.ssl })
-      setClient(activeConnectionId, client)
-    }
+    const client = getOrCreateClient()
+    if (!client) return
 
     setSaving(true)
     setError(null)
@@ -237,6 +293,7 @@ export function AgentSettings() {
       setSettings(result)
       setSuccess('Agent settings saved successfully')
       setTimeout(() => setSuccess(null), 3000)
+      runTest()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save settings')
     } finally {
@@ -277,6 +334,23 @@ export function AgentSettings() {
             <h2 className="text-lg font-semibold text-text">Agent Settings</h2>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={runTest}
+              disabled={testing}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md',
+                'border border-border text-subtext-0',
+                'hover:bg-surface-0 hover:text-text transition-colors',
+                'disabled:opacity-50'
+              )}
+            >
+              {testing ? (
+                <CircleNotch size={14} className="animate-spin" />
+              ) : (
+                <Plugs size={14} />
+              )}
+              Test Connection
+            </button>
             <button
               onClick={loadSettings}
               disabled={loading}
@@ -333,6 +407,8 @@ export function AgentSettings() {
               label="Ingestion"
               config={settings.ingestion}
               onChange={(ingestion) => setSettings({ ...settings, ingestion })}
+              status={testResult?.ingestion}
+              testing={testing}
             />
           </div>
 
@@ -341,6 +417,8 @@ export function AgentSettings() {
               label="Retrieval"
               config={settings.retrieval}
               onChange={(retrieval) => setSettings({ ...settings, retrieval })}
+              status={testResult?.retrieval}
+              testing={testing}
             />
           </div>
         </div>
