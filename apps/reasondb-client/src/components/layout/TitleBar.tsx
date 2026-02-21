@@ -1,6 +1,5 @@
 import {
   Sidebar as SidebarIcon,
-  Database,
   Plugs,
   PlugsConnected,
   Sun,
@@ -53,7 +52,7 @@ export function TitleBar({ connection }: TitleBarProps) {
         </button>
 
         <div className="flex items-center gap-2 text-sm">
-          <Database size={18} weight="duotone" className="text-mauve" aria-hidden="true" />
+          <img src="/logo.png" alt="ReasonDB" className="h-6 w-6 rounded-sm object-contain" aria-hidden="true" />
           <span className="font-semibold text-text">ReasonDB</span>
         </div>
       </div>
