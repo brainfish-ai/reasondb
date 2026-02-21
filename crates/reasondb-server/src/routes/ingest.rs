@@ -12,7 +12,7 @@ use reasondb_core::NodeStore;
 use reasondb_ingest::{IngestPipeline, PipelineConfig};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tempfile::NamedTempFile;
+use tempfile;
 use tracing::{debug, info};
 use utoipa::ToSchema;
 
@@ -227,22 +227,14 @@ pub async fn ingest_file<R: ReasoningEngine + Clone + Send + Sync + 'static>(
 
     info!("Ingesting file: {} ({} bytes) into table: {}", filename, data.len(), table_id);
 
-    // Write to temp file
-    let temp_file = NamedTempFile::new()
-        .map_err(|e| ApiError::Internal(format!("Failed to create temp file: {}", e)))?;
+    // Write to a temp directory preserving the original filename so the
+    // extractor plugin can derive a meaningful title from it.
+    let temp_dir = tempfile::tempdir()
+        .map_err(|e| ApiError::Internal(format!("Failed to create temp dir: {}", e)))?;
 
-    std::fs::write(temp_file.path(), &data)
+    let temp_path = temp_dir.path().join(&filename);
+    std::fs::write(&temp_path, &data)
         .map_err(|e| ApiError::Internal(format!("Failed to write temp file: {}", e)))?;
-
-    // Rename with original extension
-    let extension = std::path::Path::new(&filename)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("bin");
-
-    let temp_path = temp_file.path().with_extension(extension);
-    std::fs::rename(temp_file.path(), &temp_path)
-        .map_err(|e| ApiError::Internal(format!("Failed to rename temp file: {}", e)))?;
 
     // Create pipeline and ingest
     let config = PipelineConfig {
@@ -260,8 +252,7 @@ pub async fn ingest_file<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         .await
         .map_err(ApiError::from)?;
 
-    // Clean up temp file
-    let _ = std::fs::remove_file(&temp_path);
+    // temp_dir is cleaned up automatically when dropped
 
     // Index document content for BM25 search
     index_document_nodes(
@@ -333,6 +324,116 @@ pub async fn ingest_text<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         .ok_or_else(|| ApiError::Internal("Job not found after enqueue".to_string()))?;
 
     Ok(Json(status))
+}
+
+/// A single item in a batch ingestion request
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct BatchIngestItem {
+    /// Document title
+    #[schema(example = "My Research Notes")]
+    pub title: String,
+    /// Document content (plain text or Markdown)
+    #[schema(example = "# Introduction\n\nThis document covers...")]
+    pub content: String,
+    /// Whether to generate LLM summaries (default: true)
+    #[serde(default)]
+    pub generate_summaries: Option<bool>,
+    /// Document tags for filtering
+    #[serde(default)]
+    #[schema(example = json!(["nda", "confidential"]))]
+    pub tags: Option<Vec<String>>,
+    /// Custom metadata (key-value pairs)
+    #[serde(default)]
+    pub metadata: Option<std::collections::HashMap<String, serde_json::Value>>,
+}
+
+/// Request for batch text ingestion
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct BatchIngestRequest {
+    /// Table ID to assign all documents to (REQUIRED)
+    #[schema(example = "tbl_legal")]
+    pub table_id: String,
+    /// Array of documents to ingest
+    pub documents: Vec<BatchIngestItem>,
+}
+
+/// Response for batch ingestion
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct BatchIngestResponse {
+    /// Number of jobs created
+    pub jobs_created: usize,
+    /// Job IDs for polling
+    pub job_ids: Vec<String>,
+}
+
+/// Ingest multiple documents in a single request (async — returns job IDs)
+///
+/// Enqueues multiple documents for background ingestion into the same table.
+/// Each document becomes a separate job that can be polled individually via
+/// `GET /v1/jobs/{job_id}`.
+#[utoipa::path(
+    post,
+    path = "/v1/ingest/batch",
+    tag = "ingestion",
+    request_body = BatchIngestRequest,
+    responses(
+        (status = 202, description = "Batch ingestion jobs queued", body = BatchIngestResponse),
+        (status = 422, description = "Validation failed", body = ErrorResponse),
+    )
+)]
+pub async fn ingest_batch<R: ReasoningEngine + Clone + Send + Sync + 'static>(
+    State(state): State<Arc<AppState<R>>>,
+    Json(request): Json<BatchIngestRequest>,
+) -> ApiResult<Json<BatchIngestResponse>> {
+    if request.table_id.is_empty() {
+        return Err(ApiError::ValidationError("Table ID is required".to_string()));
+    }
+    if request.documents.is_empty() {
+        return Err(ApiError::ValidationError("At least one document is required".to_string()));
+    }
+
+    state
+        .store
+        .get_table(&request.table_id)
+        .map_err(ApiError::from)?
+        .ok_or_else(|| ApiError::NotFound(format!("Table '{}' not found", request.table_id)))?;
+
+    info!(
+        "Queuing batch ingestion: {} documents into table: {}",
+        request.documents.len(),
+        request.table_id
+    );
+
+    let mut job_ids = Vec::with_capacity(request.documents.len());
+
+    for item in request.documents {
+        if item.title.is_empty() || item.content.is_empty() {
+            continue;
+        }
+
+        let text_req = IngestTextRequest {
+            title: item.title,
+            content: item.content,
+            table_id: request.table_id.clone(),
+            generate_summaries: item.generate_summaries,
+            tags: item.tags,
+            metadata: item.metadata,
+        };
+
+        let job_id = state
+            .job_queue
+            .enqueue(JobRequest::Text(text_req))
+            .map_err(|e| ApiError::Internal(e))?;
+
+        job_ids.push(job_id);
+    }
+
+    info!("Batch enqueued {} jobs", job_ids.len());
+
+    Ok(Json(BatchIngestResponse {
+        jobs_created: job_ids.len(),
+        job_ids,
+    }))
 }
 
 /// Ingest from URL (async — returns a job ID immediately)

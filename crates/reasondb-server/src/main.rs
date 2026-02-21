@@ -32,7 +32,7 @@ struct Args {
     #[arg(short, long, default_value = "data/reasondb.redb", env = "REASONDB_PATH")]
     database: String,
 
-    /// LLM provider: openai, anthropic, gemini, or cohere
+    /// LLM provider: openai, anthropic, gemini, cohere, glm, kimi, or ollama
     #[arg(long, env = "REASONDB_LLM_PROVIDER")]
     llm_provider: String,
 
@@ -43,6 +43,10 @@ struct Args {
     /// Custom model name (overrides the provider default)
     #[arg(long, env = "REASONDB_MODEL")]
     model: Option<String>,
+
+    /// Base URL for Ollama (only used when provider is "ollama")
+    #[arg(long, env = "REASONDB_OLLAMA_BASE_URL", default_value = "http://localhost:11434/v1")]
+    ollama_base_url: String,
 
     /// Disable summary generation during ingestion
     #[arg(long)]
@@ -260,8 +264,30 @@ async fn main() -> anyhow::Result<()> {
                 None => LLMProvider::cohere(&key),
             }
         }
+        "glm" => {
+            let key = require_key("GLM (Zhipu AI)")?;
+            match &model {
+                Some(m) => LLMProvider::Glm { api_key: key, model: m.clone() },
+                None => LLMProvider::glm(&key),
+            }
+        }
+        "kimi" => {
+            let key = require_key("Kimi (Moonshot)")?;
+            match &model {
+                Some(m) => LLMProvider::Kimi { api_key: key, model: m.clone() },
+                None => LLMProvider::kimi(&key),
+            }
+        }
+        "ollama" => {
+            let m = model.ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Ollama provider requires a model name — set REASONDB_MODEL (e.g. llama3.3, qwen2.5, mistral)"
+                )
+            })?;
+            LLMProvider::ollama_from_url(&args.ollama_base_url, m)
+        }
         other => anyhow::bail!(
-            "Unknown LLM provider '{}'. Supported: openai, anthropic, gemini, cohere",
+            "Unknown LLM provider '{}'. Supported: openai, anthropic, gemini, cohere, glm, kimi, ollama",
             other
         ),
     };

@@ -42,6 +42,7 @@ logs/
 # Test artifacts
 *.tmp
 .coverage/
+scripts/results/
 
 # Build artifacts
 dist/

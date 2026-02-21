@@ -7,6 +7,7 @@ import {
   type DatabaseSchema, 
 } from './sql-completion'
 import { useSchemaStore, type MetadataSchemaField } from '@/stores/schemaStore'
+import { palette, editorColors } from './monaco-theme'
 
 // RQL Language Definition for Monaco Editor
 export const RQL_LANGUAGE_ID = 'rql'
@@ -177,38 +178,26 @@ export const rqlTokensProvider: Monaco.languages.IMonarchLanguage = {
   },
 }
 
-// RQL Theme — near-black & white
+const hex = (color: string) => color.slice(1)
+
 export const rqlTheme: Monaco.editor.IStandaloneThemeData = {
   base: 'vs-dark',
-  inherit: true,
+  inherit: false,
   rules: [
-    { token: 'keyword', foreground: 'a78bfa', fontStyle: 'bold' },
-    { token: 'predefined', foreground: '60a5fa' },
-    { token: 'identifier', foreground: 'fafafa' },
-    { token: 'string', foreground: '4ade80' },
-    { token: 'string.escape', foreground: 'f9a8d4' },
-    { token: 'number', foreground: 'fdba74' },
-    { token: 'number.float', foreground: 'fdba74' },
-    { token: 'number.hex', foreground: 'fdba74' },
-    { token: 'operator', foreground: '38bdf8' },
-    { token: 'delimiter', foreground: 'd4d4d8' },
-    { token: 'comment', foreground: 'a1a1aa', fontStyle: 'italic' },
-    { token: 'white', foreground: 'fafafa' },
+    { token: 'keyword', foreground: hex(palette.mauve), fontStyle: 'bold' },
+    { token: 'predefined', foreground: hex(palette.blue) },
+    { token: 'identifier', foreground: hex(palette.text) },
+    { token: 'string', foreground: hex(palette.green) },
+    { token: 'string.escape', foreground: hex(palette.pink) },
+    { token: 'number', foreground: hex(palette.peach) },
+    { token: 'number.float', foreground: hex(palette.peach) },
+    { token: 'number.hex', foreground: hex(palette.peach) },
+    { token: 'operator', foreground: hex(palette.sky) },
+    { token: 'delimiter', foreground: hex(palette.overlay1) },
+    { token: 'comment', foreground: hex(palette.overlay0), fontStyle: 'italic' },
+    { token: 'white', foreground: hex(palette.text) },
   ],
-  colors: {
-    'editor.background': '#09090b',
-    'editor.foreground': '#fafafa',
-    'editor.lineHighlightBackground': '#18181b',
-    'editor.selectionBackground': '#27272a',
-    'editorCursor.foreground': '#fafafa',
-    'editorLineNumber.foreground': '#3f3f46',
-    'editorLineNumber.activeForeground': '#d4d4d8',
-    'editorIndentGuide.background': '#18181b',
-    'editorIndentGuide.activeBackground': '#27272a',
-    'editor.selectionHighlightBackground': '#27272a80',
-    'editorBracketMatch.background': '#27272a',
-    'editorBracketMatch.border': '#60a5fa',
-  },
+  colors: editorColors,
 }
 
 // Track if language is already registered

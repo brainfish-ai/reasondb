@@ -14,10 +14,11 @@ services:
       REASONDB_LLM_PROVIDER: "${REASONDB_LLM_PROVIDER}"
       REASONDB_LLM_API_KEY: "${REASONDB_LLM_API_KEY:-}"
       REASONDB_MODEL: "${REASONDB_MODEL:-}"
+      REASONDB_OLLAMA_BASE_URL: "${REASONDB_OLLAMA_BASE_URL:-http://host.docker.internal:11434/v1}"
       REASONDB_RATE_LIMIT_RPM: "300"
       REASONDB_RATE_LIMIT_RPH: "5000"
       REASONDB_RATE_LIMIT_BURST: "30"
-      REASONDB_WORKER_COUNT: "2"
+      REASONDB_WORKER_COUNT: "4"
       REASONDB_PLUGINS_DIR: "/plugins"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4444/health"]

@@ -297,7 +297,7 @@ pub async fn run_worker<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     let worker_count = std::env::var("REASONDB_WORKER_COUNT")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
-        .unwrap_or(2)
+        .unwrap_or(4)
         .max(1);
 
     info!("Ingestion worker pool starting ({} workers)", worker_count);

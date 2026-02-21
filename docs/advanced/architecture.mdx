@@ -45,6 +45,9 @@ ReasonDB is built as a Rust workspace with four main crates: `reasondb-core`, `r
         DB[(redb)]
         Claude[Anthropic]
         OpenAI[OpenAI]
+        GLM[GLM]
+        Kimi[Kimi]
+        OllamaExt[Ollama]
     end
 
     API --> Router
@@ -67,7 +70,10 @@ ReasonDB is built as a Rust workspace with four main crates: `reasondb-core`, `r
     RQL --> Engine
     Index --> Store
     LLM --> Claude
-    LLM --> OpenAI`}
+    LLM --> OpenAI
+    LLM --> GLM
+    LLM --> Kimi
+    LLM --> OllamaExt`}
 </Mermaid>
 
 ## Crate Dependencies

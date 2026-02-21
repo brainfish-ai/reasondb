@@ -32,6 +32,7 @@ use crate::routes::{documents, ingest, search};
     paths(
         ingest::ingest_file,
         ingest::ingest_text,
+        ingest::ingest_batch,
         ingest::ingest_url,
         search::search,
         documents::list_documents,
@@ -46,6 +47,9 @@ use crate::routes::{documents, ingest, search};
             ingest::IngestResponse,
             ingest::IngestStats,
             ingest::IngestTextRequest,
+            ingest::BatchIngestItem,
+            ingest::BatchIngestRequest,
+            ingest::BatchIngestResponse,
             ingest::IngestUrlRequest,
             // Search
             search::SearchRequest,

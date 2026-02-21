@@ -1,86 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import Editor, { type Monaco, loader } from '@monaco-editor/react'
+import Editor, { type Monaco } from '@monaco-editor/react'
 import { X, Copy, CheckCircle, ArrowsOut, ArrowsIn } from '@phosphor-icons/react'
 import { cn } from '@/lib/utils'
-
-// Near-black & white theme palette
-const palette = {
-  base: '#09090b',
-  mantle: '#0c0c0e',
-  crust: '#050507',
-  surface0: '#18181b',
-  surface1: '#27272a',
-  surface2: '#3f3f46',
-  overlay0: '#a1a1aa',
-  overlay1: '#d4d4d8',
-  text: '#fafafa',
-  mauve: '#a78bfa',
-  red: '#f87171',
-  peach: '#fdba74',
-  yellow: '#fde047',
-  green: '#4ade80',
-  sapphire: '#22d3ee',
-  blue: '#60a5fa',
-  lavender: '#c4b5fd',
-}
-
-const defineTheme = (monaco: Monaco) => {
-  monaco.editor.defineTheme('catppuccin-mocha', {
-    base: 'vs-dark',
-    inherit: false,
-    rules: [
-      { token: 'string.key.json', foreground: palette.blue.slice(1) },
-      { token: 'string.value.json', foreground: palette.green.slice(1) },
-      { token: 'number', foreground: palette.peach.slice(1) },
-      { token: 'keyword', foreground: palette.mauve.slice(1) },
-      { token: 'keyword.json', foreground: palette.peach.slice(1) },
-      { token: 'delimiter', foreground: palette.overlay1.slice(1) },
-      { token: 'delimiter.bracket', foreground: palette.overlay1.slice(1) },
-      { token: 'comment', foreground: palette.overlay0.slice(1), fontStyle: 'italic' },
-      { token: 'string', foreground: palette.green.slice(1) },
-      { token: 'variable', foreground: palette.text.slice(1) },
-      { token: 'type', foreground: palette.yellow.slice(1) },
-    ],
-    colors: {
-      'editor.background': palette.mantle,
-      'editor.foreground': palette.text,
-      'editor.lineHighlightBackground': palette.surface0 + '40',
-      'editor.selectionBackground': palette.surface2 + '80',
-      'editor.inactiveSelectionBackground': palette.surface1 + '60',
-      'editorLineNumber.foreground': palette.surface2,
-      'editorLineNumber.activeForeground': palette.lavender,
-      'editorCursor.foreground': palette.text,
-      'editorWhitespace.foreground': palette.surface2,
-      'editorIndentGuide.background': palette.surface1,
-      'editorIndentGuide.activeBackground': palette.surface2,
-      'editorBracketMatch.background': palette.surface2 + '40',
-      'editorBracketMatch.border': palette.mauve,
-      'editor.foldBackground': palette.surface0 + '40',
-      'scrollbar.shadow': palette.crust,
-      'scrollbarSlider.background': palette.surface2 + '80',
-      'scrollbarSlider.hoverBackground': palette.overlay0,
-      'scrollbarSlider.activeBackground': palette.overlay1,
-      'editorGutter.background': palette.mantle,
-      'editorWidget.background': palette.surface0,
-      'editorWidget.border': palette.surface1,
-      'editorBracketHighlight.foreground1': palette.red,
-      'editorBracketHighlight.foreground2': palette.peach,
-      'editorBracketHighlight.foreground3': palette.yellow,
-      'editorBracketHighlight.foreground4': palette.green,
-      'editorBracketHighlight.foreground5': palette.sapphire,
-      'editorBracketHighlight.foreground6': palette.mauve,
-    },
-  })
-}
-
-// Initialize theme once
-let themeInitialized = false
-loader.init().then((monaco) => {
-  if (!themeInitialized) {
-    defineTheme(monaco)
-    themeInitialized = true
-  }
-})
+import { THEME_NAME, ensureTheme } from '@/lib/monaco-theme'
 
 interface JsonDetailSidebarProps {
   isOpen: boolean
@@ -164,14 +86,8 @@ export function JsonDetailSidebar({ isOpen, onClose, title, data, path, isLoadin
 
   const handleEditorDidMount = (editor: unknown, monaco: Monaco) => {
     editorRef.current = editor
-    
-    // Ensure theme is defined
-    if (!themeInitialized) {
-      defineTheme(monaco)
-      themeInitialized = true
-    }
-    
-    // Configure JSON language features
+    ensureTheme(monaco)
+
     monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
       validate: true,
       allowComments: false,
@@ -333,7 +249,7 @@ export function JsonDetailSidebar({ isOpen, onClose, title, data, path, isLoadin
                 },
                 padding: { top: 12, bottom: 12 },
               }}
-              theme="catppuccin-mocha"
+              theme={THEME_NAME}
             />
           )}
         </div>

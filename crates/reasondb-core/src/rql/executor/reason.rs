@@ -190,7 +190,7 @@ async fn rank_documents_by_summary<R: ReasoningEngine>(
     let doc_summaries: Vec<DocumentSummary> = candidates
         .iter()
         .filter_map(|doc| {
-            let root = store.get_node(&doc.id).ok()??;
+            let root = store.get_root_node(&doc.id).ok()??;
             Some(DocumentSummary {
                 id: doc.id.clone(),
                 title: doc.title.clone(),

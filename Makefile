@@ -1,7 +1,8 @@
 CLIENT_DIR := apps/reasondb-client
 
 .PHONY: docker-up docker-up-d docker-down docker-down-v docker-build docker-logs docker-ps docker-restart docker-watch \
-        client-dev client-build client-tauri client-tauri-build client-install
+        client-dev client-build client-tauri client-tauri-build client-install \
+        seed-docs test-queries seed-and-test
 
 docker-up:
 	docker compose up --build
@@ -46,3 +47,13 @@ client-tauri:
 
 client-tauri-build:
 	cd $(CLIENT_DIR) && npm run tauri build
+
+# ── Seed & Test ──────────────────────────────────────────
+
+seed-docs:
+	@bash scripts/seed-docs.sh
+
+test-queries:
+	@bash scripts/test-queries.sh
+
+seed-and-test: seed-docs test-queries

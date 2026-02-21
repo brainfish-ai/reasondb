@@ -5,13 +5,16 @@
 //! - Anthropic (Claude 3.5 Sonnet, Claude 3 Haiku, etc.)
 //! - Google Gemini
 //! - Cohere
+//! - GLM (Zhipu AI — GLM-4, GLM-4-Flash, etc.)
+//! - Kimi (Moonshot AI — moonshot-v1-8k, moonshot-v1-128k, etc.)
+//! - Ollama (local models — Llama, Qwen, Mistral, etc.)
 //!
 //! Uses structured output extraction via `schemars::JsonSchema`.
 
 use async_trait::async_trait;
 use rig::completion::Prompt;
 use serde::Serialize;
-use tracing::debug;
+use tracing::{debug, info};
 
 use super::{
     DocumentRanking, DocumentRankings, DocumentSummary, NodeSummary, ReasoningConfig,
@@ -31,6 +34,12 @@ pub enum LLMProvider {
     Gemini { api_key: String, model: String },
     /// Cohere models
     Cohere { api_key: String, model: String },
+    /// Zhipu AI GLM models (OpenAI-compatible API)
+    Glm { api_key: String, model: String },
+    /// Moonshot AI Kimi models (OpenAI-compatible API)
+    Kimi { api_key: String, model: String },
+    /// Ollama local models (OpenAI-compatible API, no API key needed)
+    Ollama { base_url: String, model: String },
 }
 
 impl LLMProvider {
@@ -98,6 +107,54 @@ impl LLMProvider {
         }
     }
 
+    /// Create a GLM provider with GLM-4-Flash (fast, cost-effective)
+    pub fn glm(api_key: impl Into<String>) -> Self {
+        Self::Glm {
+            api_key: api_key.into(),
+            model: "glm-4-flash".to_string(),
+        }
+    }
+
+    /// Create a GLM provider with GLM-4-Plus (powerful)
+    pub fn glm_plus(api_key: impl Into<String>) -> Self {
+        Self::Glm {
+            api_key: api_key.into(),
+            model: "glm-4-plus".to_string(),
+        }
+    }
+
+    /// Create a Kimi provider with moonshot-v1-8k
+    pub fn kimi(api_key: impl Into<String>) -> Self {
+        Self::Kimi {
+            api_key: api_key.into(),
+            model: "moonshot-v1-8k".to_string(),
+        }
+    }
+
+    /// Create a Kimi provider with moonshot-v1-128k (long context)
+    pub fn kimi_long(api_key: impl Into<String>) -> Self {
+        Self::Kimi {
+            api_key: api_key.into(),
+            model: "moonshot-v1-128k".to_string(),
+        }
+    }
+
+    /// Create an Ollama provider with the default local endpoint
+    pub fn ollama(model: impl Into<String>) -> Self {
+        Self::Ollama {
+            base_url: "http://localhost:11434/v1".to_string(),
+            model: model.into(),
+        }
+    }
+
+    /// Create an Ollama provider with a custom base URL
+    pub fn ollama_from_url(base_url: impl Into<String>, model: impl Into<String>) -> Self {
+        Self::Ollama {
+            base_url: base_url.into(),
+            model: model.into(),
+        }
+    }
+
     /// The provider name (e.g. "openai", "anthropic")
     pub fn provider_name(&self) -> &str {
         match self {
@@ -105,6 +162,9 @@ impl LLMProvider {
             Self::Anthropic { .. } => "anthropic",
             Self::Gemini { .. } => "gemini",
             Self::Cohere { .. } => "cohere",
+            Self::Glm { .. } => "glm",
+            Self::Kimi { .. } => "kimi",
+            Self::Ollama { .. } => "ollama",
         }
     }
 
@@ -114,7 +174,10 @@ impl LLMProvider {
             Self::OpenAI { model, .. }
             | Self::Anthropic { model, .. }
             | Self::Gemini { model, .. }
-            | Self::Cohere { model, .. } => model,
+            | Self::Cohere { model, .. }
+            | Self::Glm { model, .. }
+            | Self::Kimi { model, .. }
+            | Self::Ollama { model, .. } => model,
         }
     }
 }
@@ -181,6 +244,11 @@ impl Reasoner {
     where
         T: serde::de::DeserializeOwned + schemars::JsonSchema + Serialize + Send + Sync + 'static,
     {
+        info!(
+            provider = self.provider.provider_name(),
+            model = self.provider.model(),
+            "LLM extraction request"
+        );
         match &self.provider {
             LLMProvider::OpenAI { api_key, model } => {
                 let client = rig::providers::openai::Client::new(api_key);
@@ -246,11 +314,40 @@ impl Reasoner {
                     ReasonError::Reasoning(format!("Cohere extraction error: {}", e))
                 })
             }
+            LLMProvider::Glm { api_key, model } => {
+                let client = rig::providers::openai::Client::from_url(api_key, "https://open.bigmodel.cn/api/paas/v4");
+                let extractor = client.extractor::<T>(model).build();
+
+                extractor.extract(prompt).await.map_err(|e| {
+                    ReasonError::Reasoning(format!("GLM extraction error: {}", e))
+                })
+            }
+            LLMProvider::Kimi { api_key, model } => {
+                let client = rig::providers::openai::Client::from_url(api_key, "https://api.moonshot.ai/v1");
+                let extractor = client.extractor::<T>(model).build();
+
+                extractor.extract(prompt).await.map_err(|e| {
+                    ReasonError::Reasoning(format!("Kimi extraction error: {}", e))
+                })
+            }
+            LLMProvider::Ollama { base_url, model } => {
+                let client = rig::providers::openai::Client::from_url("ollama", base_url);
+                let extractor = client.extractor::<T>(model).build();
+
+                extractor.extract(prompt).await.map_err(|e| {
+                    ReasonError::Reasoning(format!("Ollama extraction error: {}", e))
+                })
+            }
         }
     }
 
     /// Execute a simple completion (for summarization)
     async fn complete(&self, prompt: &str) -> Result<String> {
+        info!(
+            provider = self.provider.provider_name(),
+            model = self.provider.model(),
+            "LLM completion request"
+        );
         match &self.provider {
             LLMProvider::OpenAI { api_key, model } => {
                 let client = rig::providers::openai::Client::new(api_key);
@@ -285,6 +382,30 @@ impl Reasoner {
 
                 agent.prompt(prompt).await.map_err(|e| {
                     ReasonError::Reasoning(format!("Cohere completion error: {}", e))
+                })
+            }
+            LLMProvider::Glm { api_key, model } => {
+                let client = rig::providers::openai::Client::from_url(api_key, "https://open.bigmodel.cn/api/paas/v4");
+                let agent = client.agent(model).build();
+
+                agent.prompt(prompt).await.map_err(|e| {
+                    ReasonError::Reasoning(format!("GLM completion error: {}", e))
+                })
+            }
+            LLMProvider::Kimi { api_key, model } => {
+                let client = rig::providers::openai::Client::from_url(api_key, "https://api.moonshot.ai/v1");
+                let agent = client.agent(model).build();
+
+                agent.prompt(prompt).await.map_err(|e| {
+                    ReasonError::Reasoning(format!("Kimi completion error: {}", e))
+                })
+            }
+            LLMProvider::Ollama { base_url, model } => {
+                let client = rig::providers::openai::Client::from_url("ollama", base_url);
+                let agent = client.agent(model).build();
+
+                agent.prompt(prompt).await.map_err(|e| {
+                    ReasonError::Reasoning(format!("Ollama completion error: {}", e))
                 })
             }
         }
@@ -449,12 +570,7 @@ Order by relevance, highest first."#,
     }
 
     fn name(&self) -> &str {
-        match &self.provider {
-            LLMProvider::OpenAI { model, .. } => model,
-            LLMProvider::Anthropic { model, .. } => model,
-            LLMProvider::Gemini { model, .. } => model,
-            LLMProvider::Cohere { model, .. } => model,
-        }
+        self.provider.model()
     }
 }
 
@@ -475,6 +591,27 @@ mod tests {
 
         let cohere = LLMProvider::cohere("test-key");
         assert!(matches!(cohere, LLMProvider::Cohere { model, .. } if model == "command-r-plus"));
+
+        let glm = LLMProvider::glm("test-key");
+        assert!(matches!(glm, LLMProvider::Glm { ref model, .. } if model == "glm-4-flash"));
+        assert_eq!(glm.provider_name(), "glm");
+
+        let glm_plus = LLMProvider::glm_plus("test-key");
+        assert!(matches!(glm_plus, LLMProvider::Glm { model, .. } if model == "glm-4-plus"));
+
+        let kimi = LLMProvider::kimi("test-key");
+        assert!(matches!(kimi, LLMProvider::Kimi { ref model, .. } if model == "moonshot-v1-8k"));
+        assert_eq!(kimi.provider_name(), "kimi");
+
+        let kimi_long = LLMProvider::kimi_long("test-key");
+        assert!(matches!(kimi_long, LLMProvider::Kimi { model, .. } if model == "moonshot-v1-128k"));
+
+        let ollama = LLMProvider::ollama("llama3.3");
+        assert!(matches!(ollama, LLMProvider::Ollama { ref model, .. } if model == "llama3.3"));
+        assert_eq!(ollama.provider_name(), "ollama");
+
+        let ollama_custom = LLMProvider::ollama_from_url("http://remote:11434/v1", "qwen2.5");
+        assert!(matches!(ollama_custom, LLMProvider::Ollama { base_url, model } if base_url == "http://remote:11434/v1" && model == "qwen2.5"));
     }
 
     #[test]

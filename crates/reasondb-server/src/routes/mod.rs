@@ -49,6 +49,7 @@ fn v1_routes<R: ReasoningEngine + Clone + Send + Sync + 'static>(state: Arc<AppS
         // Ingestion
         .route("/ingest/file", post(ingest::ingest_file::<R>))
         .route("/ingest/text", post(ingest::ingest_text::<R>))
+        .route("/ingest/batch", post(ingest::ingest_batch::<R>))
         .route("/ingest/url", post(ingest::ingest_url::<R>))
         // Jobs
         .route("/jobs", get(jobs::list_jobs::<R>))

@@ -7,6 +7,7 @@
 //! ## Ingestion
 //! - `POST /v1/ingest/file` - Upload and ingest a file
 //! - `POST /v1/ingest/text` - Ingest raw text/markdown
+//! - `POST /v1/ingest/batch` - Ingest multiple documents in one request
 //! - `POST /v1/ingest/url` - Ingest from URL
 //!
 //! ## Search

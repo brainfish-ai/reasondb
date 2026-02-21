@@ -71,7 +71,7 @@ fn default_db_path() -> String {
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct LLMConfig {
-    /// LLM provider (openai, anthropic, gemini, cohere)
+    /// LLM provider (openai, anthropic, gemini, cohere, glm, kimi, ollama)
     #[serde(default)]
     pub provider: Option<String>,
 
@@ -321,8 +321,11 @@ async fn init_interactive() -> Result<()> {
     println!("  2. OpenAI (GPT-4)");
     println!("  3. Google (Gemini)");
     println!("  4. Cohere");
-    println!("  5. Skip (use mock provider)");
-    print!("\nSelect provider [1-5]: ");
+    println!("  5. GLM (Zhipu AI)");
+    println!("  6. Kimi (Moonshot)");
+    println!("  7. Ollama (local)");
+    println!("  8. Skip (use mock provider)");
+    print!("\nSelect provider [1-8]: ");
     io::stdout().flush()?;
 
     let mut input = String::new();
@@ -333,22 +336,46 @@ async fn init_interactive() -> Result<()> {
         "2" => Some("openai"),
         "3" => Some("gemini"),
         "4" => Some("cohere"),
+        "5" => Some("glm"),
+        "6" => Some("kimi"),
+        "7" => Some("ollama"),
         _ => None,
     };
 
     if let Some(p) = provider {
         config.llm.provider = Some(p.to_string());
 
-        // API Key
-        print!("Enter {} API key: ", p.to_uppercase());
-        io::stdout().flush()?;
+        if p == "ollama" {
+            print!("Enter model name (e.g. llama3.3, qwen2.5, mistral): ");
+            io::stdout().flush()?;
 
-        let mut key = String::new();
-        io::stdin().read_line(&mut key)?;
-        let key = key.trim();
+            let mut model_name = String::new();
+            io::stdin().read_line(&mut model_name)?;
+            let model_name = model_name.trim();
+            if !model_name.is_empty() {
+                config.llm.model = Some(model_name.to_string());
+            }
 
-        if !key.is_empty() {
-            config.llm.api_key = Some(key.to_string());
+            print!("Ollama base URL [http://localhost:11434/v1]: ");
+            io::stdout().flush()?;
+
+            let mut base_url = String::new();
+            io::stdin().read_line(&mut base_url)?;
+            let base_url = base_url.trim();
+            if !base_url.is_empty() {
+                config.llm.api_key = Some(base_url.to_string());
+            }
+        } else {
+            print!("Enter {} API key: ", p.to_uppercase());
+            io::stdout().flush()?;
+
+            let mut key = String::new();
+            io::stdin().read_line(&mut key)?;
+            let key = key.trim();
+
+            if !key.is_empty() {
+                config.llm.api_key = Some(key.to_string());
+            }
         }
     }
 

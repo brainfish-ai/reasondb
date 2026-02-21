@@ -3,6 +3,7 @@ import { MagnifyingGlass, X, Article, ArticleNyTimes } from '@phosphor-icons/rea
 import Editor, { type Monaco } from '@monaco-editor/react'
 import type * as monacoEditor from 'monaco-editor'
 import { cn } from '@/lib/utils'
+import { THEME_NAME, ensureTheme } from '@/lib/monaco-theme'
 
 // Types
 export interface TreeNode {
@@ -201,6 +202,7 @@ export function NodeSplitViewer({ treeData, className }: NodeSplitViewerProps) {
     (editor: monacoEditor.editor.IStandaloneCodeEditor, monaco: Monaco) => {
       editorRef.current = editor
       monacoRef.current = monaco
+      ensureTheme(monaco)
       setEditorReady(true)
       updateDecorations()
     },
@@ -452,7 +454,7 @@ export function NodeSplitViewer({ treeData, className }: NodeSplitViewerProps) {
                 },
                 padding: { top: 12, bottom: 12 },
               }}
-              theme="vs-dark"
+              theme={THEME_NAME}
             />
           </div>
         </div>

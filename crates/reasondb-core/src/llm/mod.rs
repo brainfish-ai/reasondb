@@ -1,7 +1,8 @@
 //! LLM Interface for ReasonDB
 //!
 //! This module defines the `ReasoningEngine` trait that abstracts LLM interactions.
-//! Supports multiple providers: OpenAI, Anthropic, Gemini, etc.
+//! Supports multiple providers: OpenAI, Anthropic, Gemini, Cohere, GLM (Zhipu AI),
+//! Kimi (Moonshot AI), and Ollama (local models).
 
 pub mod mock;
 pub mod provider;

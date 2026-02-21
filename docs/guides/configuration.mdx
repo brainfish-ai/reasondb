@@ -15,8 +15,8 @@ reasondb config init
 ```
 
 This walks you through:
-1. Selecting your LLM provider (Anthropic, OpenAI, Gemini, Cohere)
-2. Setting your API key
+1. Selecting your LLM provider (Anthropic, OpenAI, Gemini, Cohere, GLM, Kimi, or Ollama)
+2. Setting your API key (or model name for Ollama)
 3. Configuring server settings
 
 ## Configuration Commands
@@ -118,9 +118,10 @@ Environment variables override config file values. This is useful for:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `REASONDB_LLM_PROVIDER` | LLM provider (`anthropic`, `openai`, `gemini`, `cohere`) | - |
+| `REASONDB_LLM_PROVIDER` | LLM provider (`anthropic`, `openai`, `gemini`, `cohere`, `glm`, `kimi`, `ollama`) | - |
 | `REASONDB_LLM_API_KEY` | API key for the chosen LLM provider | - |
-| `REASONDB_MODEL` | Override the default model | - |
+| `REASONDB_MODEL` | Override the default model (required for `ollama`) | - |
+| `REASONDB_OLLAMA_BASE_URL` | Ollama server URL (only for `ollama` provider) | `http://localhost:11434/v1` |
 | `REASONDB_PORT` | Server port | `4444` |
 | `REASONDB_HOST` | Server host | `127.0.0.1` |
 | `REASONDB_PATH` | Database file path | `data/reasondb.redb` |
@@ -137,12 +138,31 @@ Environment variables override config file values. This is useful for:
 
 ### Supported Providers
 
-| Provider | Config Value | Environment Variable |
-|----------|-------------|---------------------|
-| Anthropic Claude | `anthropic` or `claude` | Best reasoning quality |
-| OpenAI GPT-4 | `openai` or `gpt` | Widely available |
-| Google Gemini | `gemini` or `google` | Cost-effective |
+| Provider | Config Value | Best For |
+|----------|-------------|----------|
+| Anthropic Claude | `anthropic` | Best reasoning quality |
+| OpenAI GPT-4 | `openai` | Widely available |
+| Google Gemini | `gemini` | Cost-effective |
 | Cohere | `cohere` | Enterprise features |
+| GLM (Zhipu AI) | `glm` | Cost-effective |
+| Kimi (Moonshot) | `kimi` | Long context |
+| Ollama (local) | `ollama` | Privacy, no API key needed |
+
+### Using Ollama (Local Models)
+
+```bash
+# Start Ollama and pull a model
+ollama pull llama3.3
+
+# Configure ReasonDB to use Ollama
+export REASONDB_LLM_PROVIDER=ollama
+export REASONDB_MODEL=llama3.3
+reasondb serve
+```
+
+<Info>
+Ollama does not require an API key. Set `REASONDB_OLLAMA_BASE_URL` if your Ollama instance is not running on the default `http://localhost:11434/v1`.
+</Info>
 
 ### Using Config (Recommended)
 
@@ -303,9 +323,9 @@ ReasonDB uses a multi-stage Alpine-based Docker image:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `REASONDB_LLM_PROVIDER` | — | `anthropic`, `openai`, `gemini`, or `cohere` |
+| `REASONDB_LLM_PROVIDER` | — | `anthropic`, `openai`, `gemini`, `cohere`, `glm`, `kimi`, or `ollama` |
 | `REASONDB_LLM_API_KEY` | — | API key for the LLM provider |
-| `REASONDB_MODEL` | — | Override the default model |
+| `REASONDB_MODEL` | — | Override the default model (required for `ollama`) |
 | `REASONDB_HOST` | `0.0.0.0` | Server bind address |
 | `REASONDB_PORT` | `4444` | Server port |
 | `REASONDB_PATH` | `/data/reasondb.redb` | Database file path |
