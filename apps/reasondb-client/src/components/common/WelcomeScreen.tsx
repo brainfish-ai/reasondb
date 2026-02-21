@@ -47,7 +47,7 @@ export function WelcomeScreen({ onNewQuery, onNewConnection }: WelcomeScreenProp
         <div className="text-center space-y-4">
           <div className="flex items-center justify-center gap-3">
             <div className="p-3 rounded-xl bg-linear-to-br from-mauve/20 to-blue/20 border border-mauve/30">
-              <Database size={40} weight="duotone" className="text-mauve" />
+              <Database size={40} weight="duotone" className="text-mauve" aria-hidden="true" />
             </div>
           </div>
           <div>
@@ -61,120 +61,126 @@ export function WelcomeScreen({ onNewQuery, onNewConnection }: WelcomeScreenProp
         </div>
 
         {/* Quick actions */}
-        <div className="grid grid-cols-2 gap-4">
-          <button
-            onClick={onNewQuery}
-            className={cn(
-              'flex items-center gap-3 p-4 rounded-lg',
-              'bg-surface-0 hover:bg-surface-1 border border-border',
-              'transition-all hover:border-mauve/50 group'
-            )}
-          >
-            <div className="p-2 rounded-lg bg-mauve/10 text-mauve group-hover:bg-mauve/20 transition-colors">
-              <Plus size={20} weight="bold" />
-            </div>
-            <div className="text-left">
-              <div className="text-sm font-medium text-text">New Query</div>
-              <div className="text-xs text-subtext-0">Start writing RQL</div>
-            </div>
-          </button>
-
-          <button
-            onClick={onNewConnection}
-            className={cn(
-              'flex items-center gap-3 p-4 rounded-lg',
-              'bg-surface-0 hover:bg-surface-1 border border-border',
-              'transition-all hover:border-green/50 group'
-            )}
-          >
-            <div className="p-2 rounded-lg bg-green/10 text-green group-hover:bg-green/20 transition-colors">
-              <PlugsConnected size={20} weight="bold" />
-            </div>
-            <div className="text-left">
-              <div className="text-sm font-medium text-text">
-                New Connection
+        <section aria-label="Quick actions">
+          <div className="grid grid-cols-2 gap-4">
+            <button
+              onClick={onNewQuery}
+              className={cn(
+                'flex items-center gap-3 p-4 rounded-lg',
+                'bg-surface-0 hover:bg-surface-1 border border-border',
+                'transition-all hover:border-mauve/50 group'
+              )}
+            >
+              <div className="p-2 rounded-lg bg-mauve/10 text-mauve group-hover:bg-mauve/20 transition-colors" aria-hidden="true">
+                <Plus size={20} weight="bold" />
               </div>
-              <div className="text-xs text-subtext-0">
-                Connect to a database
+              <div className="text-left">
+                <div className="text-sm font-medium text-text">New Query</div>
+                <div className="text-xs text-subtext-0">Start writing RQL</div>
               </div>
-            </div>
-          </button>
+            </button>
 
-          <button
-            className={cn(
-              'flex items-center gap-3 p-4 rounded-lg',
-              'bg-surface-0 hover:bg-surface-1 border border-border',
-              'transition-all hover:border-blue/50 group'
-            )}
-          >
-            <div className="p-2 rounded-lg bg-blue/10 text-blue group-hover:bg-blue/20 transition-colors">
-              <Clock size={20} weight="bold" />
-            </div>
-            <div className="text-left">
-              <div className="text-sm font-medium text-text">Recent</div>
-              <div className="text-xs text-subtext-0">View query history</div>
-            </div>
-          </button>
+            <button
+              onClick={onNewConnection}
+              className={cn(
+                'flex items-center gap-3 p-4 rounded-lg',
+                'bg-surface-0 hover:bg-surface-1 border border-border',
+                'transition-all hover:border-green/50 group'
+              )}
+            >
+              <div className="p-2 rounded-lg bg-green/10 text-green group-hover:bg-green/20 transition-colors" aria-hidden="true">
+                <PlugsConnected size={20} weight="bold" />
+              </div>
+              <div className="text-left">
+                <div className="text-sm font-medium text-text">
+                  New Connection
+                </div>
+                <div className="text-xs text-subtext-0">
+                  Connect to a database
+                </div>
+              </div>
+            </button>
 
-          <button
-            className={cn(
-              'flex items-center gap-3 p-4 rounded-lg',
-              'bg-surface-0 hover:bg-surface-1 border border-border',
-              'transition-all hover:border-yellow/50 group'
-            )}
-          >
-            <div className="p-2 rounded-lg bg-yellow/10 text-yellow group-hover:bg-yellow/20 transition-colors">
-              <BookOpen size={20} weight="bold" />
-            </div>
-            <div className="text-left">
-              <div className="text-sm font-medium text-text">Documentation</div>
-              <div className="text-xs text-subtext-0">Learn RQL syntax</div>
-            </div>
-          </button>
-        </div>
+            <button
+              className={cn(
+                'flex items-center gap-3 p-4 rounded-lg',
+                'bg-surface-0 hover:bg-surface-1 border border-border',
+                'transition-all hover:border-blue/50 group'
+              )}
+            >
+              <div className="p-2 rounded-lg bg-blue/10 text-blue group-hover:bg-blue/20 transition-colors" aria-hidden="true">
+                <Clock size={20} weight="bold" />
+              </div>
+              <div className="text-left">
+                <div className="text-sm font-medium text-text">Recent</div>
+                <div className="text-xs text-subtext-0">View query history</div>
+              </div>
+            </button>
+
+            <button
+              className={cn(
+                'flex items-center gap-3 p-4 rounded-lg',
+                'bg-surface-0 hover:bg-surface-1 border border-border',
+                'transition-all hover:border-yellow/50 group'
+              )}
+            >
+              <div className="p-2 rounded-lg bg-yellow/10 text-yellow group-hover:bg-yellow/20 transition-colors" aria-hidden="true">
+                <BookOpen size={20} weight="bold" />
+              </div>
+              <div className="text-left">
+                <div className="text-sm font-medium text-text">Documentation</div>
+                <div className="text-xs text-subtext-0">Learn RQL syntax</div>
+              </div>
+            </button>
+          </div>
+        </section>
 
         {/* Recent connections */}
         {connections.length > 0 && (
-          <div className="space-y-3">
+          <section aria-label="Recent connections" className="space-y-3">
             <h2 className="text-sm font-medium text-subtext-0 uppercase tracking-wide">
               Recent Connections
             </h2>
-            <div className="space-y-2">
+            <ul className="space-y-2" role="list">
               {connections.slice(0, 3).map((conn) => (
-                <button
-                  key={conn.id}
-                  onClick={() => setActiveConnection(conn.id)}
-                  className={cn(
-                    'w-full flex items-center gap-3 p-3 rounded-lg',
-                    'bg-surface-0/50 hover:bg-surface-0 border border-border',
-                    'transition-colors text-left'
-                  )}
-                >
-                  <div
-                    className="w-2 h-2 rounded-full"
-                    style={{ backgroundColor: conn.color || '#89b4fa' }}
-                  />
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-text">
-                      {conn.name}
+                <li key={conn.id}>
+                  <button
+                    onClick={() => setActiveConnection(conn.id)}
+                    className={cn(
+                      'w-full flex items-center gap-3 p-3 rounded-lg',
+                      'bg-surface-0/50 hover:bg-surface-0 border border-border',
+                      'transition-colors text-left'
+                    )}
+                  >
+                    <div
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: conn.color || '#60a5fa' }}
+                      aria-hidden="true"
+                    />
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-text">
+                        {conn.name}
+                      </div>
+                      <div className="text-xs text-overlay-0">
+                        {conn.host}:{conn.port}
+                      </div>
                     </div>
-                    <div className="text-xs text-overlay-0">
-                      {conn.host}:{conn.port}
-                    </div>
-                  </div>
-                  {conn.lastUsedAt && (
-                    <div className="text-xs text-overlay-0">
-                      {new Date(conn.lastUsedAt).toLocaleDateString()}
-                    </div>
-                  )}
-                </button>
+                    {conn.lastUsedAt && (
+                      <div className="text-xs text-overlay-0">
+                        <time dateTime={new Date(conn.lastUsedAt).toISOString()}>
+                          {new Date(conn.lastUsedAt).toLocaleDateString()}
+                        </time>
+                      </div>
+                    )}
+                  </button>
+                </li>
               ))}
-            </div>
-          </div>
+            </ul>
+          </section>
         )}
 
         {/* Features */}
-        <div className="grid grid-cols-3 gap-4 pt-4 border-t border-border">
+        <section aria-label="Features" className="grid grid-cols-3 gap-4 pt-4 border-t border-border">
           {features.map((feature) => (
             <div
               key={feature.title}
@@ -184,6 +190,7 @@ export function WelcomeScreen({ onNewQuery, onNewConnection }: WelcomeScreenProp
                 size={24}
                 weight="duotone"
                 className={cn('mx-auto', feature.color)}
+                aria-hidden="true"
               />
               <div className="text-xs font-medium text-text">
                 {feature.title}
@@ -191,7 +198,7 @@ export function WelcomeScreen({ onNewQuery, onNewConnection }: WelcomeScreenProp
               <div className="text-xs text-overlay-0">{feature.description}</div>
             </div>
           ))}
-        </div>
+        </section>
       </div>
     </div>
   )

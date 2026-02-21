@@ -45,14 +45,14 @@ interface FormErrors {
 }
 
 const COLORS = [
-  { value: '#f38ba8', label: 'Red' },
-  { value: '#fab387', label: 'Peach' },
-  { value: '#f9e2af', label: 'Yellow' },
-  { value: '#a6e3a1', label: 'Green' },
-  { value: '#94e2d5', label: 'Teal' },
-  { value: '#89b4fa', label: 'Blue' },
-  { value: '#cba6f7', label: 'Mauve' },
-  { value: '#f5c2e7', label: 'Pink' },
+  { value: '#f87171', label: 'Red' },
+  { value: '#fdba74', label: 'Orange' },
+  { value: '#fde047', label: 'Yellow' },
+  { value: '#4ade80', label: 'Green' },
+  { value: '#5eead4', label: 'Teal' },
+  { value: '#60a5fa', label: 'Blue' },
+  { value: '#a78bfa', label: 'Violet' },
+  { value: '#f9a8d4', label: 'Pink' },
 ]
 
 const DEFAULT_GROUPS = ['Production', 'Development', 'Staging', 'Local']

@@ -38,7 +38,6 @@ export function Sidebar() {
       const result = await client.testConnection()
       
       if (result.success) {
-        // Store the client for this connection
         setClient(connection.id, client)
         setActiveConnection(connection.id)
       } else {
@@ -69,45 +68,44 @@ export function Sidebar() {
   }
 
   return (
-    <div className="h-full bg-mantle flex flex-col border-r border-border min-w-[200px]">
-      {/* Show Tables when connected, otherwise show Connections */}
+    <nav
+      aria-label="Sidebar"
+      className="h-full bg-mantle flex flex-col border-r border-border min-w-[200px]"
+    >
       {activeConnectionId ? (
         <>
-          {/* Back to connections link */}
           <div className="px-3 pt-3 pb-2">
             <button
               onClick={handleDisconnect}
               className="flex items-center gap-1.5 text-xs text-overlay-0 hover:text-text transition-colors"
+              aria-label="Disconnect and return to connections"
             >
-              <CaretLeft size={12} weight="bold" />
+              <CaretLeft size={12} weight="bold" aria-hidden="true" />
               <span>Connections</span>
             </button>
           </div>
 
-          {/* Tables browser */}
           <div className="flex-1 overflow-auto">
             <TableBrowser />
           </div>
         </>
       ) : (
         <>
-          {/* Connections header */}
           <div className="px-3 pt-3 pb-2">
             <div className="flex items-center justify-between">
-              <div className="text-xs font-semibold text-overlay-1 uppercase tracking-wide">
+              <h2 className="text-xs font-semibold text-overlay-1 uppercase tracking-wide">
                 Connect to Server
-              </div>
+              </h2>
               <button
                 onClick={handleNewConnection}
                 className="p-1 rounded hover:bg-surface-0 text-overlay-0 hover:text-text transition-colors"
-                title="New Connection"
+                aria-label="Add new connection"
               >
-                <Plus size={14} weight="bold" />
+                <Plus size={14} weight="bold" aria-hidden="true" />
               </button>
             </div>
           </div>
 
-          {/* Connections list */}
           <div className="flex-1 overflow-auto px-3">
             <ConnectionList
               onEdit={handleEditConnection}
@@ -125,7 +123,7 @@ export function Sidebar() {
             'text-subtext-1 hover:text-text hover:bg-surface-0 transition-colors'
           )}
         >
-          <Clock size={16} weight="duotone" />
+          <Clock size={16} weight="duotone" aria-hidden="true" />
           Recent Queries
         </button>
         <button
@@ -134,17 +132,16 @@ export function Sidebar() {
             'text-subtext-1 hover:text-text hover:bg-surface-0 transition-colors'
           )}
         >
-          <Star size={16} weight="duotone" />
+          <Star size={16} weight="duotone" aria-hidden="true" />
           Saved Queries
         </button>
       </div>
 
-      {/* Modals */}
       <ConnectionForm
         open={showConnectionForm}
         onOpenChange={setShowConnectionForm}
         editConnection={editingConnection}
       />
-    </div>
+    </nav>
   )
 }

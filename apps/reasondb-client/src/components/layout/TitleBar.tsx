@@ -8,8 +8,11 @@ import {
   Database,
   Plugs,
   PlugsConnected,
+  Sun,
+  Moon,
+  Monitor,
 } from '@phosphor-icons/react'
-import { useUiStore } from '@/stores/uiStore'
+import { useUiStore, type Theme } from '@/stores/uiStore'
 import { cn } from '@/lib/utils'
 import type { Connection } from '@/stores/connectionStore'
 
@@ -17,14 +20,20 @@ interface TitleBarProps {
   connection?: Connection
 }
 
-// Check if we're running inside Tauri
 const isTauri = () => {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 }
 
+const THEME_CYCLE: Theme[] = ['dark', 'light', 'system']
+const THEME_META: Record<Theme, { Icon: typeof Moon; label: string }> = {
+  dark: { Icon: Moon, label: 'Dark' },
+  light: { Icon: Sun, label: 'Light' },
+  system: { Icon: Monitor, label: 'System' },
+}
+
 export function TitleBar({ connection }: TitleBarProps) {
   const [isMaximized, setIsMaximized] = useState(false)
-  const { toggleSidebar } = useUiStore()
+  const { theme, setTheme, toggleSidebar, sidebarOpen } = useUiStore()
 
   useEffect(() => {
     if (!isTauri()) return
@@ -36,7 +45,6 @@ export function TitleBar({ connection }: TitleBarProps) {
       const maximized = await currentWindow.isMaximized()
       setIsMaximized(maximized)
 
-      // Listen for window resize events
       const unlisten = await currentWindow.onResized(async () => {
         const maximized = await currentWindow.isMaximized()
         setIsMaximized(maximized)
@@ -80,27 +88,36 @@ export function TitleBar({ connection }: TitleBarProps) {
     getCurrentWindow().close()
   }
 
+  const cycleTheme = () => {
+    const idx = THEME_CYCLE.indexOf(theme)
+    setTheme(THEME_CYCLE[(idx + 1) % THEME_CYCLE.length])
+  }
+
+  const { Icon: ThemeIcon, label: themeLabel } = THEME_META[theme]
+
   return (
-    <div
+    <header
       data-tauri-drag-region
       className="h-10 bg-mantle border-b border-border flex items-center justify-between select-none"
+      role="banner"
     >
       {/* Left section */}
       <div className="flex items-center gap-2 px-3">
         <button
           onClick={toggleSidebar}
-          className="p-1.5 rounded-md hover:bg-surface-0 text-subtext-0 hover:text-text transition-all duration-200"
-          title="Toggle Sidebar"
+          className="p-1.5 rounded-md hover:bg-surface-0 text-subtext-0 hover:text-text transition-all duration-200 focus-visible:ring-2 focus-visible:ring-primary"
+          aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+          aria-expanded={sidebarOpen}
         >
           <SidebarIcon 
             size={18} 
             weight="bold" 
-            className="transition-transform duration-200"
+            aria-hidden="true"
           />
         </button>
 
         <div className="flex items-center gap-2 text-sm">
-          <Database size={18} weight="duotone" className="text-mauve" />
+          <Database size={18} weight="duotone" className="text-mauve" aria-hidden="true" />
           <span className="font-semibold text-text">ReasonDB</span>
         </div>
       </div>
@@ -111,58 +128,74 @@ export function TitleBar({ connection }: TitleBarProps) {
         className="flex-1 flex items-center justify-center gap-2"
       >
         {connection ? (
-          <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-surface-0">
-            <PlugsConnected size={14} weight="fill" className="text-green" />
+          <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-surface-0" role="status">
+            <PlugsConnected size={14} weight="fill" className="text-green" aria-hidden="true" />
             <span className="text-xs text-subtext-1">{connection.name}</span>
             <span className="text-xs text-overlay-0">
               ({connection.host}:{connection.port})
             </span>
           </div>
         ) : (
-          <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-surface-0/50">
-            <Plugs size={14} weight="bold" className="text-overlay-0" />
+          <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-surface-0/50" role="status">
+            <Plugs size={14} weight="bold" className="text-overlay-0" aria-hidden="true" />
             <span className="text-xs text-overlay-0">Not connected</span>
           </div>
         )}
       </div>
 
-      {/* Window controls - only show in Tauri */}
-      {isTauri() && (
-        <div className="flex items-center">
-          <button
-            onClick={handleMinimize}
-            className={cn(
-              'h-10 w-12 flex items-center justify-center',
-              'hover:bg-surface-0 text-subtext-0 hover:text-text transition-colors'
-            )}
-          >
-            <Minus size={16} weight="bold" />
-          </button>
-          <button
-            onClick={handleMaximize}
-            className={cn(
-              'h-10 w-12 flex items-center justify-center',
-              'hover:bg-surface-0 text-subtext-0 hover:text-text transition-colors'
-            )}
-            title={isMaximized ? 'Restore' : 'Maximize'}
-          >
-            {isMaximized ? (
-              <CornersIn size={14} weight="bold" />
-            ) : (
-              <Square size={14} weight="bold" />
-            )}
-          </button>
-          <button
-            onClick={handleClose}
-            className={cn(
-              'h-10 w-12 flex items-center justify-center',
-              'hover:bg-red text-subtext-0 hover:text-base transition-colors'
-            )}
-          >
-            <X size={16} weight="bold" />
-          </button>
-        </div>
-      )}
-    </div>
+      {/* Right section — theme toggle + window controls */}
+      <div className="flex items-center">
+        <button
+          onClick={cycleTheme}
+          className={cn(
+            'h-10 w-10 flex items-center justify-center',
+            'text-subtext-0 hover:text-text hover:bg-surface-0 transition-colors',
+            'focus-visible:ring-2 focus-visible:ring-primary'
+          )}
+          aria-label={`Theme: ${themeLabel}. Click to switch.`}
+        >
+          <ThemeIcon size={16} weight="bold" aria-hidden="true" />
+        </button>
+
+        {isTauri() && (
+          <>
+            <button
+              onClick={handleMinimize}
+              className={cn(
+                'h-10 w-12 flex items-center justify-center',
+                'hover:bg-surface-0 text-subtext-0 hover:text-text transition-colors'
+              )}
+              aria-label="Minimize window"
+            >
+              <Minus size={16} weight="bold" aria-hidden="true" />
+            </button>
+            <button
+              onClick={handleMaximize}
+              className={cn(
+                'h-10 w-12 flex items-center justify-center',
+                'hover:bg-surface-0 text-subtext-0 hover:text-text transition-colors'
+              )}
+              aria-label={isMaximized ? 'Restore window' : 'Maximize window'}
+            >
+              {isMaximized ? (
+                <CornersIn size={14} weight="bold" aria-hidden="true" />
+              ) : (
+                <Square size={14} weight="bold" aria-hidden="true" />
+              )}
+            </button>
+            <button
+              onClick={handleClose}
+              className={cn(
+                'h-10 w-12 flex items-center justify-center',
+                'hover:bg-red text-subtext-0 hover:text-base transition-colors'
+              )}
+              aria-label="Close window"
+            >
+              <X size={16} weight="bold" aria-hidden="true" />
+            </button>
+          </>
+        )}
+      </div>
+    </header>
   )
 }

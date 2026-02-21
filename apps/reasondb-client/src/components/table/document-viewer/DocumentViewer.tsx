@@ -6,11 +6,10 @@ import {
   getPaginationRowModel,
   type SortingState,
 } from '@tanstack/react-table'
+import { Panel, Group, Separator } from 'react-resizable-panels'
 import { FilterBuilder } from '@/components/search'
 import { JsonDetailSidebar } from '../JsonDetailSidebar'
-import { NodeViewerSidebar } from '@/components/shared/NodeViewerSidebar'
 import { AddDocumentDialog } from '../AddDocumentDialog'
-import { createClient, type TreeNode } from '@/lib/api'
 import type { Document } from '@/stores/tableStore'
 import {
   Dialog,
@@ -21,11 +20,10 @@ import {
   DialogFooter,
 } from '@/components/ui/Dialog'
 import { Button } from '@/components/ui/Button'
+import { createClient } from '@/lib/api'
 
-// Hooks
 import { useDocuments, useColumnDetection, useDocumentFilter } from './hooks'
 
-// Components
 import {
   Toolbar,
   TableView,
@@ -35,36 +33,22 @@ import {
   EmptyState,
   ErrorState,
   NoTableState,
+  RecordSidebar,
 } from './components'
 
-// Utils
 import { createColumns } from './columns'
 
-// Types
 import type { ViewMode, SelectedCellData, DocumentViewerProps } from './types'
 
-/**
- * DocumentViewer - Main component for displaying and managing table documents
- */
 export function DocumentViewer({ tableId }: DocumentViewerProps) {
-  // State
   const [viewMode, setViewMode] = useState<ViewMode>('table')
   const [sorting, setSorting] = useState<SortingState>([])
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [selectedCell, setSelectedCell] = useState<SelectedCellData | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Document | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
-  
-  // Add document dialog state
   const [showAddDocument, setShowAddDocument] = useState(false)
 
-  // Node viewer sidebar state
-  const [nodeViewerOpen, setNodeViewerOpen] = useState(false)
-  const [nodeViewerTitle, setNodeViewerTitle] = useState('')
-  const [nodeViewerTree, setNodeViewerTree] = useState<TreeNode | null>(null)
-  const [nodeViewerLoading, setNodeViewerLoading] = useState(false)
-
-  // Hooks
   const {
     documents,
     selectedDocumentId,
@@ -78,50 +62,43 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
   } = useDocuments(tableId)
 
   const detectedColumns = useColumnDetection(documents)
-  
   const { filteredDocuments, isFiltered } = useDocumentFilter(documents)
 
-  // Load document content (tree structure) - opens in dedicated Node Viewer
-  const handleLoadContent = useCallback(
-    async (documentId: string, documentTitle: string) => {
-      if (!activeConnection) return
-
-      // Open the node viewer sidebar with loading state
-      setNodeViewerTitle(documentTitle)
-      setNodeViewerTree(null)
-      setNodeViewerLoading(true)
-      setNodeViewerOpen(true)
-
-      try {
-        const client = createClient({
-          host: activeConnection.host,
-          port: activeConnection.port,
-          apiKey: activeConnection.apiKey,
-          useSsl: activeConnection.ssl,
-        })
-
-        const tree = await client.getDocumentTree(documentId)
-        setNodeViewerTree(tree)
-      } catch (error) {
-        console.error('Failed to load document tree:', error)
-        // Keep sidebar open to show error state
-      } finally {
-        setNodeViewerLoading(false)
-      }
-    },
-    [activeConnection]
+  const selectedDocument = useMemo(
+    () => filteredDocuments.find((d) => d.id === selectedDocumentId) ?? null,
+    [filteredDocuments, selectedDocumentId]
   )
 
-  // Column definitions
+  // Close the record sidebar by deselecting the document
+  const handleCloseRecordSidebar = useCallback(() => {
+    selectDocument(null)
+  }, [selectDocument])
+
+  // Row click: toggle selection (click again to deselect)
+  const handleRowClick = useCallback(
+    (id: string) => {
+      selectDocument(selectedDocumentId === id ? null : id)
+    },
+    [selectDocument, selectedDocumentId]
+  )
+
+  // Load document content for the "nodes" column button — now just selects row
+  const handleLoadContent = useCallback(
+    async (documentId: string, _documentTitle: string) => {
+      selectDocument(documentId)
+    },
+    [selectDocument]
+  )
+
   const columns = useMemo(
-    () => createColumns({ 
-      onSelectCell: setSelectedCell,
-      onLoadContent: handleLoadContent,
-    }),
+    () =>
+      createColumns({
+        onSelectCell: setSelectedCell,
+        onLoadContent: handleLoadContent,
+      }),
     [handleLoadContent]
   )
 
-  // Table instance
   const table = useReactTable({
     data: filteredDocuments,
     columns,
@@ -133,12 +110,9 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
     initialState: { pagination: { pageSize } },
   })
 
-  // Handlers
-  // Create value fetcher for autocomplete
   const valueFetcher = useCallback(
     async (column: string): Promise<string[]> => {
       if (!activeConnection || !tableId) return []
-      
       try {
         const client = createClient({
           host: activeConnection.host,
@@ -147,7 +121,7 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
           useSsl: activeConnection.ssl,
         })
         const response = await client.getColumnValues(tableId, column)
-        return response.values.map(v => v.value)
+        return response.values.map((v) => v.value)
       } catch {
         return []
       }
@@ -161,7 +135,6 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
         fetchDocuments()
         return
       }
-      // TODO: Implement server-side search
     },
     [activeConnection, tableId, fetchDocuments]
   )
@@ -172,14 +145,12 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
     setTimeout(() => setCopiedId(null), 2000)
   }, [])
 
-  // Handle delete document
   const handleDeleteDocument = useCallback((doc: Document) => {
     setDeleteTarget(doc)
   }, [])
 
   const confirmDelete = useCallback(async () => {
     if (!deleteTarget || !activeConnection) return
-
     setIsDeleting(true)
     try {
       const client = createClient({
@@ -188,10 +159,8 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
         apiKey: activeConnection.apiKey,
         useSsl: activeConnection.ssl,
       })
-
       await client.deleteDocument(deleteTarget.id)
       setDeleteTarget(null)
-      // Refresh the document list
       fetchDocuments(true)
     } catch (error) {
       console.error('Failed to delete document:', error)
@@ -201,7 +170,6 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
     }
   }, [deleteTarget, activeConnection, fetchDocuments])
 
-  // Handle edit document - opens document in sidebar for viewing
   const handleEditDocument = useCallback((doc: Document) => {
     setSelectedCell({
       title: `${doc.data.title || doc.id}`,
@@ -210,74 +178,88 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
     })
   }, [])
 
-  // Early return for no table selected
   if (!tableId) {
     return <NoTableState />
   }
 
+  const showRecordSidebar = selectedDocument !== null && activeConnection !== undefined
+
   return (
     <div className="flex h-full bg-base">
-      {/* Main content area */}
-      <div className="flex flex-col flex-1 min-w-0">
-        {/* Toolbar */}
-        <Toolbar
-          columns={detectedColumns}
-          tableId={tableId}
-          valueFetcher={valueFetcher}
-          viewMode={viewMode}
-          isLoading={isLoadingDocuments}
-          onViewModeChange={setViewMode}
-          onRefresh={() => fetchDocuments(true)}
-          onSearch={handleSearch}
-          onAddDocument={() => setShowAddDocument(true)}
-        />
-
-        {/* Filter Builder */}
-        <FilterBuilder columns={detectedColumns} onApply={() => {}} />
-
-        {/* Error State */}
-        {documentsError && (
-          <ErrorState message={documentsError} onRetry={fetchDocuments} />
-        )}
-
-        {/* Content */}
-        <div className="flex-1 min-h-0 overflow-auto">
-          {isLoadingDocuments ? (
-            <LoadingState />
-          ) : documents.length === 0 ? (
-            <EmptyState onAddDocument={() => setShowAddDocument(true)} />
-          ) : viewMode === 'table' ? (
-            <TableView
-              table={table}
-              selectedDocumentId={selectedDocumentId}
-              copiedId={copiedId}
-              onSelectDocument={selectDocument}
-              onCopyDocument={handleCopyDocument}
-              onEditDocument={handleEditDocument}
-              onDeleteDocument={handleDeleteDocument}
+      <Group orientation="horizontal" className="flex-1">
+        {/* Left panel — table list */}
+        <Panel defaultSize={showRecordSidebar ? 55 : 100} minSize={30}>
+          <div className="flex flex-col h-full min-w-0">
+            <Toolbar
+              columns={detectedColumns}
+              tableId={tableId}
+              valueFetcher={valueFetcher}
+              viewMode={viewMode}
+              isLoading={isLoadingDocuments}
+              onViewModeChange={setViewMode}
+              onRefresh={() => fetchDocuments(true)}
+              onSearch={handleSearch}
+              onAddDocument={() => setShowAddDocument(true)}
             />
-          ) : (
-            <JsonView
-              documents={filteredDocuments}
-              selectedDocumentId={selectedDocumentId}
-              onSelectDocument={selectDocument}
-            />
-          )}
-        </div>
 
-        {/* Footer */}
-        {viewMode === 'table' && documents.length > 0 && (
-          <Footer
-            table={table}
-            totalDocuments={totalDocuments}
-            filteredCount={filteredDocuments.length}
-            pageSize={pageSize}
-            isFiltered={isFiltered}
-          />
+            <FilterBuilder columns={detectedColumns} onApply={() => {}} />
+
+            {documentsError && (
+              <ErrorState message={documentsError} onRetry={fetchDocuments} />
+            )}
+
+            <div className="flex-1 min-h-0 overflow-auto">
+              {isLoadingDocuments ? (
+                <LoadingState />
+              ) : documents.length === 0 ? (
+                <EmptyState onAddDocument={() => setShowAddDocument(true)} />
+              ) : viewMode === 'table' ? (
+                <TableView
+                  table={table}
+                  selectedDocumentId={selectedDocumentId}
+                  copiedId={copiedId}
+                  onSelectDocument={handleRowClick}
+                  onCopyDocument={handleCopyDocument}
+                  onEditDocument={handleEditDocument}
+                  onDeleteDocument={handleDeleteDocument}
+                />
+              ) : (
+                <JsonView
+                  documents={filteredDocuments}
+                  selectedDocumentId={selectedDocumentId}
+                  onSelectDocument={handleRowClick}
+                />
+              )}
+            </div>
+
+            {viewMode === 'table' && documents.length > 0 && (
+              <Footer
+                table={table}
+                totalDocuments={totalDocuments}
+                filteredCount={filteredDocuments.length}
+                pageSize={pageSize}
+                isFiltered={isFiltered}
+              />
+            )}
+          </div>
+        </Panel>
+
+        {/* Right panel — record detail sidebar */}
+        {showRecordSidebar && (
+          <>
+            <Separator className="w-1 bg-border hover:bg-primary/50 transition-colors cursor-col-resize" />
+            <Panel defaultSize={45} minSize={25}>
+              <RecordSidebar
+                document={selectedDocument}
+                connection={activeConnection}
+                onClose={handleCloseRecordSidebar}
+              />
+            </Panel>
+          </>
         )}
-      </div>
+      </Group>
 
-      {/* JSON Detail Sidebar - for metadata and document viewing */}
+      {/* JSON Detail Sidebar — for metadata cell click */}
       <JsonDetailSidebar
         isOpen={selectedCell !== null}
         onClose={() => setSelectedCell(null)}
@@ -287,30 +269,23 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
         isLoading={selectedCell?.isLoading}
       />
 
-      {/* Node Viewer Sidebar - for viewing document tree structure */}
-      <NodeViewerSidebar
-        isOpen={nodeViewerOpen}
-        onClose={() => setNodeViewerOpen(false)}
-        title={nodeViewerTitle}
-        treeData={nodeViewerTree ?? undefined}
-        isLoading={nodeViewerLoading}
-      />
-
-      {/* Add Document Dialog */}
       <AddDocumentDialog
         open={showAddDocument}
         onOpenChange={setShowAddDocument}
         tableId={tableId}
       />
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+      <Dialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete Document</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete "{deleteTarget?.data.title || deleteTarget?.id}"? 
-              This action cannot be undone.
+              Are you sure you want to delete "
+              {deleteTarget?.data.title || deleteTarget?.id}"? This action cannot
+              be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
