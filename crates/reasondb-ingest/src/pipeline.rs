@@ -19,7 +19,7 @@ use reasondb_plugin::PluginManager;
 use crate::chunker::{ChunkerConfig, SemanticChunker};
 use crate::error::{IngestError, Result};
 use crate::extractor::{DocumentType, SmartExtractor};
-use crate::summarizer::{MockSummarizer, NodeSummarizer, SummarizerConfig};
+use crate::summarizer::{BatchSummarizer, MockSummarizer, SummarizerConfig};
 use crate::tree_builder::TreeBuilder;
 
 /// Configuration for the ingestion pipeline
@@ -327,8 +327,8 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
 
             if !used_plugin {
                 if let Some(ref reasoner) = self.reasoner {
-                    let summarizer = NodeSummarizer::new(reasoner);
-                    summarizer.summarize_tree(&mut nodes).await?;
+                    let summarizer = BatchSummarizer::new(reasoner, 10);
+                    summarizer.summarize_batch(&mut nodes).await?;
                     stats.summaries_generated = nodes.len();
                 } else {
                     MockSummarizer::summarize_tree(&mut nodes);

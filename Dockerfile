@@ -1,15 +1,34 @@
-FROM rust:1.88-alpine AS builder
+FROM rust:1.88-alpine AS chef
 
 RUN apk add --no-cache musl-dev pkgconfig openssl-dev openssl-libs-static perl make curl
+RUN cargo install cargo-chef --locked
 
 WORKDIR /usr/src/reasondb
 
-COPY Cargo.toml Cargo.lock ./
+# ---------- Plan: extract dependency info (cached unless Cargo.toml/lock change) ----------
 
-# The Tauri desktop app workspace member is excluded via .dockerignore,
-# so strip it from the workspace to avoid a Cargo resolution error.
+FROM chef AS planner
+
+COPY Cargo.toml Cargo.lock ./
+COPY crates/ crates/
+
+# Strip the Tauri desktop app (excluded via .dockerignore)
 RUN sed -i '/"apps\/reasondb-client\/src-tauri"/d' Cargo.toml
 
+RUN cargo chef prepare --recipe-path recipe.json
+
+# ---------- Cook: build only dependencies (cached Docker layer) ----------
+
+FROM chef AS builder
+
+COPY --from=planner /usr/src/reasondb/recipe.json recipe.json
+
+RUN cargo chef cook --release --recipe-path recipe.json -p reasondb-server
+
+# ---------- Build: compile source (only this re-runs on code changes) ----------
+
+COPY Cargo.toml Cargo.lock ./
+RUN sed -i '/"apps\/reasondb-client\/src-tauri"/d' Cargo.toml
 COPY crates/ crates/
 
 RUN cargo build --release -p reasondb-server

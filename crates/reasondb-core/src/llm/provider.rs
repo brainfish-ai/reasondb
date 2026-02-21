@@ -17,8 +17,8 @@ use serde::Serialize;
 use tracing::{debug, info};
 
 use super::{
-    DocumentRanking, DocumentRankings, DocumentSummary, NodeSummary, ReasoningConfig,
-    ReasoningEngine, SummarizationContext, TraversalDecision, TraversalDecisions,
+    BatchSummaryResult, DocumentRanking, DocumentRankings, DocumentSummary, NodeSummary,
+    ReasoningConfig, ReasoningEngine, SummarizationContext, TraversalDecision, TraversalDecisions,
     VerificationResult,
 };
 use crate::error::{ReasonError, Result};
@@ -515,6 +515,70 @@ Provide only the summary, no additional commentary."#,
         debug!("Summarizing content ({} chars)", content.len());
 
         self.complete(&prompt).await
+    }
+
+    async fn summarize_batch(
+        &self,
+        items: &[(String, String, SummarizationContext)],
+    ) -> Result<Vec<(String, String)>> {
+        if items.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // For a single item, fall back to the regular summarize path
+        if items.len() == 1 {
+            let (id, content, ctx) = &items[0];
+            let summary = self.summarize(content, ctx).await?;
+            return Ok(vec![(id.clone(), summary)]);
+        }
+
+        info!(
+            provider = self.provider.provider_name(),
+            model = self.provider.model(),
+            batch_size = items.len(),
+            "LLM batch summarization request"
+        );
+
+        let nodes_formatted: String = items
+            .iter()
+            .map(|(node_id, content, ctx)| {
+                let truncated: String = content.chars().take(2000).collect();
+                let node_type = if ctx.is_leaf { "content" } else { "section summaries" };
+                let title = ctx.title.as_deref().unwrap_or("Untitled");
+                format!(
+                    "[node_id: \"{}\"] Title: \"{}\" ({})\n{}",
+                    node_id, title, node_type, truncated
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n---\n");
+
+        let prompt = format!(
+            r#"Summarize each of the following sections in 1-2 sentences. For each section, focus on:
+- What topics/concepts are covered
+- Key facts, figures, or conclusions
+- What questions this section could answer
+
+Sections to summarize:
+{nodes_formatted}
+
+Return a JSON object with a "summaries" array. Each element must have:
+- "node_id": the exact node_id from the section header
+- "summary": a 1-2 sentence summary
+
+Return summaries for ALL {count} sections."#,
+            count = items.len()
+        );
+
+        debug!("Batch summarizing {} nodes", items.len());
+
+        let result: BatchSummaryResult = self.extract(&prompt).await?;
+
+        Ok(result
+            .summaries
+            .into_iter()
+            .map(|item| (item.node_id, item.summary))
+            .collect())
     }
 
     async fn rank_documents(

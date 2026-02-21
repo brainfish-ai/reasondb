@@ -257,6 +257,34 @@ impl ReasoningEngine for MockReasoner {
         ))
     }
 
+    async fn summarize_batch(
+        &self,
+        items: &[(String, String, SummarizationContext)],
+    ) -> Result<Vec<(String, String)>> {
+        items
+            .iter()
+            .map(|(node_id, content, context)| {
+                self.log_call(MockCall::Summarize {
+                    content_len: content.len(),
+                });
+
+                let title_part = context
+                    .title
+                    .as_ref()
+                    .map(|t| format!("Section '{}': ", t))
+                    .unwrap_or_default();
+
+                let preview: String = content
+                    .chars()
+                    .take(100)
+                    .collect::<String>()
+                    .replace('\n', " ");
+
+                Ok((node_id.clone(), format!("{}{}...", title_part, preview.trim())))
+            })
+            .collect()
+    }
+
     fn name(&self) -> &str {
         "MockReasoner"
     }

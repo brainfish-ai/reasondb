@@ -62,7 +62,9 @@ pub mod routes;
 pub mod state;
 
 pub use error::{ApiError, ApiResult, ErrorResponse};
-pub use metrics::{init_metrics, init_tracing, metrics_handler, metrics_middleware, shutdown_tracing};
+pub use metrics::{init_metrics, metrics_handler, metrics_middleware};
+#[cfg(feature = "telemetry")]
+pub use metrics::{init_tracing, shutdown_tracing};
 pub use openapi::ApiDoc;
 pub use ratelimit::{rate_limit_middleware, RateLimitError};
 pub use routes::create_routes;

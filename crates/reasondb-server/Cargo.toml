@@ -10,6 +10,10 @@ description = "HTTP API server for ReasonDB"
 name = "reasondb-server"
 path = "src/main.rs"
 
+[features]
+default = []
+telemetry = ["dep:opentelemetry", "dep:opentelemetry-otlp", "dep:opentelemetry_sdk", "dep:tracing-opentelemetry"]
+
 [dependencies]
 reasondb-core = { path = "../reasondb-core" }
 reasondb-ingest = { path = "../reasondb-ingest" }
@@ -44,10 +48,10 @@ chrono.workspace = true
 # Metrics & Observability
 metrics = "0.23"
 metrics-exporter-prometheus = "0.15"
-opentelemetry = { version = "0.24", features = ["trace"] }
-opentelemetry-otlp = { version = "0.17", features = ["trace", "grpc-tonic"] }
-opentelemetry_sdk = { version = "0.24", features = ["trace", "rt-tokio"] }
-tracing-opentelemetry = "0.25"
+opentelemetry = { version = "0.24", features = ["trace"], optional = true }
+opentelemetry-otlp = { version = "0.17", features = ["trace", "grpc-tonic"], optional = true }
+opentelemetry_sdk = { version = "0.24", features = ["trace", "rt-tokio"], optional = true }
+tracing-opentelemetry = { version = "0.25", optional = true }
 
 # CLI
 clap = { version = "4", features = ["derive", "env"] }

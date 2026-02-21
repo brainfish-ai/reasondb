@@ -103,6 +103,22 @@ pub struct DocumentRankings {
     pub rankings: Vec<DocumentRanking>,
 }
 
+/// A single item in a batch summarization response
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct BatchSummaryItem {
+    /// The node ID this summary belongs to
+    pub node_id: String,
+    /// The generated summary
+    pub summary: String,
+}
+
+/// Wrapper for batch summarization results (structured output extraction)
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct BatchSummaryResult {
+    /// Summaries for each node in the batch
+    pub summaries: Vec<BatchSummaryItem>,
+}
+
 /// Context for summarization during ingestion
 #[derive(Debug, Clone, Default)]
 pub struct SummarizationContext {
@@ -197,6 +213,30 @@ pub trait ReasoningEngine: Send + Sync {
         content: &str,
         context: &SummarizationContext,
     ) -> Result<String>;
+
+    /// Summarize multiple nodes in a single LLM request.
+    ///
+    /// Reduces API round-trips during ingestion by batching summaries.
+    /// The default implementation falls back to individual `summarize()` calls.
+    ///
+    /// # Arguments
+    ///
+    /// * `items` - Tuples of (node_id, content, context) for each node to summarize
+    ///
+    /// # Returns
+    ///
+    /// A list of (node_id, summary) pairs.
+    async fn summarize_batch(
+        &self,
+        items: &[(String, String, SummarizationContext)],
+    ) -> Result<Vec<(String, String)>> {
+        let mut results = Vec::with_capacity(items.len());
+        for (node_id, content, context) in items {
+            let summary = self.summarize(content, context).await?;
+            results.push((node_id.clone(), summary));
+        }
+        Ok(results)
+    }
 
     /// Rank documents by relevance to a query based on their summaries.
     ///

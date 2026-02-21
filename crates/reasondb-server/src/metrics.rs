@@ -194,83 +194,86 @@ pub fn record_cache_miss(cache_type: &str) {
 }
 
 // =============================================================================
-// OpenTelemetry Setup
+// OpenTelemetry Setup (requires "telemetry" feature)
 // =============================================================================
 
-use opentelemetry::trace::TracerProvider;
-use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::{runtime, trace as sdktrace, Resource};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer};
+#[cfg(feature = "telemetry")]
+mod otel {
+    use opentelemetry::trace::TracerProvider;
+    use opentelemetry_otlp::WithExportConfig;
+    use opentelemetry_sdk::{runtime, trace as sdktrace, Resource};
+    use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer};
 
-/// Initialize OpenTelemetry tracing
-pub fn init_tracing(
-    service_name: &str,
-    otlp_endpoint: Option<&str>,
-    verbose: bool,
-    json_logs: bool,
-) -> anyhow::Result<()> {
-    use tracing::Level;
-    use tracing_subscriber::EnvFilter;
+    /// Initialize OpenTelemetry tracing
+    pub fn init_tracing(
+        service_name: &str,
+        otlp_endpoint: Option<&str>,
+        verbose: bool,
+        json_logs: bool,
+    ) -> anyhow::Result<()> {
+        use tracing::Level;
+        use tracing_subscriber::EnvFilter;
 
-    let filter = if verbose {
-        EnvFilter::from_default_env()
-            .add_directive(Level::DEBUG.into())
-            .add_directive("hyper=info".parse()?)
-            .add_directive("tower_http=debug".parse()?)
-    } else {
-        EnvFilter::from_default_env()
-            .add_directive(Level::INFO.into())
-            .add_directive("hyper=warn".parse()?)
-    };
+        let filter = if verbose {
+            EnvFilter::from_default_env()
+                .add_directive(Level::DEBUG.into())
+                .add_directive("hyper=info".parse()?)
+                .add_directive("tower_http=debug".parse()?)
+        } else {
+            EnvFilter::from_default_env()
+                .add_directive(Level::INFO.into())
+                .add_directive("hyper=warn".parse()?)
+        };
 
-    // Build the subscriber
-    let subscriber = tracing_subscriber::registry().with(filter);
+        let subscriber = tracing_subscriber::registry().with(filter);
 
-    // Add console/JSON logging layer
-    let fmt_layer = if json_logs {
-        tracing_subscriber::fmt::layer()
-            .json()
-            .boxed()
-    } else {
-        tracing_subscriber::fmt::layer()
-            .pretty()
-            .boxed()
-    };
+        let fmt_layer = if json_logs {
+            tracing_subscriber::fmt::layer()
+                .json()
+                .boxed()
+        } else {
+            tracing_subscriber::fmt::layer()
+                .pretty()
+                .boxed()
+        };
 
-    // Optionally add OpenTelemetry layer
-    if let Some(endpoint) = otlp_endpoint {
-        let tracer = opentelemetry_otlp::new_pipeline()
-            .tracing()
-            .with_exporter(
-                opentelemetry_otlp::new_exporter()
-                    .tonic()
-                    .with_endpoint(endpoint),
-            )
-            .with_trace_config(
-                sdktrace::Config::default().with_resource(Resource::new(vec![
-                    opentelemetry::KeyValue::new("service.name", service_name.to_string()),
-                ])),
-            )
-            .install_batch(runtime::Tokio)?;
+        if let Some(endpoint) = otlp_endpoint {
+            let tracer = opentelemetry_otlp::new_pipeline()
+                .tracing()
+                .with_exporter(
+                    opentelemetry_otlp::new_exporter()
+                        .tonic()
+                        .with_endpoint(endpoint),
+                )
+                .with_trace_config(
+                    sdktrace::Config::default().with_resource(Resource::new(vec![
+                        opentelemetry::KeyValue::new("service.name", service_name.to_string()),
+                    ])),
+                )
+                .install_batch(runtime::Tokio)?;
 
-        let otel_layer = tracing_opentelemetry::layer()
-            .with_tracer(tracer.tracer(service_name.to_string()));
+            let otel_layer = tracing_opentelemetry::layer()
+                .with_tracer(tracer.tracer(service_name.to_string()));
 
-        subscriber
-            .with(fmt_layer)
-            .with(otel_layer)
-            .init();
-    } else {
-        subscriber.with(fmt_layer).init();
+            subscriber
+                .with(fmt_layer)
+                .with(otel_layer)
+                .init();
+        } else {
+            subscriber.with(fmt_layer).init();
+        }
+
+        Ok(())
     }
 
-    Ok(())
+    /// Shutdown OpenTelemetry (call on server shutdown)
+    pub fn shutdown_tracing() {
+        opentelemetry::global::shutdown_tracer_provider();
+    }
 }
 
-/// Shutdown OpenTelemetry (call on server shutdown)
-pub fn shutdown_tracing() {
-    opentelemetry::global::shutdown_tracer_provider();
-}
+#[cfg(feature = "telemetry")]
+pub use otel::{init_tracing, shutdown_tracing};
 
 #[cfg(test)]
 mod tests {

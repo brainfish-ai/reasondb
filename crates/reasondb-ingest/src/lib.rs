@@ -52,5 +52,5 @@ pub use extractor::{DocumentType, ExtractionResult, SmartExtractor};
 pub use pipeline::{
     IngestPipeline, IngestResult, IngestStats, NoOpReasoner, PipelineBuilder, PipelineConfig,
 };
-pub use summarizer::{MockSummarizer, NodeSummarizer, SummarizerConfig};
+pub use summarizer::{BatchSummarizer, MockSummarizer, NodeSummarizer, SummarizerConfig};
 pub use tree_builder::TreeBuilder;

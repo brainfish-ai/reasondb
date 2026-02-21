@@ -207,14 +207,19 @@ impl MockSummarizer {
     }
 }
 
-/// Batch summarization for efficiency
+/// Batch summarization that sends multiple nodes per LLM request.
+///
+/// Reduces API round-trips from N (one per node) to ceil(N / batch_size)
+/// per depth level. Bottom-up ordering is preserved so parent nodes
+/// always have access to child summaries.
 pub struct BatchSummarizer<'a, R: ReasoningEngine> {
     reasoner: &'a R,
     batch_size: usize,
 }
 
 impl<'a, R: ReasoningEngine> BatchSummarizer<'a, R> {
-    /// Create a new batch summarizer
+    /// Create a new batch summarizer.
+    /// `batch_size` controls how many nodes are sent per LLM request.
     pub fn new(reasoner: &'a R, batch_size: usize) -> Self {
         Self {
             reasoner,
@@ -222,19 +227,22 @@ impl<'a, R: ReasoningEngine> BatchSummarizer<'a, R> {
         }
     }
 
-    /// Summarize nodes in batches
+    /// Summarize all nodes in a document tree using batched LLM requests.
     pub async fn summarize_batch(&self, nodes: &mut [PageNode]) -> Result<()> {
-        // Group nodes by depth
         let max_depth = nodes.iter().map(|n| n.depth).max().unwrap_or(0);
 
-        // Build lookup map
         let node_map: HashMap<String, usize> = nodes
             .iter()
             .enumerate()
             .map(|(i, n)| (n.id.clone(), i))
             .collect();
 
-        // Process bottom-up
+        info!(
+            "Batch-summarizing {} nodes (batch_size: {})",
+            nodes.len(),
+            self.batch_size
+        );
+
         for depth in (0..=max_depth).rev() {
             let indices: Vec<usize> = nodes
                 .iter()
@@ -243,14 +251,25 @@ impl<'a, R: ReasoningEngine> BatchSummarizer<'a, R> {
                 .map(|(i, _)| i)
                 .collect();
 
-            // Process in batches
+            debug!(
+                "Batch-summarizing {} nodes at depth {}",
+                indices.len(),
+                depth
+            );
+
             for batch_indices in indices.chunks(self.batch_size) {
-                // Collect batch items
-                let mut batch_items: Vec<(usize, String, SummarizationContext)> = Vec::new();
+                let mut llm_items: Vec<(usize, String, String, SummarizationContext)> = Vec::new();
 
                 for &idx in batch_indices {
                     let node = &nodes[idx];
                     let content = self.get_content_for_node(node, nodes, &node_map);
+
+                    if content.is_empty() {
+                        nodes[idx].summary =
+                            format!("Section: {}", nodes[idx].title);
+                        continue;
+                    }
+
                     let parent_summary = node.parent_id.as_ref().and_then(|pid| {
                         node_map.get(pid).map(|&i| nodes[i].summary.clone())
                     });
@@ -260,29 +279,42 @@ impl<'a, R: ReasoningEngine> BatchSummarizer<'a, R> {
                         depth: node.depth,
                         is_leaf: node.is_leaf(),
                     };
-                    batch_items.push((idx, content, context));
+                    llm_items.push((idx, node.id.clone(), content, context));
                 }
 
-                // Process batch (sequentially for now, could be parallel)
-                for (idx, content, context) in batch_items {
-                    if !content.is_empty() {
-                        let summary = self
-                            .reasoner
-                            .summarize(&content, &context)
-                            .await
-                            .map_err(|e| IngestError::Summarization(e.to_string()))?;
-                        nodes[idx].summary = summary;
+                if llm_items.is_empty() {
+                    continue;
+                }
+
+                let batch_input: Vec<(String, String, SummarizationContext)> = llm_items
+                    .iter()
+                    .map(|(_, id, content, ctx)| (id.clone(), content.clone(), ctx.clone()))
+                    .collect();
+
+                let summaries = self
+                    .reasoner
+                    .summarize_batch(&batch_input)
+                    .await
+                    .map_err(|e| IngestError::Summarization(e.to_string()))?;
+
+                let summary_map: HashMap<String, String> =
+                    summaries.into_iter().collect();
+
+                for (idx, node_id, _, _) in &llm_items {
+                    if let Some(summary) = summary_map.get(node_id) {
+                        nodes[*idx].summary = summary.clone();
                     } else {
-                        nodes[idx].summary = format!("Section: {}", nodes[idx].title);
+                        nodes[*idx].summary =
+                            format!("Section: {}", nodes[*idx].title);
                     }
                 }
             }
         }
 
+        info!("Completed batch summarization");
         Ok(())
     }
 
-    /// Get content for a node (leaf content or child summaries)
     fn get_content_for_node(
         &self,
         node: &PageNode,
