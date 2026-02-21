@@ -1,9 +1,4 @@
-import { useState, useEffect } from 'react'
 import {
-  Minus,
-  Square,
-  CornersIn,
-  X,
   Sidebar as SidebarIcon,
   Database,
   Plugs,
@@ -20,10 +15,6 @@ interface TitleBarProps {
   connection?: Connection
 }
 
-const isTauri = () => {
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
-}
-
 const THEME_CYCLE: Theme[] = ['dark', 'light', 'system']
 const THEME_META: Record<Theme, { Icon: typeof Moon; label: string }> = {
   dark: { Icon: Moon, label: 'Dark' },
@@ -32,61 +23,7 @@ const THEME_META: Record<Theme, { Icon: typeof Moon; label: string }> = {
 }
 
 export function TitleBar({ connection }: TitleBarProps) {
-  const [isMaximized, setIsMaximized] = useState(false)
   const { theme, setTheme, toggleSidebar, sidebarOpen } = useUiStore()
-
-  useEffect(() => {
-    if (!isTauri()) return
-
-    const setupWindow = async () => {
-      const { getCurrentWindow } = await import('@tauri-apps/api/window')
-      const currentWindow = getCurrentWindow()
-
-      const maximized = await currentWindow.isMaximized()
-      setIsMaximized(maximized)
-
-      const unlisten = await currentWindow.onResized(async () => {
-        const maximized = await currentWindow.isMaximized()
-        setIsMaximized(maximized)
-      })
-
-      return unlisten
-    }
-
-    let cleanup: (() => void) | undefined
-    setupWindow().then((unlisten) => {
-      cleanup = unlisten
-    })
-
-    return () => {
-      cleanup?.()
-    }
-  }, [])
-
-  const handleMinimize = async () => {
-    if (!isTauri()) return
-    const { getCurrentWindow } = await import('@tauri-apps/api/window')
-    getCurrentWindow().minimize()
-  }
-
-  const handleMaximize = async () => {
-    if (!isTauri()) return
-    const { getCurrentWindow } = await import('@tauri-apps/api/window')
-    const window = getCurrentWindow()
-    if (await window.isMaximized()) {
-      await window.unmaximize()
-      setIsMaximized(false)
-    } else {
-      await window.maximize()
-      setIsMaximized(true)
-    }
-  }
-
-  const handleClose = async () => {
-    if (!isTauri()) return
-    const { getCurrentWindow } = await import('@tauri-apps/api/window')
-    getCurrentWindow().close()
-  }
 
   const cycleTheme = () => {
     const idx = THEME_CYCLE.indexOf(theme)
@@ -96,8 +33,7 @@ export function TitleBar({ connection }: TitleBarProps) {
   const { Icon: ThemeIcon, label: themeLabel } = THEME_META[theme]
 
   return (
-    <header
-      data-tauri-drag-region
+    <div
       className="h-10 bg-mantle border-b border-border flex items-center justify-between select-none"
       role="banner"
     >
@@ -109,9 +45,9 @@ export function TitleBar({ connection }: TitleBarProps) {
           aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
           aria-expanded={sidebarOpen}
         >
-          <SidebarIcon 
-            size={18} 
-            weight="bold" 
+          <SidebarIcon
+            size={18}
+            weight="bold"
             aria-hidden="true"
           />
         </button>
@@ -123,10 +59,7 @@ export function TitleBar({ connection }: TitleBarProps) {
       </div>
 
       {/* Center - Connection status */}
-      <div
-        data-tauri-drag-region
-        className="flex-1 flex items-center justify-center gap-2"
-      >
+      <div className="flex-1 flex items-center justify-center gap-2">
         {connection ? (
           <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-surface-0" role="status">
             <PlugsConnected size={14} weight="fill" className="text-green" aria-hidden="true" />
@@ -143,12 +76,12 @@ export function TitleBar({ connection }: TitleBarProps) {
         )}
       </div>
 
-      {/* Right section — theme toggle + window controls */}
-      <div className="flex items-center">
+      {/* Right section — theme toggle */}
+      <div className="flex items-center px-2">
         <button
           onClick={cycleTheme}
           className={cn(
-            'h-10 w-10 flex items-center justify-center',
+            'p-2 rounded-md',
             'text-subtext-0 hover:text-text hover:bg-surface-0 transition-colors',
             'focus-visible:ring-2 focus-visible:ring-primary'
           )}
@@ -156,46 +89,7 @@ export function TitleBar({ connection }: TitleBarProps) {
         >
           <ThemeIcon size={16} weight="bold" aria-hidden="true" />
         </button>
-
-        {isTauri() && (
-          <>
-            <button
-              onClick={handleMinimize}
-              className={cn(
-                'h-10 w-12 flex items-center justify-center',
-                'hover:bg-surface-0 text-subtext-0 hover:text-text transition-colors'
-              )}
-              aria-label="Minimize window"
-            >
-              <Minus size={16} weight="bold" aria-hidden="true" />
-            </button>
-            <button
-              onClick={handleMaximize}
-              className={cn(
-                'h-10 w-12 flex items-center justify-center',
-                'hover:bg-surface-0 text-subtext-0 hover:text-text transition-colors'
-              )}
-              aria-label={isMaximized ? 'Restore window' : 'Maximize window'}
-            >
-              {isMaximized ? (
-                <CornersIn size={14} weight="bold" aria-hidden="true" />
-              ) : (
-                <Square size={14} weight="bold" aria-hidden="true" />
-              )}
-            </button>
-            <button
-              onClick={handleClose}
-              className={cn(
-                'h-10 w-12 flex items-center justify-center',
-                'hover:bg-red text-subtext-0 hover:text-base transition-colors'
-              )}
-              aria-label="Close window"
-            >
-              <X size={16} weight="bold" aria-hidden="true" />
-            </button>
-          </>
-        )}
       </div>
-    </header>
+    </div>
   )
 }
