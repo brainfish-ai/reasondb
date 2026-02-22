@@ -19,7 +19,7 @@ use tracing::{debug, error, info, warn};
 use super::{
     BatchSummaryResult, DocumentRanking, DocumentRankings, DocumentSummary, NodeSummary,
     ReasoningConfig, ReasoningEngine, SummarizationContext, TraversalDecision, TraversalDecisions,
-    VerificationResult,
+    VerificationResult, VerificationResultRaw,
 };
 use crate::error::{ReasonError, Result};
 
@@ -60,6 +60,48 @@ fn extract_json_from_response(response: &str) -> &str {
     }
 
     trimmed
+}
+
+/// Attempt to repair malformed JSON where the LLM flattened multiple array
+/// elements into a single object with duplicate keys.
+///
+/// Pattern detected:
+/// `{"selections": [{"node_id":"a","confidence":0.9,"reasoning":"x","node_id":"b",...}]}`
+///
+/// Repaired to:
+/// `{"selections": [{"node_id":"a","confidence":0.9,"reasoning":"x"},{"node_id":"b",...}]}`
+fn repair_duplicate_key_json(json_str: &str, duplicate_field: &str) -> Option<String> {
+    use regex::Regex;
+
+    let pattern = format!(
+        r#",\s*"{}"\s*:"#,
+        regex::escape(duplicate_field)
+    );
+    let split_re = Regex::new(&pattern).ok()?;
+
+    let first_field_pattern = format!(
+        r#""{}"\s*:"#,
+        regex::escape(duplicate_field)
+    );
+    let first_re = Regex::new(&first_field_pattern).ok()?;
+
+    let all_matches: Vec<_> = first_re.find_iter(json_str).collect();
+    if all_matches.len() < 2 {
+        return None;
+    }
+
+    let repaired = split_re.replacen(
+        json_str,
+        all_matches.len() - 1,
+        &format!(r#"}},{{"{}":"#, duplicate_field),
+    );
+
+    if serde_json::from_str::<serde_json::Value>(&repaired).is_ok() {
+        debug!("Repaired duplicate-key JSON for field '{}'", duplicate_field);
+        Some(repaired.into_owned())
+    } else {
+        None
+    }
 }
 
 /// Supported LLM providers
@@ -126,7 +168,7 @@ impl LLMProvider {
     pub fn gemini(api_key: impl Into<String>) -> Self {
         Self::Gemini {
             api_key: api_key.into(),
-            model: "gemini-1.5-flash".to_string(),
+            model: "gemini-2.5-flash".to_string(),
         }
     }
 
@@ -134,7 +176,7 @@ impl LLMProvider {
     pub fn gemini_pro(api_key: impl Into<String>) -> Self {
         Self::Gemini {
             api_key: api_key.into(),
-            model: "gemini-1.5-pro".to_string(),
+            model: "gemini-2.5-pro".to_string(),
         }
     }
 
@@ -340,6 +382,9 @@ impl Reasoner {
                 })
             }
             LLMProvider::Anthropic { api_key, model } => {
+                // rig-core 0.6.1's ExtractorBuilder doesn't expose max_tokens()
+                // and its calculate_max_tokens doesn't know Claude 4.x models,
+                // so we use agent + manual JSON parsing with a repair fallback.
                 let client = rig::providers::anthropic::ClientBuilder::new(api_key).build();
                 let default_preamble = "You are a JSON extraction assistant. Always respond with valid JSON only, no other text.";
                 let mut builder = client
@@ -354,7 +399,9 @@ impl Reasoner {
                     .map_err(|e| ReasonError::Reasoning(format!("Schema error: {}", e)))?;
 
                 let extraction_prompt = format!(
-                    "Extract the following information from the text and return ONLY valid JSON matching this schema:\n\nSchema:\n{}\n\nText to extract from:\n{}",
+                    "Extract the following information and return ONLY valid JSON matching this schema.\n\
+                    IMPORTANT: When the schema has an array of objects, return EACH item as a SEPARATE object in the array.\n\n\
+                    Schema:\n{}\n\nText:\n{}",
                     schema_json, prompt
                 );
 
@@ -371,14 +418,36 @@ impl Reasoner {
 
                 let json_str = extract_json_from_response(&response);
 
-                serde_json::from_str(json_str).map_err(|e| {
-                    warn!(
-                        "Anthropic JSON parse failed: {}. Raw response: {}",
-                        e,
-                        &json_str[..json_str.len().min(500)]
-                    );
-                    ReasonError::Reasoning(format!("Failed to parse Anthropic JSON response: {}. Response was: {}", e, json_str))
-                })
+                match serde_json::from_str(json_str) {
+                    Ok(parsed) => Ok(parsed),
+                    Err(e) => {
+                        let err_msg = e.to_string();
+                        if err_msg.contains("duplicate field") {
+                            let field = err_msg
+                                .strip_prefix("duplicate field `")
+                                .and_then(|s| s.split('`').next())
+                                .unwrap_or("node_id");
+                            if let Some(repaired) = repair_duplicate_key_json(json_str, field) {
+                                if let Ok(parsed) = serde_json::from_str(&repaired) {
+                                    warn!(
+                                        "Anthropic returned duplicate-key JSON (field '{}'), repaired successfully",
+                                        field
+                                    );
+                                    return Ok(parsed);
+                                }
+                            }
+                        }
+                        warn!(
+                            "Anthropic JSON parse failed: {}. Raw response: {}",
+                            e,
+                            &json_str[..json_str.len().min(500)]
+                        );
+                        Err(ReasonError::Reasoning(format!(
+                            "Failed to parse Anthropic JSON response: {}. Response was: {}",
+                            e, json_str
+                        )))
+                    }
+                }
             }
             LLMProvider::Gemini { api_key, model } => {
                 let client = rig::providers::gemini::Client::new(api_key);
@@ -573,19 +642,19 @@ impl ReasoningEngine for Reasoner {
         };
 
         let prompt = format!(
-            r#"You are a document navigation assistant. Select which sections are most likely to contain information relevant to the user's query.
+            r#"You are a document navigation assistant. Select sections that directly address the user's query.
 
 Query: "{}"
 {}
 Available sections:
 {}
 
-Select up to {} sections most likely to contain the answer. For each selection, provide:
-- node_id: The exact ID string from the list
-- confidence: A score from 0.0 to 1.0
-- reasoning: A brief explanation
+Select up to {} sections most likely to contain a direct answer. A section that merely mentions a query keyword in a setup step, footnote, or unrelated context is NOT worth exploring — only select sections whose summary indicates they substantively address the query topic.
 
-Only include sections that are likely relevant. If none seem relevant, return an empty selections array."#,
+Return JSON with this EXACT structure (each selection is a SEPARATE object in the array):
+{{"selections": [{{"node_id": "exact_id_from_list", "confidence": 0.9, "reasoning": "brief explanation"}}, {{"node_id": "another_id", "confidence": 0.7, "reasoning": "brief explanation"}}]}}
+
+If none seem relevant, return: {{"selections": []}}"#,
             query,
             context_part,
             self.format_candidates(candidates),
@@ -604,22 +673,35 @@ Only include sections that are likely relevant. If none seem relevant, return an
         let truncated_content: String = content.chars().take(4000).collect();
 
         let prompt = format!(
-            r#"Determine if this content is relevant to the user's query.
+            r#"Does this content directly answer or provide substantive information needed to answer the user's query?
 
 Query: "{}"
 
 Content:
 {}
 
-Analyze the content and determine:
-- is_relevant: true if the content answers or contains information relevant to the query
-- confidence: A score from 0.0 to 1.0 indicating how confident you are"#,
+Rules:
+- is_relevant: true ONLY if the content directly answers the query or provides key information needed to answer it
+- A section that merely mentions a query keyword in passing (e.g. a Docker command in a monitoring setup guide when the query is about Docker support) is NOT relevant — set is_relevant: false
+- relevance_score: rate on an INTEGER scale from 1 to 10. Each level is distinct — choose carefully:
+   10 = comprehensive, self-contained answer covering all aspects of the query
+    9 = directly and completely answers the query with minor gaps
+    8 = strong answer with clear, actionable information
+    7 = good answer but missing important context or depth
+    6 = partially answers — provides useful info but leaves key questions open
+    5 = related content that gives helpful context without answering directly
+    4 = mentions the topic but doesn't provide a useful answer
+    3 = only loosely related, mostly about something else
+    2 = barely related — superficial keyword overlap only
+    1 = not relevant at all"#,
             query, truncated_content
         );
 
         debug!("Verifying relevance for query: {}", query);
 
-        self.extract(&prompt).await
+        let raw: VerificationResultRaw = self.extract(&prompt).await?;
+
+        Ok(raw.into())
     }
 
     async fn summarize(&self, content: &str, context: &SummarizationContext) -> Result<String> {
@@ -861,6 +943,34 @@ mod tests {
         assert!(formatted.contains("Chapter 1"));
         assert!(formatted.contains("node_2"));
         assert!(formatted.contains("Chapter 2"));
+    }
+
+    #[test]
+    fn test_repair_duplicate_key_json() {
+        let malformed = r#"{"selections": [{"node_id": "aaa", "confidence": 0.95, "reasoning": "first reason", "node_id": "bbb", "confidence": 0.75, "reasoning": "second reason"}]}"#;
+
+        let repaired = repair_duplicate_key_json(malformed, "node_id").expect("repair should succeed");
+        let parsed: serde_json::Value = serde_json::from_str(&repaired).expect("repaired JSON should parse");
+        let selections = parsed["selections"].as_array().unwrap();
+        assert_eq!(selections.len(), 2);
+        assert_eq!(selections[0]["node_id"], "aaa");
+        assert_eq!(selections[1]["node_id"], "bbb");
+    }
+
+    #[test]
+    fn test_repair_duplicate_reasoning_field() {
+        let malformed = r#"{"selections": [{"node_id": "aaa", "confidence": 0.95, "reasoning": "first", "reasoning": "second"}]}"#;
+
+        let repaired = repair_duplicate_key_json(malformed, "reasoning").expect("repair should succeed");
+        let parsed: serde_json::Value = serde_json::from_str(&repaired).expect("repaired JSON should parse");
+        let selections = parsed["selections"].as_array().unwrap();
+        assert_eq!(selections.len(), 2);
+    }
+
+    #[test]
+    fn test_repair_no_duplicates_returns_none() {
+        let valid = r#"{"selections": [{"node_id": "aaa", "confidence": 0.95, "reasoning": "ok"}]}"#;
+        assert!(repair_duplicate_key_json(valid, "node_id").is_none());
     }
 
     #[test]

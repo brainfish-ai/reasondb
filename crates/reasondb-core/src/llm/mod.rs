@@ -62,14 +62,32 @@ pub struct TraversalDecisions {
     pub selections: Vec<TraversalDecision>,
 }
 
-/// Result of verifying if a leaf node is relevant to the query.
-/// Uses JsonSchema for structured output extraction.
+/// Raw LLM output for leaf verification — uses an integer scale for better score variance.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub(crate) struct VerificationResultRaw {
+    /// Whether the content is relevant to the query
+    pub is_relevant: bool,
+    /// Relevance score from 1 (not relevant at all) to 10 (perfect, comprehensive answer)
+    pub relevance_score: u8,
+}
+
+/// Result of verifying if a leaf node is relevant to the query.
+#[derive(Debug, Clone)]
 pub struct VerificationResult {
     /// Whether the content is relevant to the query
     pub is_relevant: bool,
-    /// Confidence score (0.0 - 1.0)
+    /// Confidence score (0.0 - 1.0), derived from the LLM's 1-10 rating
     pub confidence: f32,
+}
+
+impl From<VerificationResultRaw> for VerificationResult {
+    fn from(raw: VerificationResultRaw) -> Self {
+        let clamped = raw.relevance_score.clamp(1, 10);
+        Self {
+            is_relevant: raw.is_relevant,
+            confidence: clamped as f32 / 10.0,
+        }
+    }
 }
 
 /// A document summary for quick LLM scanning/ranking
