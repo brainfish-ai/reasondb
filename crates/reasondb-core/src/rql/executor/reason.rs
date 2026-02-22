@@ -19,7 +19,7 @@ use crate::text_index::TextIndex;
 use crate::rql::ast::Query;
 
 use super::types::{
-    DocumentMatch, QueryResult, QueryStats,
+    DocumentMatch, MatchedNode, QueryResult, QueryStats,
     ReasonPhase, ReasonPhaseStatus, ReasonProgress,
 };
 
@@ -375,6 +375,9 @@ async fn execute_parallel_reasoning<R: ReasoningEngine + Send + Sync + 'static>(
                 Ok(response) => {
                     total_llm_calls += response.stats.llm_calls;
 
+                    let mut nodes_for_doc: Vec<MatchedNode> = Vec::new();
+                    let mut best_confidence: f32 = 0.0;
+
                     for result in response.results {
                         if let Some(min_conf) = min_confidence {
                             if result.confidence < min_conf {
@@ -382,13 +385,24 @@ async fn execute_parallel_reasoning<R: ReasoningEngine + Send + Sync + 'static>(
                             }
                         }
 
+                        best_confidence = best_confidence.max(result.confidence);
+                        nodes_for_doc.push(MatchedNode {
+                            node_id: result.node_id,
+                            title: result.title,
+                            content: result.content,
+                            path: result.path,
+                            confidence: result.confidence,
+                            reasoning_trace: result.reasoning_trace,
+                        });
+                    }
+
+                    if !nodes_for_doc.is_empty() {
                         all_matches.push(DocumentMatch {
                             document: doc.clone(),
-                            score: Some(result.confidence),
-                            matched_nodes: vec![result.node_id.clone()],
-                            highlights: vec![result.content.clone()],
-                            answer: result.extracted_answer,
-                            confidence: Some(result.confidence),
+                            score: Some(best_confidence),
+                            matched_nodes: nodes_for_doc,
+                            highlights: vec![],
+                            confidence: Some(best_confidence),
                         });
                     }
                 }

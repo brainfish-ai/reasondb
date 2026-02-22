@@ -345,10 +345,10 @@ export interface PathNode {
 
 export interface SearchResult {
   node_id: string
+  title: string
   document_id: string
   path: PathNode[]
   content: string
-  answer?: string
   confidence: number
 }
 
@@ -387,6 +387,21 @@ export interface ReasonProgressEvent {
   }
 }
 
+export interface ReasoningStepResponse {
+  node_title: string
+  decision: string
+  confidence: number
+}
+
+export interface MatchedNodeResponse {
+  node_id: string
+  title: string
+  content: string
+  path: string[]
+  confidence: number
+  reasoning_trace: ReasoningStepResponse[]
+}
+
 interface QueryServerResponse {
   documents: Array<{
     id: string
@@ -398,7 +413,7 @@ interface QueryServerResponse {
     created_at: string
     score?: number
     highlights?: string[]
-    answer?: string
+    matched_nodes?: MatchedNodeResponse[]
     confidence?: number
   }>
   total_count: number

@@ -220,11 +220,6 @@ impl ReasoningEngine for MockReasoner {
             } else {
                 0.2
             },
-            extracted_answer: if is_relevant {
-                Some(content.chars().take(200).collect())
-            } else {
-                None
-            },
         })
     }
 
@@ -375,7 +370,7 @@ mod tests {
             .unwrap();
 
         assert!(result.is_relevant);
-        assert!(result.extracted_answer.is_some());
+        assert!(result.confidence > 0.0);
     }
 
     #[tokio::test]

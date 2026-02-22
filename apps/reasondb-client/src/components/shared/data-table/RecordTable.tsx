@@ -13,14 +13,17 @@ import {
   CaretDown,
   BracketsCurly,
   TreeStructure,
+  Target,
 } from '@phosphor-icons/react'
 import { cn } from '@/lib/utils'
 import { DataTable } from './DataTable'
 import { TableToolbar } from './TableToolbar'
 import { TablePagination } from './TablePagination'
 import { JsonDetailSidebar } from '@/components/table/JsonDetailSidebar'
+import { ReasonDetailSidebar } from './ReasonDetailSidebar'
 import { useConnectionStore } from '@/stores/connectionStore'
 import { createClient } from '@/lib/api'
+import type { MatchedNodeResponse } from '@/lib/api'
 
 // ==================== Types ====================
 
@@ -52,14 +55,14 @@ interface SidebarState {
 // Preferred column order for regular queries
 const COLUMN_ORDER = ['id', 'title', 'total_nodes', 'tags', 'metadata', 'created_at']
 
-// Preferred column order when REASON fields are present (answer first)
-const REASON_COLUMN_ORDER = ['title', 'answer', 'confidence', 'id', 'total_nodes', 'tags', 'metadata', 'created_at']
+// Preferred column order when REASON fields are present (matched_nodes first)
+const REASON_COLUMN_ORDER = ['title', 'matched_nodes', 'confidence', 'id', 'total_nodes', 'tags', 'metadata', 'created_at']
 
 // Columns always excluded
 const BASE_EXCLUDED = ['table_id', 'score', 'highlights']
 
 // Additional columns excluded only when NOT a REASON result
-const NON_REASON_EXCLUDED = ['answer', 'confidence']
+const NON_REASON_EXCLUDED = ['matched_nodes', 'confidence']
 
 // ==================== Cell Renderers ====================
 
@@ -73,6 +76,7 @@ function SortableHeader({
   const displayLabels: Record<string, string> = {
     total_nodes: 'content',
     created_at: 'created_at',
+    matched_nodes: 'matched nodes',
   }
   const displayLabel = displayLabels[label] ?? label
   
@@ -182,14 +186,27 @@ function CellRenderer({ columnName, value, row, onMetadataClick, onContentClick 
     )
   }
 
-  // Answer column (REASON) - the extracted answer text
-  if (columnName === 'answer') {
-    if (!value) return <span className="text-overlay-0 italic">—</span>
-    const text = String(value)
+  // Matched nodes column (REASON) - compact badge consistent with total_nodes
+  if (columnName === 'matched_nodes') {
+    const nodes = value as MatchedNodeResponse[] | undefined
+    if (!nodes || nodes.length === 0) return <span className="text-overlay-0 italic">—</span>
+    const topTitle = nodes[0]?.title
     return (
-      <span className="text-sm text-text leading-snug" title={text}>
-        {text.length > 200 ? text.slice(0, 200) + '...' : text}
-      </span>
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          onContentClick(row)
+        }}
+        className={cn(
+          'inline-flex items-center gap-1 px-1.5 rounded',
+          'bg-mauve/10 hover:bg-mauve/20 text-mauve transition-colors',
+          'font-mono text-xs'
+        )}
+        title={topTitle ? `Top match: ${topTitle}` : 'Click to view matched nodes'}
+      >
+        <Target size={11} className="shrink-0" />
+        <span>{nodes.length} node{nodes.length !== 1 ? 's' : ''}</span>
+      </button>
     )
   }
 
@@ -267,13 +284,40 @@ export function RecordTable({
     data: null,
     isLoading: false,
   })
+  const [reasonSidebar, setReasonSidebar] = useState<{
+    isOpen: boolean
+    documentTitle: string
+    documentId: string
+    confidence?: number
+    matchedNodes: MatchedNodeResponse[]
+  }>({
+    isOpen: false,
+    documentTitle: '',
+    documentId: '',
+    matchedNodes: [],
+  })
   
   const { activeConnectionId, connections } = useConnectionStore()
   const activeConnection = connections.find((c) => c.id === activeConnectionId)
 
-  // Close sidebar
+  const connectionConfig = useMemo(() => {
+    if (!activeConnection) return undefined
+    return {
+      host: activeConnection.host,
+      port: activeConnection.port,
+      apiKey: activeConnection.apiKey,
+      useSsl: activeConnection.ssl,
+    }
+  }, [activeConnection])
+
+  // Close sidebars
   const closeSidebar = useCallback(() => {
     setSidebar(prev => ({ ...prev, isOpen: false }))
+    setSelectedRowId(null)
+  }, [])
+
+  const closeReasonSidebar = useCallback(() => {
+    setReasonSidebar(prev => ({ ...prev, isOpen: false }))
     setSelectedRowId(null)
   }, [])
 
@@ -282,6 +326,7 @@ export function RecordTable({
     const title = String(row.title || row.id || 'Record')
     const metadata = row.metadata as Record<string, unknown>
     
+    setReasonSidebar(prev => ({ ...prev, isOpen: false }))
     setSidebar({
       isOpen: true,
       title: `${title} → metadata`,
@@ -291,15 +336,30 @@ export function RecordTable({
     })
   }, [])
 
-  // Handle content click - load document tree
+  // Handle content click - opens reason sidebar for REASON results, document tree otherwise
   const handleContentClick = useCallback(async (row: Record<string, unknown>) => {
     const docId = String(row.id || '')
     const title = String(row.title || row.id || 'Record')
-    
-    if (!activeConnection || !docId) return
+    const matchedNodes = row.matched_nodes as MatchedNodeResponse[] | undefined
 
+    if (!docId) return
     setSelectedRowId(docId)
 
+    if (matchedNodes && matchedNodes.length > 0) {
+      setSidebar(prev => ({ ...prev, isOpen: false }))
+      setReasonSidebar({
+        isOpen: true,
+        documentTitle: title,
+        documentId: docId,
+        confidence: row.confidence as number | undefined,
+        matchedNodes,
+      })
+      return
+    }
+
+    if (!activeConnection) return
+
+    setReasonSidebar(prev => ({ ...prev, isOpen: false }))
     setSidebar({
       isOpen: true,
       title: `${title} → content`,
@@ -337,7 +397,7 @@ export function RecordTable({
     }
   }, [activeConnection])
 
-  // Row click handler - opens content sidebar for the clicked row
+  // Row click handler
   const handleRowClick = useCallback((row: Record<string, unknown>) => {
     handleContentClick(row)
   }, [handleContentClick])
@@ -345,7 +405,10 @@ export function RecordTable({
   // Detect whether results contain REASON fields
   const isReasonResult = useMemo(() => {
     if (records.length === 0) return false
-    return records.some(r => r.answer != null || r.confidence != null)
+    return records.some(r => {
+      const nodes = r.matched_nodes as unknown[] | undefined
+      return (nodes != null && nodes.length > 0) || r.confidence != null
+    })
   }, [records])
 
   // Order and filter columns
@@ -449,7 +512,7 @@ export function RecordTable({
         <TablePagination table={table} />
       </div>
 
-      {/* Shared JSON Detail Sidebar */}
+      {/* JSON Detail Sidebar (metadata, document tree for non-REASON) */}
       <JsonDetailSidebar
         isOpen={sidebar.isOpen}
         onClose={closeSidebar}
@@ -457,6 +520,17 @@ export function RecordTable({
         path={sidebar.path}
         data={sidebar.data}
         isLoading={sidebar.isLoading}
+      />
+
+      {/* Reason Detail Sidebar (matched nodes for REASON results) */}
+      <ReasonDetailSidebar
+        isOpen={reasonSidebar.isOpen}
+        onClose={closeReasonSidebar}
+        documentTitle={reasonSidebar.documentTitle}
+        documentId={reasonSidebar.documentId}
+        confidence={reasonSidebar.confidence}
+        matchedNodes={reasonSidebar.matchedNodes}
+        connectionConfig={connectionConfig}
       />
     </div>
   )

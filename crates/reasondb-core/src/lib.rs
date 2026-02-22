@@ -59,7 +59,7 @@ pub mod text_index;
 
 // Re-export main types
 pub use auth::{ApiKey, ApiKeyId, ApiKeyMetadata, ApiKeyStore, KeyPrefix, Permission, Permissions};
-pub use cache::{CachedDocSummary, CachedMatch, CachedQueryResult, QueryCache, QueryCacheStats, SummaryCache};
+pub use cache::{CachedDocSummary, CachedMatch, CachedMatchedNode, CachedQueryResult, QueryCache, QueryCacheStats, SummaryCache};
 pub use engine::{SearchConfig, SearchEngine, SearchResult};
 pub use error::{ReasonDBError, ReasonError, Result};
 pub use llm::{DynamicReasoner, LLMProvider, LlmModelConfig, LlmOptions, LlmSettings, MockReasoner, Reasoner, ReasoningEngine};

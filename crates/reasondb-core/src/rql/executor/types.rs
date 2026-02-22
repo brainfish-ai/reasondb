@@ -2,7 +2,8 @@
 //!
 //! This module contains all the data structures returned from query execution.
 
-use crate::model::{Document, NodeId};
+use crate::engine::ReasoningStep;
+use crate::model::Document;
 use serde::Serialize;
 
 /// Result of executing a query.
@@ -22,6 +23,23 @@ pub struct QueryResult {
     pub explain: Option<QueryPlan>,
 }
 
+/// A node selected during REASON traversal with full context.
+#[derive(Debug, Clone)]
+pub struct MatchedNode {
+    /// Node ID
+    pub node_id: String,
+    /// Node title
+    pub title: String,
+    /// The actual content of the node
+    pub content: String,
+    /// Path from root to this node (titles)
+    pub path: Vec<String>,
+    /// Confidence score for this match
+    pub confidence: f32,
+    /// The reasoning trace showing decisions that led here
+    pub reasoning_trace: Vec<ReasoningStep>,
+}
+
 /// A document match with relevance info.
 #[derive(Debug, Clone)]
 pub struct DocumentMatch {
@@ -29,12 +47,10 @@ pub struct DocumentMatch {
     pub document: Document,
     /// Relevance score (for search queries)
     pub score: Option<f32>,
-    /// Nodes that matched the query
-    pub matched_nodes: Vec<NodeId>,
+    /// Nodes that matched the query (full details for REASON queries)
+    pub matched_nodes: Vec<MatchedNode>,
     /// Highlighted text snippets
     pub highlights: Vec<String>,
-    /// LLM-extracted answer (for REASON queries)
-    pub answer: Option<String>,
     /// Confidence score from LLM (for REASON queries)
     pub confidence: Option<f32>,
 }

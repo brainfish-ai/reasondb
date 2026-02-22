@@ -471,7 +471,6 @@ impl ReasoningEngine for NoOpReasoner {
         Ok(reasondb_core::llm::VerificationResult {
             is_relevant: false,
             confidence: 0.0,
-            extracted_answer: None,
         })
     }
 

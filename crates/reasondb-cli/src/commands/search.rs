@@ -15,7 +15,8 @@ struct SearchRequest {
 #[derive(Debug, Serialize, Deserialize)]
 struct SearchResult {
     content: String,
-    answer: Option<String>,
+    #[serde(default)]
+    title: Option<String>,
     confidence: f64,
     document_id: String,
     #[serde(default)]
@@ -76,13 +77,13 @@ pub async fn run(
             println!("{}", serde_json::to_string_pretty(&response)?);
         }
         OutputFormat::Csv => {
-            println!("document_id,confidence,answer,content");
+            println!("document_id,confidence,title,content");
             for result in &response.results {
                 println!(
                     "{},{:.2},{},\"{}\"",
                     result.document_id,
                     result.confidence,
-                    result.answer.as_deref().unwrap_or(""),
+                    result.title.as_deref().unwrap_or(""),
                     result.content.replace('"', "\"\"")
                 );
             }
@@ -99,8 +100,8 @@ pub async fn run(
                         result.confidence * 100.0
                     );
 
-                    if let Some(answer) = &result.answer {
-                        println!("   {}", answer.green());
+                    if let Some(title) = &result.title {
+                        println!("   {}", title.green());
                     }
 
                     // Truncate content for display

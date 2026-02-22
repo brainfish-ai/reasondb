@@ -208,15 +208,25 @@ pub struct CachedQueryResult {
     pub llm_calls_saved: usize,
 }
 
+/// A cached matched node
+#[derive(Debug, Clone)]
+pub struct CachedMatchedNode {
+    pub node_id: String,
+    pub title: String,
+    pub content: String,
+    pub path: Vec<String>,
+    pub confidence: f32,
+}
+
 /// A cached match result
 #[derive(Debug, Clone)]
 pub struct CachedMatch {
     pub document_id: String,
     pub document_title: String,
     pub score: f32,
-    pub answer: Option<String>,
     pub confidence: f32,
     pub highlights: Vec<String>,
+    pub matched_nodes: Vec<CachedMatchedNode>,
 }
 
 /// Query result cache - saves expensive LLM calls
@@ -408,9 +418,15 @@ mod tests {
                 document_id: "doc1".to_string(),
                 document_title: "Contract".to_string(),
                 score: 0.95,
-                answer: Some("5% late fee".to_string()),
                 confidence: 0.95,
                 highlights: vec!["late fee of 5%".to_string()],
+                matched_nodes: vec![CachedMatchedNode {
+                    node_id: "node1".to_string(),
+                    title: "Late Fees".to_string(),
+                    content: "A late fee of 5% applies".to_string(),
+                    path: vec!["Contract".to_string(), "Penalties".to_string()],
+                    confidence: 0.95,
+                }],
             }],
             cached_at: Instant::now(),
             llm_calls_saved: 5,
@@ -420,7 +436,8 @@ mod tests {
         // Hit on second query
         let cached = cache.get("What are penalties?", "legal").unwrap();
         assert_eq!(cached.matches.len(), 1);
-        assert_eq!(cached.matches[0].answer, Some("5% late fee".to_string()));
+        assert_eq!(cached.matches[0].matched_nodes.len(), 1);
+        assert_eq!(cached.matches[0].matched_nodes[0].title, "Late Fees");
         
         // Check stats
         let stats = cache.stats();

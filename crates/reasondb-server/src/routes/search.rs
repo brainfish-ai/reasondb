@@ -83,6 +83,9 @@ pub struct SearchResult {
     #[schema(example = "node_xyz789")]
     pub node_id: String,
 
+    /// Node title
+    pub title: String,
+
     /// Document ID containing this result
     #[schema(example = "doc_abc123")]
     pub document_id: String,
@@ -93,10 +96,6 @@ pub struct SearchResult {
     /// The relevant content at this node
     #[schema(example = "Machine learning enables computers to learn from data...")]
     pub content: String,
-
-    /// LLM's extracted answer (if applicable)
-    #[schema(example = "The key benefits include automation, pattern recognition, and predictive capabilities.")]
-    pub answer: Option<String>,
 
     /// Confidence score (0.0 to 1.0)
     #[schema(example = 0.85)]
@@ -249,6 +248,7 @@ pub async fn search<R: ReasoningEngine + Send + Sync + 'static>(
 
             SearchResult {
                 node_id: r.node_id,
+                title: r.title,
                 document_id: doc_id,
                 path: r
                     .path
@@ -261,7 +261,6 @@ pub async fn search<R: ReasoningEngine + Send + Sync + 'static>(
                     })
                     .collect(),
                 content: r.content,
-                answer: r.extracted_answer,
                 confidence: r.confidence,
             }
         })

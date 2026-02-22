@@ -62,7 +62,7 @@ pub struct TraversalDecisions {
     pub selections: Vec<TraversalDecision>,
 }
 
-/// Result of verifying if a leaf node answers the query.
+/// Result of verifying if a leaf node is relevant to the query.
 /// Uses JsonSchema for structured output extraction.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct VerificationResult {
@@ -70,8 +70,6 @@ pub struct VerificationResult {
     pub is_relevant: bool,
     /// Confidence score (0.0 - 1.0)
     pub confidence: f32,
-    /// Extracted answer from the content (if relevant)
-    pub extracted_answer: Option<String>,
 }
 
 /// A document summary for quick LLM scanning/ranking
@@ -178,10 +176,10 @@ pub trait ReasoningEngine: Send + Sync {
         candidates: &[NodeSummary],
     ) -> Result<Vec<TraversalDecision>>;
 
-    /// Verify if a leaf node's content answers the query.
+    /// Verify if a leaf node's content is relevant to the query.
     ///
     /// When we reach a leaf node, this method determines if the content
-    /// is actually relevant and can answer the query.
+    /// is actually relevant to the query.
     ///
     /// # Arguments
     ///
@@ -190,7 +188,7 @@ pub trait ReasoningEngine: Send + Sync {
     ///
     /// # Returns
     ///
-    /// A verification result indicating relevance and optionally extracting the answer.
+    /// A verification result indicating relevance and confidence.
     async fn verify_answer(
         &self,
         query: &str,
