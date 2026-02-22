@@ -26,15 +26,20 @@ export function useMonacoEditor({
   const containerRef = useRef<HTMLDivElement | null>(null)
   const onChangeRef = useRef(onContentChange)
   const disposableRef = useRef<MonacoTypes.IDisposable | null>(null)
+  const initialContentRef = useRef(initialContent)
 
   useEffect(() => {
     onChangeRef.current = onContentChange
   })
 
   useEffect(() => {
+    initialContentRef.current = initialContent
+  })
+
+  useEffect(() => {
     if (!isReady) return
 
-    const model = getOrCreateModel(modelId, initialContent, language)
+    const model = getOrCreateModel(modelId, initialContentRef.current, language)
     if (!model) return
 
     attachTo(containerRef, modelId)
@@ -49,7 +54,7 @@ export function useMonacoEditor({
       disposableRef.current = null
       detach(modelId)
     }
-  }, [isReady, modelId, language, attachTo, detach, getOrCreateModel, initialContent])
+  }, [isReady, modelId, language, attachTo, detach, getOrCreateModel])
 
   return { containerRef, editor, monaco, isReady }
 }

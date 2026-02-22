@@ -20,7 +20,7 @@ interface QueryEditorProps {
 export default function QueryEditor({ onExecute, tabId, initialQuery = '', onQueryChange }: QueryEditorProps) {
   const { currentQuery, setCurrentQuery, isExecuting, setIsExecuting, setResults, setError, setReasonProgress, addToHistory } = useQueryStore()
   
-  const query = initialQuery !== undefined ? initialQuery : currentQuery
+  const query = currentQuery || initialQuery
   const { activeConnectionId, connections } = useConnectionStore()
   const { tables } = useTableStore()
   
