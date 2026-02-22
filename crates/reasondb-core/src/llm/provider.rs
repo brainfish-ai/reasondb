@@ -564,7 +564,7 @@ Only include sections that are likely relevant. If none seem relevant, return an
         let truncated_content: String = content.chars().take(4000).collect();
 
         let prompt = format!(
-            r#"Determine if this content answers or is relevant to the user's query.
+            r#"Determine if this content is relevant to the user's query.
 
 Query: "{}"
 
@@ -573,12 +573,11 @@ Content:
 
 Analyze the content and determine:
 - is_relevant: true if the content answers or contains information relevant to the query
-- confidence: A score from 0.0 to 1.0 indicating how confident you are
-- extracted_answer: If relevant, provide a brief extracted answer (or null if not relevant)"#,
+- confidence: A score from 0.0 to 1.0 indicating how confident you are"#,
             query, truncated_content
         );
 
-        debug!("Verifying answer for query: {}", query);
+        debug!("Verifying relevance for query: {}", query);
 
         self.extract(&prompt).await
     }

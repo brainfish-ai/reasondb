@@ -489,7 +489,6 @@ impl NodeStore {
                 score: if has_search { Some(score) } else { None },
                 matched_nodes: Vec::new(),
                 highlights: snippet.into_iter().collect(),
-                answer: None,
                 confidence: None,
             })
             .collect()
@@ -538,7 +537,6 @@ impl NodeStore {
                 score: None,
                 matched_nodes: Vec::new(),
                 highlights: Vec::new(),
-                answer: None,
                 confidence: None,
             })
             .collect();
@@ -588,7 +586,6 @@ impl NodeStore {
                 score: None,
                 matched_nodes: Vec::new(),
                 highlights: Vec::new(),
-                answer: None,
                 confidence: None,
             })
             .collect();

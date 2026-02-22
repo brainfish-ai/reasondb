@@ -48,6 +48,8 @@ impl Default for SearchConfig {
 pub struct SearchResult {
     /// ID of the leaf node containing the result
     pub node_id: String,
+    /// Title of the leaf node
+    pub title: String,
     /// The actual content of the result
     pub content: String,
     /// Confidence score for this result
@@ -56,8 +58,6 @@ pub struct SearchResult {
     pub path: Vec<String>,
     /// The reasoning trace showing decisions made
     pub reasoning_trace: Vec<ReasoningStep>,
-    /// Extracted answer (if available)
-    pub extracted_answer: Option<String>,
 }
 
 /// A step in the reasoning trace
@@ -328,11 +328,11 @@ impl<R: ReasoningEngine + 'static> SearchEngine<R> {
         if verification.is_relevant && verification.confidence >= self.config.min_confidence {
             let result = SearchResult {
                 node_id: node.id.clone(),
+                title: node.title.clone(),
                 content: content.to_string(),
                 confidence: verification.confidence,
                 path,
                 reasoning_trace,
-                extracted_answer: verification.extracted_answer,
             };
 
             results.lock().await.push(result);

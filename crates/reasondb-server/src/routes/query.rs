@@ -5,7 +5,7 @@
 use axum::{extract::State, response::sse::{Event, Sse}, Json};
 use futures::stream::{Stream, StreamExt};
 use reasondb_core::llm::ReasoningEngine;
-use reasondb_core::rql::{AggregateValue, DocumentMatch, Query, QueryResult, QueryStats, ReasonProgress};
+use reasondb_core::rql::{AggregateValue, DocumentMatch, MatchedNode, Query, QueryResult, QueryStats, ReasonProgress};
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -82,6 +82,51 @@ pub struct PlanStepResponse {
     pub estimated_cost: u32,
 }
 
+/// A step in the reasoning trace
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ReasoningStepResponse {
+    /// Node title at this step
+    pub node_title: String,
+    /// Decision made (which child was chosen)
+    pub decision: String,
+    /// Confidence at this step
+    pub confidence: f32,
+}
+
+/// A matched node returned from REASON queries
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MatchedNodeResponse {
+    /// Node ID
+    pub node_id: String,
+    /// Node title
+    pub title: String,
+    /// The actual content of the node
+    pub content: String,
+    /// Path from root to this node (titles)
+    pub path: Vec<String>,
+    /// Confidence score for this match
+    pub confidence: f32,
+    /// The reasoning trace showing decisions that led here
+    pub reasoning_trace: Vec<ReasoningStepResponse>,
+}
+
+impl From<MatchedNode> for MatchedNodeResponse {
+    fn from(n: MatchedNode) -> Self {
+        Self {
+            node_id: n.node_id,
+            title: n.title,
+            content: n.content,
+            path: n.path,
+            confidence: n.confidence,
+            reasoning_trace: n.reasoning_trace.into_iter().map(|s| ReasoningStepResponse {
+                node_title: s.node_title,
+                decision: s.decision,
+                confidence: s.confidence,
+            }).collect(),
+        }
+    }
+}
+
 /// A matched document in query results
 #[derive(Debug, Serialize, ToSchema)]
 pub struct QueryDocumentMatch {
@@ -114,9 +159,9 @@ pub struct QueryDocumentMatch {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub highlights: Vec<String>,
 
-    /// LLM-extracted answer (for REASON queries)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub answer: Option<String>,
+    /// Matched nodes with full details (for REASON queries)
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub matched_nodes: Vec<MatchedNodeResponse>,
 
     /// Confidence score from LLM (for REASON queries)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -135,7 +180,7 @@ impl From<DocumentMatch> for QueryDocumentMatch {
             created_at: m.document.created_at.to_rfc3339(),
             score: m.score,
             highlights: m.highlights,
-            answer: m.answer,
+            matched_nodes: m.matched_nodes.into_iter().map(|n| n.into()).collect(),
             confidence: m.confidence,
         }
     }
@@ -236,12 +281,21 @@ pub async fn execute_query<R: ReasoningEngine + Send + Sync + 'static>(
             
             // Convert cached result to QueryResult
             let matches: Vec<DocumentMatch> = cached.matches.iter().map(|m| {
+                let matched_nodes = m.matched_nodes.iter().map(|n| {
+                    MatchedNode {
+                        node_id: n.node_id.clone(),
+                        title: n.title.clone(),
+                        content: n.content.clone(),
+                        path: n.path.clone(),
+                        confidence: n.confidence,
+                        reasoning_trace: vec![],
+                    }
+                }).collect();
                 DocumentMatch {
                     document: reasondb_core::Document::new(m.document_title.clone(), &cached.table_id),
                     score: Some(m.score),
-                    matched_nodes: vec![],
+                    matched_nodes,
                     highlights: m.highlights.clone(),
-                    answer: m.answer.clone(),
                     confidence: Some(m.confidence),
                 }
             }).collect();
@@ -249,14 +303,14 @@ pub async fn execute_query<R: ReasoningEngine + Send + Sync + 'static>(
             QueryResult {
                 documents: matches,
                 total_count: cached.matches.len(),
-                execution_time_ms: 0, // Cached
+                execution_time_ms: 0,
                 stats: QueryStats {
                     index_used: Some("cache".to_string()),
                     rows_scanned: 0,
                     rows_returned: cached.matches.len(),
                     search_executed: false,
-                    reason_executed: false, // Already done
-                    llm_calls: 0, // Cached
+                    reason_executed: false,
+                    llm_calls: 0,
                 },
                 aggregates: None,
                 explain: None,
@@ -275,9 +329,17 @@ pub async fn execute_query<R: ReasoningEngine + Send + Sync + 'static>(
                     document_id: m.document.id.clone(),
                     document_title: m.document.title.clone(),
                     score: m.score.unwrap_or(0.0),
-                    answer: m.answer.clone(),
                     confidence: m.confidence.unwrap_or(0.0),
                     highlights: m.highlights.clone(),
+                    matched_nodes: m.matched_nodes.iter().map(|n| {
+                        reasondb_core::cache::CachedMatchedNode {
+                            node_id: n.node_id.clone(),
+                            title: n.title.clone(),
+                            content: n.content.clone(),
+                            path: n.path.clone(),
+                            confidence: n.confidence,
+                        }
+                    }).collect(),
                 }
             }).collect();
             
@@ -350,12 +412,21 @@ pub async fn execute_query_stream<R: ReasoningEngine + Clone + Send + Sync + 'st
                 cached.llm_calls_saved
             );
             let matches: Vec<DocumentMatch> = cached.matches.iter().map(|m| {
+                let matched_nodes = m.matched_nodes.iter().map(|n| {
+                    MatchedNode {
+                        node_id: n.node_id.clone(),
+                        title: n.title.clone(),
+                        content: n.content.clone(),
+                        path: n.path.clone(),
+                        confidence: n.confidence,
+                        reasoning_trace: vec![],
+                    }
+                }).collect();
                 DocumentMatch {
                     document: reasondb_core::Document::new(m.document_title.clone(), &cached.table_id),
                     score: Some(m.score),
-                    matched_nodes: vec![],
+                    matched_nodes,
                     highlights: m.highlights.clone(),
-                    answer: m.answer.clone(),
                     confidence: Some(m.confidence),
                 }
             }).collect();
@@ -429,9 +500,17 @@ pub async fn execute_query_stream<R: ReasoningEngine + Clone + Send + Sync + 'st
                                 document_id: m.document.id.clone(),
                                 document_title: m.document.title.clone(),
                                 score: m.score.unwrap_or(0.0),
-                                answer: m.answer.clone(),
                                 confidence: m.confidence.unwrap_or(0.0),
                                 highlights: m.highlights.clone(),
+                                matched_nodes: m.matched_nodes.iter().map(|n| {
+                                    reasondb_core::cache::CachedMatchedNode {
+                                        node_id: n.node_id.clone(),
+                                        title: n.title.clone(),
+                                        content: n.content.clone(),
+                                        path: n.path.clone(),
+                                        confidence: n.confidence,
+                                    }
+                                }).collect(),
                             }
                         }).collect();
                         let cache_entry = CachedQueryResult {
