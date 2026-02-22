@@ -6,9 +6,12 @@ import { StatusBar } from '@/components/layout/StatusBar'
 import { IngestionStatus } from '@/components/ingestion/IngestionStatus'
 import { useUiStore } from '@/stores/uiStore'
 import { useConnectionStore } from '@/stores/connectionStore'
+import { useMemoryDiagnostics } from '@/hooks/useMemoryDiagnostics'
+import { MonacoProvider } from '@/providers/MonacoProvider'
 
 function App() {
-  const { theme, setTheme, sidebarOpen } = useUiStore()
+  useMemoryDiagnostics()
+  const { theme, sidebarOpen } = useUiStore()
   const { activeConnectionId, connections } = useConnectionStore()
 
   const activeConnection = connections.find((c) => c.id === activeConnectionId)
@@ -38,7 +41,7 @@ function App() {
   }, [theme])
 
   return (
-    <>
+    <MonacoProvider>
       <a href="#main-content" className="skip-nav">
         Skip to main content
       </a>
@@ -68,7 +71,7 @@ function App() {
       </div>
 
       <IngestionStatus />
-    </>
+    </MonacoProvider>
   )
 }
 

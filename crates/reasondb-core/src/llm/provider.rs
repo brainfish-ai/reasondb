@@ -268,7 +268,7 @@ impl Reasoner {
         self
     }
 
-    /// Build `additional_params` JSON from options (top_p, penalties, disable_thinking).
+    /// Build `additional_params` JSON from options (top_p, penalties).
     fn additional_params_json(&self) -> Option<serde_json::Value> {
         let mut map = serde_json::Map::new();
         if let Some(top_p) = self.options.top_p {
@@ -279,9 +279,6 @@ impl Reasoner {
         }
         if let Some(pp) = self.options.presence_penalty {
             map.insert("presence_penalty".into(), serde_json::json!(pp));
-        }
-        if self.options.disable_thinking {
-            map.insert("disable_thinking".into(), serde_json::json!(true));
         }
         if map.is_empty() { None } else { Some(serde_json::Value::Object(map)) }
     }
@@ -446,6 +443,18 @@ impl Reasoner {
                 })
             }
         }
+    }
+
+    /// Fast extraction for ranking: lower max_tokens, terse preamble.
+    /// Keeps all other provider options but overrides token budget and system prompt.
+    async fn extract_lean<T>(&self, prompt: &str) -> Result<T>
+    where
+        T: serde::de::DeserializeOwned + schemars::JsonSchema + Serialize + Send + Sync + 'static,
+    {
+        let mut lean = self.clone();
+        lean.options.max_tokens = Some(1024);
+        lean.options.system_prompt = Some("Return ONLY valid JSON. No explanation.".into());
+        lean.extract(prompt).await
     }
 
     /// Apply LlmOptions to a rig AgentBuilder.
@@ -719,23 +728,38 @@ Return summaries for ALL {count} sections."#,
             return Ok(Vec::new());
         }
 
-        // Format documents for the prompt, including tree-grep match signals
+        const MAX_SUMMARY_CHARS: usize = 120;
+        const MAX_SNIPPET_CHARS: usize = 80;
+        const MAX_SECTIONS: usize = 3;
+
         let docs_formatted: String = documents
             .iter()
             .enumerate()
             .map(|(i, doc)| {
+                let summary: &str = if doc.summary.len() > MAX_SUMMARY_CHARS {
+                    &doc.summary[..MAX_SUMMARY_CHARS]
+                } else {
+                    &doc.summary
+                };
                 let mut entry = format!(
-                    "{}. [ID: {}] \"{}\" - {}\n   Tags: {:?}",
-                    i + 1, doc.id, doc.title, doc.summary, doc.tags
+                    "{}. [{}] \"{}\" - {}",
+                    i + 1, doc.id, doc.title, summary
                 );
                 if !doc.matched_sections.is_empty() {
-                    entry.push_str(&format!(
-                        "\n   Matching sections: {}",
-                        doc.matched_sections.join(", ")
-                    ));
+                    let sections: Vec<&str> = doc.matched_sections
+                        .iter()
+                        .take(MAX_SECTIONS)
+                        .map(|s| s.as_str())
+                        .collect();
+                    entry.push_str(&format!(" | sections: {}", sections.join(", ")));
                 }
                 if let Some(ref snippet) = doc.best_snippet {
-                    entry.push_str(&format!("\n   Best match: {}", snippet));
+                    let snip: &str = if snippet.len() > MAX_SNIPPET_CHARS {
+                        &snippet[..MAX_SNIPPET_CHARS]
+                    } else {
+                        snippet
+                    };
+                    entry.push_str(&format!(" | match: {}", snip));
                 }
                 entry
             })
@@ -743,31 +767,22 @@ Return summaries for ALL {count} sections."#,
             .join("\n");
 
         let prompt = format!(
-            r#"You are a document ranking assistant. Rank the following documents by their relevance to the user's query.
+            r#"Rank documents by relevance to the query. Return ONLY JSON.
 
 Query: "{}"
 
-Documents to rank:
+Documents:
 {}
 
-Return the top {} most relevant documents. For each document, provide:
-- document_id: The ID of the document (from the [ID: ...] field)
-- relevance: A score from 0.0 to 1.0 indicating relevance
-- reasoning: A brief explanation of why this document is relevant
-
-Return as JSON array in the format:
-{{"rankings": [{{"document_id": "...", "relevance": 0.9, "reasoning": "..."}}]}}
-
-Only include documents that are actually relevant to the query (relevance > 0.3).
-Order by relevance, highest first."#,
+Return top {} relevant docs (relevance > 0.3), highest first.
+Format: {{"rankings": [{{"document_id": "...", "relevance": 0.9}}]}}"#,
             query, docs_formatted, top_k
         );
 
         debug!("Ranking {} documents for query: {}", documents.len(), query);
 
-        let result: DocumentRankings = self.extract(&prompt).await?;
+        let result: DocumentRankings = self.extract_lean(&prompt).await?;
 
-        // Sort by relevance (highest first) and take top_k
         let mut rankings = result.rankings;
         rankings.sort_by(|a, b| b.relevance.partial_cmp(&a.relevance).unwrap_or(std::cmp::Ordering::Equal));
         rankings.truncate(top_k);

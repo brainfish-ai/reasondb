@@ -1,19 +1,20 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+const MAX_TABS = 20
+
 export interface Tab {
   id: string
   title: string
   type: 'query' | 'table' | 'settings'
-  tableId?: string // For table tabs
-  query?: string // For query tabs - store the query content
+  tableId?: string
+  query?: string
 }
 
 interface TabsState {
   tabs: Tab[]
   activeTabId: string | null
   
-  // Actions
   addTab: (tab: Omit<Tab, 'id'>) => string
   closeTab: (id: string) => void
   setActiveTab: (id: string | null) => void
@@ -36,10 +37,17 @@ export const useTabsStore = create<TabsState>()(
       addTab: (tab) => {
         const id = crypto.randomUUID()
         const newTab: Tab = { ...tab, id }
-        set((state) => ({
-          tabs: [...state.tabs, newTab],
-          activeTabId: id,
-        }))
+        set((state) => {
+          let tabs = [...state.tabs, newTab]
+
+          while (tabs.length > MAX_TABS) {
+            const evictIdx = tabs.findIndex((t) => t.id !== id && t.id !== state.activeTabId)
+            if (evictIdx === -1) break
+            tabs = tabs.filter((_, i) => i !== evictIdx)
+          }
+
+          return { tabs, activeTabId: id }
+        })
         return id
       },
       

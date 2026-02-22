@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
 import { Panel, Group, Separator } from 'react-resizable-panels'
 import {
   Plus,
@@ -7,19 +7,33 @@ import {
   Code,
   TreeStructure,
   FileCode,
+  CircleNotch,
 } from '@phosphor-icons/react'
 import { cn } from '@/lib/utils'
 import { WelcomeScreen } from '@/components/common/WelcomeScreen'
-import { QueryEditor } from '@/components/query/QueryEditor'
 import { QueryResults } from '@/components/query/QueryResults'
-import { DocumentViewer } from '@/components/table/DocumentViewer'
 import { JsonViewer } from '@/components/shared/JsonViewer'
-import { AgentSettings } from '@/components/settings/AgentSettings'
 import { useQueryStore } from '@/stores/queryStore'
 import { useTableStore } from '@/stores/tableStore'
 import { useUiStore } from '@/stores/uiStore'
 import { useConnectionStore } from '@/stores/connectionStore'
 import { useTabsStore } from '@/stores/tabsStore'
+
+const QueryEditor = lazy(() => import('@/components/query/QueryEditor'))
+const DocumentViewer = lazy(() =>
+  import('@/components/table/DocumentViewer').then(m => ({ default: m.DocumentViewer }))
+)
+const AgentSettings = lazy(() =>
+  import('@/components/settings/AgentSettings').then(m => ({ default: m.AgentSettings }))
+)
+
+function LazyFallback() {
+  return (
+    <div className="flex items-center justify-center h-full text-subtext-0">
+      <CircleNotch size={24} className="animate-spin" />
+    </div>
+  )
+}
 
 export function MainPanel() {
   const [resultView, setResultView] = useState<'table' | 'json' | 'tree'>('table')
@@ -121,7 +135,7 @@ export function MainPanel() {
           className="flex-1 flex items-center overflow-x-auto scrollbar-none"
           onKeyDown={handleTabKeyDown}
         >
-          {tabs.map((tab, index) => {
+          {tabs.map((tab) => {
             const isActive = activeTabId === tab.id
             return (
               <button
@@ -231,7 +245,9 @@ export function MainPanel() {
           aria-labelledby={`tab-${activeTab.id}`}
           className="flex-1 overflow-hidden"
         >
-          <AgentSettings />
+          <Suspense fallback={<LazyFallback />}>
+            <AgentSettings />
+          </Suspense>
         </div>
       ) : activeTab?.type === 'table' && activeTab.tableId ? (
         <div
@@ -240,7 +256,9 @@ export function MainPanel() {
           aria-labelledby={`tab-${activeTab.id}`}
           className="flex-1 overflow-hidden"
         >
-          <DocumentViewer tableId={activeTab.tableId} />
+          <Suspense fallback={<LazyFallback />}>
+            <DocumentViewer tableId={activeTab.tableId} />
+          </Suspense>
         </div>
       ) : (
         <div
@@ -251,11 +269,13 @@ export function MainPanel() {
         >
           <Group orientation="vertical" className="h-full">
             <Panel defaultSize={55} minSize={20}>
-              <QueryEditor 
-                key={activeTabId}
-                initialQuery={activeTab?.query || ''}
-                onQueryChange={handleQueryChange}
-              />
+              <Suspense fallback={<LazyFallback />}>
+                <QueryEditor 
+                  tabId={activeTabId || 'default'}
+                  initialQuery={activeTab?.query || ''}
+                  onQueryChange={handleQueryChange}
+                />
+              </Suspense>
             </Panel>
 
             <Separator className="h-1 bg-border hover:bg-primary/50 transition-colors cursor-row-resize" />

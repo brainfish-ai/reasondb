@@ -1,15 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
-import Editor, { type Monaco } from '@monaco-editor/react'
+import { useEffect, useMemo, useState } from 'react'
 import { X, Copy, CheckCircle, ArrowsOut, ArrowsIn } from '@phosphor-icons/react'
 import { cn } from '@/lib/utils'
-import { THEME_NAME, ensureTheme } from '@/lib/monaco-theme'
+import { SyntaxViewer } from '@/components/shared/SyntaxViewer'
 
 interface JsonDetailSidebarProps {
   isOpen: boolean
   onClose: () => void
   title: string
   data: unknown
-  path?: string // The path to the data (e.g., "metadata.employee")
+  path?: string
   isLoading?: boolean
 }
 
@@ -23,27 +22,21 @@ export function JsonDetailSidebar({ isOpen, onClose, title, data, path, isLoadin
   const [isVisible, setIsVisible] = useState(false)
   const [width, setWidth] = useState(DEFAULT_WIDTH)
   const [isDragging, setIsDragging] = useState(false)
-  const editorRef = useRef<unknown>(null)
 
-  // Check if data indicates loading
   const showLoading = isLoading || (data && typeof data === 'object' && 'loading' in (data as Record<string, unknown>))
 
-  // Format JSON with proper indentation (handle undefined data)
-  const formattedJson = showLoading || data === undefined ? '' : JSON.stringify(data, null, 2)
+  const formattedJson = useMemo(
+    () => (showLoading || data === undefined ? '' : JSON.stringify(data, null, 2)),
+    [showLoading, data],
+  )
 
-  // Handle open/close animation
   useEffect(() => {
     if (isOpen) {
-      // Small delay to trigger CSS transition
-      requestAnimationFrame(() => {
-        setIsVisible(true)
-      })
-    } else {
-      setIsVisible(false)
+      requestAnimationFrame(() => setIsVisible(true))
     }
+    return () => setIsVisible(false)
   }, [isOpen])
 
-  // Handle drag resize
   useEffect(() => {
     if (!isDragging) return
 
@@ -52,9 +45,7 @@ export function JsonDetailSidebar({ isOpen, onClose, title, data, path, isLoadin
       setWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, newWidth)))
     }
 
-    const handleMouseUp = () => {
-      setIsDragging(false)
-    }
+    const handleMouseUp = () => setIsDragging(false)
 
     document.addEventListener('mousemove', handleMouseMove)
     document.addEventListener('mouseup', handleMouseUp)
@@ -84,23 +75,9 @@ export function JsonDetailSidebar({ isOpen, onClose, title, data, path, isLoadin
     }
   }
 
-  const handleEditorDidMount = (editor: unknown, monaco: Monaco) => {
-    editorRef.current = editor
-    ensureTheme(monaco)
-
-    monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
-      validate: true,
-      allowComments: false,
-      schemas: [],
-    })
-  }
-
-  // Close on escape key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        onClose()
-      }
+      if (e.key === 'Escape' && isOpen) onClose()
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
@@ -110,7 +87,7 @@ export function JsonDetailSidebar({ isOpen, onClose, title, data, path, isLoadin
 
   return (
     <>
-      {/* Backdrop - always show when sidebar is open */}
+      {/* Backdrop */}
       <div 
         className={cn(
           'fixed inset-0 bg-black/30 z-40 transition-opacity duration-300',
@@ -200,7 +177,7 @@ export function JsonDetailSidebar({ isOpen, onClose, title, data, path, isLoadin
               </span>
               {typeof data === 'object' && data !== null && !Array.isArray(data) && (
                 <>
-                  <span className="text-overlay-0">•</span>
+                  <span className="text-overlay-0">&bull;</span>
                   <span className="text-overlay-0">
                     {Object.keys(data as Record<string, unknown>).length} keys
                   </span>
@@ -210,7 +187,7 @@ export function JsonDetailSidebar({ isOpen, onClose, title, data, path, isLoadin
           </div>
         )}
 
-        {/* Monaco Editor or Loading State */}
+        {/* Content */}
         <div className="flex-1 min-h-0">
           {showLoading ? (
             <div className="flex flex-col items-center justify-center h-full gap-3">
@@ -218,44 +195,16 @@ export function JsonDetailSidebar({ isOpen, onClose, title, data, path, isLoadin
               <span className="text-sm text-overlay-1">Loading content...</span>
             </div>
           ) : (
-            <Editor
-              height="100%"
+            <SyntaxViewer
+              content={formattedJson}
               language="json"
-              value={formattedJson}
-              onMount={handleEditorDidMount}
-              options={{
-                readOnly: true,
-                minimap: { enabled: false },
-                fontSize: 13,
-                fontFamily: 'JetBrains Mono, Menlo, Monaco, monospace',
-                lineNumbers: 'on',
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
-                wordWrap: 'on',
-                folding: true,
-                foldingStrategy: 'indentation',
-                showFoldingControls: 'always',
-                bracketPairColorization: { enabled: true },
-                guides: {
-                  bracketPairs: true,
-                  indentation: true,
-                },
-                renderLineHighlight: 'line',
-                scrollbar: {
-                  vertical: 'auto',
-                  horizontal: 'auto',
-                  verticalScrollbarSize: 10,
-                  horizontalScrollbarSize: 10,
-                },
-                padding: { top: 12, bottom: 12 },
-              }}
-              theme={THEME_NAME}
+              lineNumbers
             />
           )}
         </div>
 
-        {/* Footer with quick stats */}
-        {!showLoading && (
+        {/* Footer */}
+         {!showLoading && (
           <div className="px-4 py-2 border-t border-border bg-surface-0/20">
             <div className="flex items-center justify-between text-xs text-overlay-0">
               <span>{formattedJson.split('\n').length} lines</span>

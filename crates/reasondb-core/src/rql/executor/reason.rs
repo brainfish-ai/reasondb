@@ -147,7 +147,7 @@ pub async fn execute_reason_query_with_progress<R: ReasoningEngine + Send + Sync
 
     let terms = extract_query_terms(reason_query);
     if !terms.is_empty() {
-        candidates = apply_tree_grep_filter(store, candidates, &terms);
+        candidates = apply_tree_grep_filter(store, candidates, &terms, target_docs);
     }
 
     tracing::info!(
@@ -351,11 +351,12 @@ fn get_candidates_by_filter(
 // ==================== Phase 2: Structural Filtering ====================
 
 /// Phase 2: Apply recursive tree-grep to reorder and truncate candidates by structural match quality.
-/// Drops candidates with zero combined score and caps the list to keep the Phase 3 LLM prompt lean.
+/// Drops candidates with zero combined score and caps to `target_docs * 3` to keep Phase 3 lean.
 fn apply_tree_grep_filter(
     store: &NodeStore,
     candidates: Vec<CandidateDocument>,
     terms: &[String],
+    target_docs: usize,
 ) -> Vec<CandidateDocument> {
     let initial_count = candidates.len();
 
@@ -399,12 +400,13 @@ fn apply_tree_grep_filter(
     // Drop candidates with zero combined score (no BM25 or structural match)
     scored.retain(|(_, score)| *score > 0.0);
 
-    // Cap to MAX_CANDIDATES to keep the Phase 3 LLM prompt manageable.
-    // If tree-grep filtered everything out, keep the top BM25 results as fallback.
     if scored.is_empty() && initial_count > 0 {
         tracing::debug!("Tree-grep filtered all candidates; skipping truncation");
     }
-    scored.truncate(MAX_CANDIDATES);
+
+    // Keep at most target_docs * 3 candidates for the Phase 3 LLM prompt.
+    let cap = (target_docs * 3).max(10).min(MAX_CANDIDATES);
+    scored.truncate(cap);
 
     scored.into_iter().map(|(c, _)| c).collect()
 }
@@ -419,8 +421,15 @@ async fn rank_documents_by_summary<R: ReasoningEngine>(
     target_docs: usize,
     reasoner: &Arc<R>,
 ) -> Vec<Document> {
-    if candidates.len() <= target_docs {
-        return candidates.into_iter().map(|c| c.document).collect();
+    // Skip LLM ranking when the candidate count is close enough to the target —
+    // spending an LLM call to drop a handful of docs isn't worth the latency.
+    let skip_threshold = target_docs + (target_docs / 2).max(2);
+    if candidates.len() <= skip_threshold {
+        return candidates
+            .into_iter()
+            .take(target_docs)
+            .map(|c| c.document)
+            .collect();
     }
 
     let doc_summaries: Vec<DocumentSummary> = candidates

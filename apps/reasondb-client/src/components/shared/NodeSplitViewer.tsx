@@ -1,11 +1,9 @@
 import { useState, useMemo, useRef, useCallback, useEffect, forwardRef } from 'react'
 import { MagnifyingGlass, X, Article, ArticleNyTimes } from '@phosphor-icons/react'
-import Editor, { type Monaco } from '@monaco-editor/react'
-import type * as monacoEditor from 'monaco-editor'
 import { cn } from '@/lib/utils'
-import { THEME_NAME, ensureTheme } from '@/lib/monaco-theme'
+import { SyntaxViewer } from './SyntaxViewer'
+import { palette } from '@/lib/monaco-theme'
 
-// Types
 export interface TreeNode {
   id: string
   title: string
@@ -29,7 +27,6 @@ interface LeafPosition {
   lineNumber: number
 }
 
-// Helper functions
 function extractLeafNodes(node: TreeNode): TreeNode[] {
   if (!node) return []
   if (node.is_leaf) return [node]
@@ -85,8 +82,8 @@ function findLeafPositions(json: string, leafNodes: TreeNode[]): LeafPosition[] 
 }
 
 const ACCENT_COLOR = '#60a5fa'
+const LINE_HEIGHT = 20
 
-// Content Block Component
 interface ContentBlockProps {
   node: TreeNode
   index: number
@@ -98,7 +95,7 @@ interface ContentBlockProps {
 }
 
 const ContentBlock = forwardRef<HTMLDivElement, ContentBlockProps>(
-  ({ node, index, isSelected, isHovered, searchQuery, onSelect, onHover }, ref) => {
+  ({ node, isSelected, isHovered, searchQuery, onSelect, onHover }, ref) => {
     const highlightContent = (text: string) => {
       if (!searchQuery.trim() || !text) return text
       const regex = new RegExp(`(${searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
@@ -153,7 +150,6 @@ const ContentBlock = forwardRef<HTMLDivElement, ContentBlockProps>(
 
 ContentBlock.displayName = 'ContentBlock'
 
-// Main Component
 export interface NodeSplitViewerProps {
   treeData: TreeNode
   className?: string
@@ -163,19 +159,16 @@ export function NodeSplitViewer({ treeData, className }: NodeSplitViewerProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const [leafPositions, setLeafPositions] = useState<LeafPosition[]>([])
-  const [editorReady, setEditorReady] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
 
   const contentRefs = useRef<Map<number, HTMLDivElement>>(new Map())
-  const editorRef = useRef<monacoEditor.editor.IStandaloneCodeEditor | null>(null)
-  const monacoRef = useRef<Monaco | null>(null)
   const leftPanelRef = useRef<HTMLDivElement>(null)
   const rightPanelRef = useRef<HTMLDivElement>(null)
 
   const [linePositions, setLinePositions] = useState<
     Array<{ leftY: number; rightY: number; rightX: number; index: number }>
   >([])
+  const [leftPanelWidth, setLeftPanelWidth] = useState(0)
 
   const leafNodes = useMemo(() => extractLeafNodes(treeData), [treeData])
 
@@ -193,59 +186,63 @@ export function NodeSplitViewer({ treeData, className }: NodeSplitViewerProps) {
   const stats = useMemo(() => calculateStats(treeData), [treeData])
   const fullJson = useMemo(() => JSON.stringify(treeData, null, 2), [treeData])
 
-  useEffect(() => {
-    const positions = findLeafPositions(fullJson, leafNodes)
-    setLeafPositions(positions)
-  }, [fullJson, leafNodes])
-
-  const handleEditorMount = useCallback(
-    (editor: monacoEditor.editor.IStandaloneCodeEditor, monaco: Monaco) => {
-      editorRef.current = editor
-      monacoRef.current = monaco
-      ensureTheme(monaco)
-      setEditorReady(true)
-      updateDecorations()
-    },
-    []
+  const leafPositions = useMemo(
+    () => findLeafPositions(fullJson, leafNodes),
+    [fullJson, leafNodes],
   )
 
-  const updateDecorations = useCallback(() => {
-    if (!editorRef.current || !monacoRef.current || leafPositions.length === 0) return
+  const handleSelectContent = useCallback(
+    (index: number) => {
+      setSelectedIndex(index)
 
-    const decorations: monacoEditor.editor.IModelDeltaDecoration[] = leafPositions.map(
-      (pos, idx) => ({
-        range: new monacoRef.current!.Range(pos.lineNumber, 1, pos.lineNumber, 1),
-        options: {
-          isWholeLine: false,
-          glyphMarginClassName: selectedIndex === idx || hoveredIndex === idx ? 'doc-marker-active' : 'doc-marker',
-          glyphMarginHoverMessage: { value: `Section ${idx + 1}` },
-        },
-      })
-    )
+      const pos = leafPositions.find((p) => p.index === index)
+      if (pos) {
+        const scrollContainer = leftPanelRef.current?.querySelector('[class*="overflow-auto"]') || leftPanelRef.current
+        if (scrollContainer) {
+          const targetY = (pos.lineNumber - 1) * LINE_HEIGHT
+          scrollContainer.scrollTo({ top: targetY - scrollContainer.clientHeight / 2, behavior: 'smooth' })
+        }
+      }
+    },
+    [leafPositions],
+  )
 
-    editorRef.current.deltaDecorations([], decorations)
-  }, [leafPositions, selectedIndex, hoveredIndex])
+  const handleLineClick = useCallback(
+    (lineNumber: number) => {
+      const pos = leafPositions.find((p) => p.lineNumber === lineNumber)
+      if (pos) {
+        setSelectedIndex(pos.index)
+        if (showPreview) {
+          const contentEl = contentRefs.current.get(pos.index)
+          contentEl?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }
+      }
+    },
+    [leafPositions, showPreview],
+  )
 
   useEffect(() => {
-    updateDecorations()
-  }, [updateDecorations])
+    if (selectedIndex !== null && showPreview) {
+      const contentEl = contentRefs.current.get(selectedIndex)
+      contentEl?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [selectedIndex, showPreview])
 
+  // Update connection line positions
   const updateLinePositions = useCallback(() => {
-    if (!showPreview || !leftPanelRef.current || !rightPanelRef.current || !editorRef.current) return
+    if (!showPreview || !leftPanelRef.current || !rightPanelRef.current) return
 
-    const leftRect = leftPanelRef.current.getBoundingClientRect()
     const containerRect = leftPanelRef.current.parentElement?.getBoundingClientRect()
-
     if (!containerRect) return
+
+    const scrollContainer = leftPanelRef.current
+    const scrollTop = scrollContainer.scrollTop
+    const leftRect = scrollContainer.getBoundingClientRect()
 
     const newPositions: Array<{ leftY: number; rightY: number; rightX: number; index: number }> = []
 
     leafPositions.forEach((pos, idx) => {
-      const lineTop = editorRef.current?.getTopForLineNumber(pos.lineNumber) || 0
-      const scrollTop = editorRef.current?.getScrollTop() || 0
-      const editorTop = leftPanelRef.current?.querySelector('.monaco-editor')?.getBoundingClientRect().top || leftRect.top
-
-      const leftY = editorTop - containerRect.top + lineTop - scrollTop + 10
+      const leftY = leftRect.top - containerRect.top + (pos.lineNumber - 1) * LINE_HEIGHT - scrollTop + LINE_HEIGHT / 2
 
       const contentEl = contentRefs.current.get(idx)
       if (contentEl) {
@@ -256,105 +253,47 @@ export function NodeSplitViewer({ treeData, className }: NodeSplitViewerProps) {
         newPositions.push({
           leftY: Math.max(0, leftY),
           rightY: Math.max(0, rightY),
-          rightX: rightX,
+          rightX,
           index: idx,
         })
       }
     })
 
     setLinePositions(newPositions)
+    setLeftPanelWidth(scrollContainer.offsetWidth)
   }, [leafPositions, showPreview])
 
-  // Clear line positions when preview is hidden
   useEffect(() => {
-    if (!showPreview) setLinePositions([])
-  }, [showPreview])
+    if (!showPreview) return
 
-  useEffect(() => {
-    if (!editorReady || !showPreview) return
+    const update = () => requestAnimationFrame(updateLinePositions)
+    update()
 
-    const updateLines = () => {
-      requestAnimationFrame(updateLinePositions)
-    }
-
-    updateLines()
-
-    const editor = editorRef.current
     const rightPanel = rightPanelRef.current
     const leftPanel = leftPanelRef.current
     const container = leftPanel?.parentElement
 
-    const editorDisposable = editor?.onDidScrollChange(updateLines)
-    rightPanel?.addEventListener('scroll', updateLines)
-    window.addEventListener('resize', updateLines)
+    leftPanel?.addEventListener('scroll', update)
+    rightPanel?.addEventListener('scroll', update)
+    window.addEventListener('resize', update)
 
-    const resizeObserver = new ResizeObserver(() => {
-      updateLines()
-    })
-    
+    const resizeObserver = new ResizeObserver(update)
     if (container) resizeObserver.observe(container)
     if (leftPanel) resizeObserver.observe(leftPanel)
     if (rightPanel) resizeObserver.observe(rightPanel)
 
-    const intervalId = setInterval(updateLines, 500)
+    const intervalId = setInterval(update, 500)
 
     return () => {
-      editorDisposable?.dispose()
-      rightPanel?.removeEventListener('scroll', updateLines)
-      window.removeEventListener('resize', updateLines)
+      leftPanel?.removeEventListener('scroll', update)
+      rightPanel?.removeEventListener('scroll', update)
+      window.removeEventListener('resize', update)
       resizeObserver.disconnect()
       clearInterval(intervalId)
+      setLinePositions([])
+      setLeftPanelWidth(0)
     }
-  }, [editorReady, showPreview, updateLinePositions])
-
-  const handleSelectContent = useCallback(
-    (index: number) => {
-      setSelectedIndex(index)
-
-      const pos = leafPositions.find((p) => p.index === index)
-      if (pos && editorRef.current) {
-        editorRef.current.revealLineInCenter(pos.lineNumber)
-      }
-    },
-    [leafPositions]
-  )
-
-  useEffect(() => {
-    if (selectedIndex !== null && showPreview) {
-      const contentEl = contentRefs.current.get(selectedIndex)
-      contentEl?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }
-  }, [selectedIndex, showPreview])
-
-  useEffect(() => {
-    const style = document.createElement('style')
-    style.id = 'node-split-viewer-styles'
-    style.textContent = `
-      .doc-marker {
-        background: #a1a1aa;
-        width: 5px !important;
-        height: 5px !important;
-        margin-left: 4px;
-        margin-top: 6px;
-        border-radius: 50%;
-      }
-      .doc-marker-active {
-        background: ${ACCENT_COLOR};
-        width: 7px !important;
-        height: 7px !important;
-        margin-left: 3px;
-        margin-top: 5px;
-        border-radius: 50%;
-      }
-    `
-    document.head.appendChild(style)
-    return () => {
-      const existingStyle = document.getElementById('node-split-viewer-styles')
-      if (existingStyle) {
-        document.head.removeChild(existingStyle)
-      }
-    }
-  }, [])
+  }, [showPreview, updateLinePositions])
 
   return (
     <div className={cn('flex flex-col h-full', className)}>
@@ -418,48 +357,23 @@ export function NodeSplitViewer({ treeData, className }: NodeSplitViewerProps) {
 
       {/* Split View */}
       <div className="flex-1 flex min-h-0 relative">
-        {/* Left Panel — JSON tree (full-width when preview hidden) */}
+        {/* Left Panel — JSON tree */}
         <div
           ref={leftPanelRef}
           className={cn(
-            'flex flex-col min-h-0 transition-all duration-200',
+            'flex flex-col min-h-0 transition-all duration-200 overflow-auto',
             showPreview ? 'w-[45%] border-r border-border' : 'w-full'
           )}
         >
-          <div className="flex-1 min-h-0">
-            <Editor
-              height="100%"
-              language="json"
-              value={fullJson}
-              onMount={handleEditorMount}
-              options={{
-                readOnly: true,
-                minimap: { enabled: false },
-                fontSize: 12,
-                fontFamily: 'JetBrains Mono, Menlo, Monaco, monospace',
-                lineNumbers: 'on',
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
-                wordWrap: 'off',
-                folding: true,
-                foldingStrategy: 'indentation',
-                showFoldingControls: 'mouseover',
-                renderLineHighlight: 'none',
-                glyphMargin: true,
-                scrollbar: {
-                  vertical: 'auto',
-                  horizontal: 'auto',
-                  verticalScrollbarSize: 6,
-                  horizontalScrollbarSize: 6,
-                },
-                padding: { top: 12, bottom: 12 },
-              }}
-              theme={THEME_NAME}
-            />
-          </div>
+          <SyntaxViewer
+            content={fullJson}
+            language="json"
+            lineNumbers
+            onLineClick={handleLineClick}
+          />
         </div>
 
-        {/* Connection Lines — only when preview is visible */}
+        {/* Connection Lines */}
         {showPreview && linePositions.length > 0 && (
           <svg
             className="absolute inset-0 pointer-events-none"
@@ -467,8 +381,8 @@ export function NodeSplitViewer({ treeData, className }: NodeSplitViewerProps) {
           >
             <defs>
               <linearGradient id="line-gradient-inactive" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor="#a1a1aa" stopOpacity="0.9" />
-                <stop offset="100%" stopColor="#a1a1aa" stopOpacity="0.5" />
+                <stop offset="0%" stopColor={palette.overlay0} stopOpacity="0.9" />
+                <stop offset="100%" stopColor={palette.overlay0} stopOpacity="0.5" />
               </linearGradient>
               <linearGradient id="line-gradient-active" x1="0%" y1="0%" x2="100%" y2="0%">
                 <stop offset="0%" stopColor={ACCENT_COLOR} stopOpacity="1" />
@@ -477,7 +391,6 @@ export function NodeSplitViewer({ treeData, className }: NodeSplitViewerProps) {
             </defs>
             {linePositions.map((pos) => {
               const isActive = selectedIndex === pos.index || hoveredIndex === pos.index
-              const leftPanelWidth = leftPanelRef.current?.offsetWidth || 0
               const startX = leftPanelWidth
               const endX = pos.rightX
               const midX = (startX + endX) / 2
@@ -496,14 +409,14 @@ export function NodeSplitViewer({ treeData, className }: NodeSplitViewerProps) {
                     cx={startX}
                     cy={pos.leftY}
                     r={isActive ? 4 : 3}
-                    fill={isActive ? ACCENT_COLOR : '#a1a1aa'}
+                    fill={isActive ? ACCENT_COLOR : palette.overlay0}
                     className="transition-all duration-150"
                   />
                   <circle
                     cx={endX}
                     cy={pos.rightY}
                     r={isActive ? 4 : 3}
-                    fill={isActive ? ACCENT_COLOR : '#a1a1aa'}
+                    fill={isActive ? ACCENT_COLOR : palette.overlay0}
                     className="transition-all duration-150"
                   />
                 </g>
@@ -512,7 +425,7 @@ export function NodeSplitViewer({ treeData, className }: NodeSplitViewerProps) {
           </svg>
         )}
 
-        {/* Right Panel — Document preview (toggled) */}
+        {/* Right Panel — Document preview */}
         {showPreview && (
           <div ref={rightPanelRef} className="w-[55%] flex flex-col min-h-0 bg-mantle/30">
             <div className="flex-1 overflow-auto">

@@ -1,5 +1,4 @@
 import type { Monaco } from '@monaco-editor/react'
-import { loader } from '@monaco-editor/react'
 
 /**
  * Centralized Monaco editor palette matching the app's zinc-neutral dark theme.
@@ -97,7 +96,3 @@ export function ensureTheme(monaco: Monaco) {
   }
 }
 
-// Eagerly register as soon as the Monaco loader resolves
-loader.init().then((monaco) => {
-  ensureTheme(monaco)
-})

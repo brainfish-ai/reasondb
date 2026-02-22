@@ -1,34 +1,43 @@
 import { useRef, useEffect, useCallback, useState, useMemo } from 'react'
-import Editor, { loader } from '@monaco-editor/react'
 import type * as Monaco from 'monaco-editor'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { Play, FloppyDisk, Clock, CircleNotch, Command, Warning, X } from '@phosphor-icons/react'
-import { registerRqlLanguage, RQL_LANGUAGE_ID, updateRqlTables } from '@/lib/rql-language'
+import { updateRqlTables } from '@/lib/rql-language'
 import { useQueryStore } from '@/stores/queryStore'
 import { useConnectionStore } from '@/stores/connectionStore'
 import { useTableStore } from '@/stores/tableStore'
 import { createClient } from '@/lib/api'
 import { Button } from '@/components/ui/Button'
+import { useMonacoEditor } from '@/providers/useMonacoHooks'
 
 interface QueryEditorProps {
   onExecute?: (query: string) => Promise<void>
+  tabId: string
   initialQuery?: string
   onQueryChange?: (query: string) => void
 }
 
-export function QueryEditor({ onExecute, initialQuery, onQueryChange }: QueryEditorProps) {
-  const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
-  const monacoRef = useRef<typeof Monaco | null>(null)
-  
+export default function QueryEditor({ onExecute, tabId, initialQuery = '', onQueryChange }: QueryEditorProps) {
   const { currentQuery, setCurrentQuery, isExecuting, setIsExecuting, setResults, setError, setReasonProgress, addToHistory } = useQueryStore()
   
-  // Use initialQuery if provided (even if empty), otherwise fall back to global currentQuery
   const query = initialQuery !== undefined ? initialQuery : currentQuery
   const { activeConnectionId, connections } = useConnectionStore()
   const { tables } = useTableStore()
   
   const activeConnection = connections.find((c) => c.id === activeConnectionId)
   const [warningDismissed, setWarningDismissed] = useState(false)
+
+  const handleContentChange = useCallback((value: string) => {
+    setCurrentQuery(value)
+    onQueryChange?.(value)
+  }, [setCurrentQuery, onQueryChange])
+
+  const { containerRef, editor, monaco, isReady } = useMonacoEditor({
+    modelId: `query-${tabId}`,
+    initialContent: initialQuery,
+    language: 'rql',
+    onContentChange: handleContentChange,
+  })
 
   const showSemicolonWarning = useMemo(() => {
     if (warningDismissed) return false
@@ -40,19 +49,13 @@ export function QueryEditor({ onExecute, initialQuery, onQueryChange }: QueryEdi
     return selectCount > 1
   }, [query, warningDismissed])
 
-  // Reset warning dismissed state when query changes structurally
   useEffect(() => {
     setWarningDismissed(false)
   }, [query])
 
-  // Sync tables for autocompletion - runs whenever tables change
   useEffect(() => {
-    if (tables.length === 0) {
-      return // Don't clear schema when tables aren't loaded yet
-    }
+    if (tables.length === 0) return
     
-    // Convert tables to the format expected by RQL language
-    // Use actual columns from table if available, otherwise use default schema
     const defaultColumns = [
       { name: 'id', type: 'uuid' },
       { name: 'title', type: 'text' },
@@ -73,46 +76,27 @@ export function QueryEditor({ onExecute, initialQuery, onQueryChange }: QueryEdi
     updateRqlTables(tableSchemas)
   }, [tables])
 
-  // Register RQL language on Monaco load
-  const handleEditorWillMount = useCallback((monaco: typeof Monaco) => {
-    registerRqlLanguage(monaco)
-    monacoRef.current = monaco
-  }, [])
+  // Register execute action once editor is ready
+  const executeRef = useRef<() => void>(() => {})
+  useEffect(() => {
+    if (!editor || !monaco) return
 
-  const handleEditorDidMount = useCallback((editor: Monaco.editor.IStandaloneCodeEditor, monaco: typeof Monaco) => {
-    editorRef.current = editor
-    monacoRef.current = monaco
-    
-    // Focus editor on mount
-    editor.focus()
-    
-    // Add keyboard shortcuts
-    editor.addAction({
+    const action = editor.addAction({
       id: 'execute-query',
       label: 'Execute Query at Cursor',
-      keybindings: [
-        monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
-      ],
-      run: () => {
-        handleExecute()
-      },
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
+      run: () => executeRef.current(),
     })
-  }, [])
 
-  // Detect query boundaries in the editor text.
-  // Each segment has:
-  //   query  – the trimmed SQL text to execute
-  //   start / end – character offsets of the trimmed query text (for highlighting)
-  //   hitStart / hitEnd – expanded offsets that include the surrounding `;` and
-  //                       whitespace so there are no gaps between segments for
-  //                       cursor hit-testing
+    return () => action.dispose()
+  }, [editor, monaco])
+
   interface QuerySegment { query: string; start: number; end: number; hitStart: number; hitEnd: number }
 
   const getQuerySegments = useCallback((fullText: string): QuerySegment[] => {
     const raw: { query: string; start: number; end: number }[] = []
 
     if (fullText.includes(';')) {
-      // Strategy 1: semicolons
       let pos = 0
       for (const part of fullText.split(';')) {
         const trimmed = part.trim()
@@ -123,7 +107,6 @@ export function QueryEditor({ onExecute, initialQuery, onQueryChange }: QueryEdi
         pos += part.length + 1
       }
     } else {
-      // Strategy 2: keyword boundaries
       const kwStart = /^\s*(SELECT|EXPLAIN)\b/i
       const lines = fullText.split('\n')
       let curStart = -1
@@ -155,8 +138,6 @@ export function QueryEditor({ onExecute, initialQuery, onQueryChange }: QueryEdi
 
     if (raw.length === 0) return []
 
-    // Build hit-test regions: each segment "owns" from halfway-after-previous to
-    // halfway-before-next, so there are never gaps.
     const segments: QuerySegment[] = raw.map((r, i) => {
       const hitStart = i === 0 ? 0 : Math.ceil((raw[i - 1].end + r.start) / 2)
       const hitEnd = i === raw.length - 1 ? fullText.length : Math.floor((r.end + raw[i + 1].start) / 2)
@@ -170,9 +151,7 @@ export function QueryEditor({ onExecute, initialQuery, onQueryChange }: QueryEdi
     return getQuerySegments(text).map((s) => s.query)
   }, [getQuerySegments])
 
-  // Find the query segment that contains the current cursor offset.
   const getQueryAtCursor = useCallback((): string | null => {
-    const editor = editorRef.current
     if (!editor) return null
     const model = editor.getModel()
     if (!model) return null
@@ -189,9 +168,8 @@ export function QueryEditor({ onExecute, initialQuery, onQueryChange }: QueryEdi
       }
     }
     return segments.length > 0 ? segments[0].query : null
-  }, [getQuerySegments])
+  }, [editor, getQuerySegments])
 
-  // Core execution logic that runs an array of query strings
   const executeQueries = useCallback(async (queries: string[]) => {
     if (queries.length === 0 || isExecuting || !activeConnectionId || !activeConnection) return
 
@@ -277,29 +255,27 @@ export function QueryEditor({ onExecute, initialQuery, onQueryChange }: QueryEdi
     }
   }, [isExecuting, activeConnectionId, activeConnection, onExecute, setIsExecuting, setError, setResults, setReasonProgress, addToHistory])
 
-  // Run only the statement at the current cursor position (Cmd+Enter)
   const handleExecute = useCallback(() => {
     const cursorQuery = getQueryAtCursor()
     if (cursorQuery) {
       executeQueries([cursorQuery])
     } else {
-      // Fallback: run everything if we can't determine cursor position
       const all = splitQueries(query.trim())
       if (all.length > 0) executeQueries(all)
     }
   }, [getQueryAtCursor, executeQueries, splitQueries, query])
 
-  // Keyboard shortcut
+  // Keep executeRef in sync for the Monaco action callback
+  executeRef.current = handleExecute
+
   useHotkeys('mod+enter', () => handleExecute(), {
     enableOnFormTags: true,
     preventDefault: true,
   })
 
-  // Highlight the active statement at cursor with a subtle background decoration
+  // Statement highlight decorations
   const decorationsRef = useRef<string[]>([])
   useEffect(() => {
-    const editor = editorRef.current
-    const monaco = monacoRef.current
     if (!editor || !monaco) return
 
     const updateDecoration = () => {
@@ -317,50 +293,40 @@ export function QueryEditor({ onExecute, initialQuery, onQueryChange }: QueryEdi
           const startPos = model.getPositionAt(seg.start)
           const endPos = model.getPositionAt(seg.end)
           rangeToHighlight = new monaco.Range(
-            startPos.lineNumber,
-            startPos.column,
-            endPos.lineNumber,
-            endPos.column
+            startPos.lineNumber, startPos.column,
+            endPos.lineNumber, endPos.column,
           )
           break
         }
       }
 
       if (rangeToHighlight) {
-        decorationsRef.current = editor.deltaDecorations(decorationsRef.current, [
-          {
-            range: rangeToHighlight,
-            options: {
-              isWholeLine: true,
-              className: 'active-statement-highlight',
-            },
-          },
-        ])
+        decorationsRef.current = editor.deltaDecorations(decorationsRef.current, [{
+          range: rangeToHighlight,
+          options: { isWholeLine: true, className: 'active-statement-highlight' },
+        }])
       } else {
         decorationsRef.current = editor.deltaDecorations(decorationsRef.current, [])
       }
     }
 
     updateDecoration()
-    const disposable = editor.onDidChangeCursorPosition(updateDecoration)
-    const contentDisposable = editor.onDidChangeModelContent(updateDecoration)
-    return () => {
-      disposable.dispose()
-      contentDisposable.dispose()
-    }
-  }, [query, getQuerySegments])
+    const d1 = editor.onDidChangeCursorPosition(updateDecoration)
+    const d2 = editor.onDidChangeModelContent(updateDecoration)
+    return () => { d1.dispose(); d2.dispose() }
+  }, [editor, monaco, getQuerySegments])
 
-  // Real-time syntax validation via backend /v1/query/validate endpoint
+  // Real-time syntax validation
   useEffect(() => {
-    if (!activeConnection || !editorRef.current || !monacoRef.current) return
+    if (!activeConnection || !editor || !monaco) return
 
     const timer = setTimeout(() => {
-      const text = query.trim()
+      const model = editor.getModel()
+      if (!model) return
+      const text = model.getValue().trim()
+
       if (!text) {
-        const model = editorRef.current?.getModel()
-        if (model && monacoRef.current) {
-          monacoRef.current.editor.setModelMarkers(model, 'rql-validation', [])
-        }
+        monaco.editor.setModelMarkers(model, 'rql-validation', [])
         return
       }
 
@@ -375,14 +341,11 @@ export function QueryEditor({ onExecute, initialQuery, onQueryChange }: QueryEdi
       })
 
       client.validateQueries(segments.map((s) => s.query)).then((results) => {
-        const model = editorRef.current?.getModel()
-        const monaco = monacoRef.current
-        if (!model || !monaco) return
+        const currentModel = editor.getModel()
+        if (!currentModel) return
 
-        const fullText = model.getValue()
+        const fullText = currentModel.getValue()
         const markers: Monaco.editor.IMarkerData[] = []
-
-        // Re-compute segments against full text for accurate offsets
         const fullSegments = getQuerySegments(fullText)
 
         for (const r of results) {
@@ -390,8 +353,8 @@ export function QueryEditor({ onExecute, initialQuery, onQueryChange }: QueryEdi
           const seg = fullSegments[r.index]
           if (!seg) continue
 
-          const startPos = model.getPositionAt(seg.start)
-          const endPos = model.getPositionAt(seg.end)
+          const startPos = currentModel.getPositionAt(seg.start)
+          const endPos = currentModel.getPositionAt(seg.end)
 
           markers.push({
             severity: monaco.MarkerSeverity.Error,
@@ -403,23 +366,12 @@ export function QueryEditor({ onExecute, initialQuery, onQueryChange }: QueryEdi
           })
         }
 
-        monaco.editor.setModelMarkers(model, 'rql-validation', markers)
-      }).catch(() => {
-        // Silently ignore validation network errors
-      })
+        monaco.editor.setModelMarkers(currentModel, 'rql-validation', markers)
+      }).catch(() => {})
     }, 500)
 
     return () => clearTimeout(timer)
-  }, [query, activeConnection, getQuerySegments])
-
-  // Configure Monaco loader
-  useEffect(() => {
-    loader.config({
-      paths: {
-        vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.55.1/min/vs',
-      },
-    })
-  }, [])
+  }, [query, activeConnection, editor, monaco, getQuerySegments])
 
   return (
     <div className="flex flex-col h-full bg-base">
@@ -466,13 +418,11 @@ export function QueryEditor({ onExecute, initialQuery, onQueryChange }: QueryEdi
         </div>
 
         <div className="flex items-center gap-3 text-xs">
-          {/* Keyboard shortcut hint */}
           <div className="hidden sm:flex items-center gap-1 text-overlay-0">
             <Command size={12} />
             <span>+ Enter to run</span>
           </div>
           
-          {/* Connection status */}
           {activeConnection ? (
             <span className="flex items-center gap-1.5 text-subtext-0">
               <span className="w-2 h-2 rounded-full bg-green animate-pulse" />
@@ -501,53 +451,13 @@ export function QueryEditor({ onExecute, initialQuery, onQueryChange }: QueryEdi
         </div>
       )}
 
-      {/* Editor */}
-      <div className="flex-1 min-h-0">
-        <Editor
-          height="100%"
-          language={RQL_LANGUAGE_ID}
-          theme="rql-catppuccin"
-          value={query}
-          onChange={(value) => {
-            const newValue = value || ''
-            setCurrentQuery(newValue)
-            onQueryChange?.(newValue)
-          }}
-          beforeMount={handleEditorWillMount}
-          onMount={handleEditorDidMount}
-          options={{
-            minimap: { enabled: false },
-            fontSize: 14,
-            fontFamily: "'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace",
-            lineNumbers: 'on',
-            renderLineHighlight: 'all',
-            scrollBeyondLastLine: false,
-            wordWrap: 'on',
-            automaticLayout: true,
-            tabSize: 2,
-            padding: { top: 12, bottom: 12 },
-            suggestOnTriggerCharacters: true,
-            quickSuggestions: true,
-            folding: true,
-            bracketPairColorization: { enabled: true },
-            guides: {
-              bracketPairs: true,
-              indentation: true,
-            },
-            scrollbar: {
-              verticalScrollbarSize: 8,
-              horizontalScrollbarSize: 8,
-            },
-            placeholder: activeConnectionId 
-              ? 'Enter your RQL query here... (⌘+Enter to execute)'
-              : 'Connect to a database to start querying...',
-          }}
-          loading={
-            <div className="flex items-center justify-center h-full text-subtext-0">
-              <CircleNotch size={24} className="animate-spin" />
-            </div>
-          }
-        />
+      {/* Editor container - the singleton Monaco editor attaches here */}
+      <div ref={containerRef} className="flex-1 min-h-0">
+        {!isReady && (
+          <div className="flex items-center justify-center h-full text-subtext-0">
+            <CircleNotch size={24} className="animate-spin" />
+          </div>
+        )}
       </div>
     </div>
   )

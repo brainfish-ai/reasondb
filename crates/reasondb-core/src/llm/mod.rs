@@ -98,7 +98,8 @@ pub struct DocumentRanking {
     pub document_id: String,
     /// Relevance score (0.0 - 1.0)
     pub relevance: f32,
-    /// Brief explanation of why this document is relevant
+    /// Optional brief explanation (omitted in fast-rank mode to save tokens)
+    #[serde(default)]
     pub reasoning: String,
 }
 
