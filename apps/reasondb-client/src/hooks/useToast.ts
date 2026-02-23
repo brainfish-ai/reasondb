@@ -1,4 +1,4 @@
-import { useState, useCallback, useSyncExternalStore } from 'react'
+import { useCallback, useSyncExternalStore } from 'react'
 
 export type ToastVariant = 'default' | 'success' | 'error' | 'loading'
 

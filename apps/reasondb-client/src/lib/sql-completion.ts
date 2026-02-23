@@ -34,14 +34,6 @@ const parser = new Parser()
 // Valid unquoted SQL identifier: starts with letter/underscore, rest is word chars
 const BARE_IDENT_RE = /^[a-zA-Z_]\w*$/
 
-function quoteIdentifier(name: string): string {
-  return BARE_IDENT_RE.test(name) ? name : `"${name}"`
-}
-
-function unquoteIdentifier(name: string): string {
-  return name.startsWith('"') && name.endsWith('"') ? name.slice(1, -1) : name
-}
-
 // Table aliases in current query
 let tableAliases: Map<string, string> = new Map()
 

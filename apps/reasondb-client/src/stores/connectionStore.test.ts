@@ -9,7 +9,7 @@ describe('connectionStore', () => {
 
   describe('addConnection', () => {
     it('should add a new connection with generated id and createdAt', () => {
-      const { addConnection, connections } = useConnectionStore.getState()
+      const { addConnection } = useConnectionStore.getState()
       
       addConnection({
         name: 'Test Connection',

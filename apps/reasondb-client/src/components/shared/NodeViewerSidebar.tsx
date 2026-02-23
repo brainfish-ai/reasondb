@@ -20,7 +20,7 @@ export function NodeViewerSidebar({
   isOpen,
   onClose,
   title,
-  documentData,
+  documentData: _documentData,
   treeData,
   isLoading,
 }: NodeViewerSidebarProps) {

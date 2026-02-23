@@ -284,7 +284,7 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
             <DialogTitle>Delete Document</DialogTitle>
             <DialogDescription>
               Are you sure you want to delete "
-              {deleteTarget?.data.title || deleteTarget?.id}"? This action cannot
+              {String(deleteTarget?.data?.title ?? deleteTarget?.id)}"? This action cannot
               be undone.
             </DialogDescription>
           </DialogHeader>

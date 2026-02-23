@@ -6,14 +6,11 @@ import {
   Trash,
   PencilSimple,
   MagnifyingGlass,
-  FloppyDisk,
 } from '@phosphor-icons/react'
 import { useQueryStore, type SavedQuery } from '@/stores/queryStore'
 import { useConnectionStore } from '@/stores/connectionStore'
-import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { SaveQueryDialog } from './SaveQueryDialog'
-import { cn } from '@/lib/utils'
 
 interface SavedQueriesProps {
   onSelectQuery?: (query: string) => void

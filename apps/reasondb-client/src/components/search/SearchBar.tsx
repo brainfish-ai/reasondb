@@ -2,7 +2,6 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import {
   MagnifyingGlass,
   X,
-  CaretDown,
   Funnel,
   Clock,
   Bookmarks,
@@ -191,7 +190,7 @@ function validateQuery(text: string, columns: ColumnInfo[]): string | null {
 
 export function SearchBar({
   columns,
-  tableId,
+  tableId: _tableId,
   valueFetcher,
   placeholder = 'Search...',
   onSearch,
@@ -411,7 +410,7 @@ export function SearchBar({
   
   // Apply a suggestion to the input
   const applySuggestion = useCallback((suggestion: { type: string; value: string; insertText: string }) => {
-    const { context, column, prefix } = parsedContext
+    const { context, prefix } = parsedContext
     
     let newValue = ''
     
