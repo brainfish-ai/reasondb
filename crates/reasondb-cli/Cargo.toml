@@ -54,3 +54,10 @@ toml = "0.8"
 
 # Time
 chrono.workspace = true
+
+# Vendored OpenSSL for cross-compilation (transitive dep from rig-core/reqwest)
+openssl = { version = "0.10", features = ["vendored"], optional = true }
+
+[features]
+default = []
+vendored-openssl = ["openssl"]
