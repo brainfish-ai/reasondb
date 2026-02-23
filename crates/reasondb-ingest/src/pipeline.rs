@@ -221,7 +221,7 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
         markdown: &str,
         stats: &mut IngestStats,
     ) -> Result<(Document, Vec<PageNode>)> {
-        let mut processed_markdown = markdown.to_string();
+        let mut processed_markdown = Self::strip_frontmatter(markdown);
 
         // 1. Run post-processor plugins (chain) if any registered
         if let Some(ref pm) = self.plugin_manager {
@@ -428,6 +428,26 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
         }
 
         Ok(result)
+    }
+
+    /// Strip YAML frontmatter (`---` delimited block at the start of the file).
+    fn strip_frontmatter(text: &str) -> String {
+        let trimmed = text.trim_start();
+        if !trimmed.starts_with("---") {
+            return text.to_string();
+        }
+        // Find the closing `---` after the opening one
+        if let Some(end) = trimmed[3..].find("\n---") {
+            let after = &trimmed[3 + end + 4..]; // skip past closing `---`
+            let result = after.trim_start().to_string();
+            if result.is_empty() {
+                return text.to_string();
+            }
+            debug!("Stripped YAML frontmatter ({} chars removed)", text.len() - result.len());
+            result
+        } else {
+            text.to_string()
+        }
     }
 
     /// Store an ingestion result (document + nodes) in a single batch transaction
