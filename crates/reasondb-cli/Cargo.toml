@@ -19,7 +19,7 @@ reasondb-core = { path = "../reasondb-core" }
 reasondb-server = { path = "../reasondb-server" }
 
 # HTTP client for API calls
-reqwest = { version = "0.11", features = ["json", "blocking"] }
+reqwest = { version = "0.11", default-features = false, features = ["json", "blocking", "rustls-tls"] }
 
 # Async runtime
 tokio.workspace = true
