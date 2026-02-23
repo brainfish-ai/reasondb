@@ -2,8 +2,8 @@
 //!
 //! This module generates execution plans showing how a query would be executed.
 
-use crate::store::NodeStore;
 use crate::rql::ast::*;
+use crate::store::NodeStore;
 
 use super::types::{PlanStep, QueryPlan};
 

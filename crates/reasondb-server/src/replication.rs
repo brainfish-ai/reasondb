@@ -4,8 +4,8 @@
 //! for replication. Reads can be served from any node.
 
 use reasondb_core::{
-    cluster::{LogEntry, LogEntryType},
     cluster::ApplyResult,
+    cluster::{LogEntry, LogEntryType},
     error::ReasonError,
     model::{Document, DocumentRelation, PageNode, RelationType, Table},
     store::NodeStore,
@@ -20,7 +20,11 @@ pub fn create_apply_callback(
 ) -> impl Fn(&LogEntry) -> Result<ApplyResult, ReasonError> + Send + Sync {
     move |entry: &LogEntry| -> Result<ApplyResult, ReasonError> {
         match &entry.entry_type {
-            LogEntryType::UpsertTable { table_id, name, description } => {
+            LogEntryType::UpsertTable {
+                table_id,
+                name,
+                description,
+            } => {
                 debug!("Replicating UpsertTable: {}", table_id);
                 let mut table = Table::new(name.clone());
                 table.id = table_id.clone();
@@ -42,7 +46,12 @@ pub fn create_apply_callback(
                 Ok(ApplyResult::Success)
             }
 
-            LogEntryType::UpsertDocument { document_id, table_id: _, title: _, metadata } => {
+            LogEntryType::UpsertDocument {
+                document_id,
+                table_id: _,
+                title: _,
+                metadata,
+            } => {
                 debug!("Replicating UpsertDocument: {}", document_id);
                 let doc: Document = bincode::deserialize(metadata)
                     .map_err(|e| ReasonError::Serialization(e.to_string()))?;
@@ -60,7 +69,11 @@ pub fn create_apply_callback(
                 Ok(ApplyResult::Success)
             }
 
-            LogEntryType::UpsertNode { node_id, document_id: _, data } => {
+            LogEntryType::UpsertNode {
+                node_id,
+                document_id: _,
+                data,
+            } => {
                 debug!("Replicating UpsertNode: {}", node_id);
                 let node: PageNode = bincode::deserialize(data)
                     .map_err(|e| ReasonError::Serialization(e.to_string()))?;
@@ -78,7 +91,12 @@ pub fn create_apply_callback(
                 Ok(ApplyResult::Success)
             }
 
-            LogEntryType::CreateRelation { from_doc, to_doc, relation_type, note } => {
+            LogEntryType::CreateRelation {
+                from_doc,
+                to_doc,
+                relation_type,
+                note,
+            } => {
                 debug!("Replicating CreateRelation: {} -> {}", from_doc, to_doc);
                 let rt = match relation_type.as_str() {
                     "references" => RelationType::References,
@@ -98,7 +116,11 @@ pub fn create_apply_callback(
                 Ok(ApplyResult::Success)
             }
 
-            LogEntryType::DeleteRelation { from_doc, to_doc, relation_type: _ } => {
+            LogEntryType::DeleteRelation {
+                from_doc,
+                to_doc,
+                relation_type: _,
+            } => {
                 debug!("Replicating DeleteRelation: {} -> {}", from_doc, to_doc);
                 // Find relations from from_doc and delete matching ones
                 if let Ok(relations) = store.get_all_relations(from_doc) {
@@ -116,9 +138,7 @@ pub fn create_apply_callback(
                 Ok(ApplyResult::Success)
             }
 
-            LogEntryType::Noop | LogEntryType::MembershipChange { .. } => {
-                Ok(ApplyResult::Success)
-            }
+            LogEntryType::Noop | LogEntryType::MembershipChange { .. } => Ok(ApplyResult::Success),
         }
     }
 }

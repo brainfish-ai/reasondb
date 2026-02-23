@@ -62,12 +62,7 @@ pub async fn run(
             .unwrap_or_default()
     );
 
-    let response: DocumentsResponse = client
-        .get(&request_url)
-        .send()
-        .await?
-        .json()
-        .await?;
+    let response: DocumentsResponse = client.get(&request_url).send().await?.json().await?;
 
     if response.documents.is_empty() {
         output::info("No documents to export");
@@ -92,7 +87,7 @@ pub async fn run(
             Ok(resp) if resp.status().is_success() => {
                 let tree: TreeResponse = resp.json().await?;
                 let content = extract_content(&tree.tree);
-                
+
                 export_docs.push(ExportDocument {
                     id: doc.id.clone(),
                     title: doc.title.clone(),
@@ -120,10 +115,10 @@ pub async fn run(
         }
         "csv" => {
             let mut wtr = csv::Writer::from_path(path)?;
-            
+
             // Write header
             wtr.write_record(["id", "title", "content", "tags", "author", "created_at"])?;
-            
+
             // Write rows
             for doc in &export_docs {
                 wtr.write_record([
@@ -135,7 +130,7 @@ pub async fn run(
                     &doc.created_at,
                 ])?;
             }
-            
+
             wtr.flush()?;
         }
         _ => {

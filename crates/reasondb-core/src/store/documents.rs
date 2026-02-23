@@ -105,12 +105,7 @@ impl NodeStore {
                     -1,
                     -(old_doc.total_nodes as i64),
                 )?;
-                update_table_count_in_txn(
-                    &write_txn,
-                    &doc.table_id,
-                    1,
-                    doc.total_nodes as i64,
-                )?;
+                update_table_count_in_txn(&write_txn, &doc.table_id, 1, doc.total_nodes as i64)?;
             }
         }
         write_txn.commit().map_err(StorageError::from)?;
@@ -133,12 +128,7 @@ impl NodeStore {
             unindex_document_in_txn(&write_txn, &doc)?;
 
             // Update table counts
-            update_table_count_in_txn(
-                &write_txn,
-                &doc.table_id,
-                -1,
-                -(doc.total_nodes as i64),
-            )?;
+            update_table_count_in_txn(&write_txn, &doc.table_id, -1, -(doc.total_nodes as i64))?;
 
             // Delete the document
             let mut table = write_txn
@@ -172,14 +162,14 @@ impl NodeStore {
     }
 
     /// List all documents in the database.
-    /// 
+    ///
     /// This is an alias for `list_documents` for backup/export compatibility.
     pub fn list_all_documents(&self) -> Result<Vec<Document>> {
         self.list_documents()
     }
 
     /// Get all documents in a specific table.
-    /// 
+    ///
     /// This is an alias for `get_documents_in_table` for backup/export compatibility.
     pub fn get_table_documents(&self, table_id: &str) -> Result<Vec<Document>> {
         self.get_documents_in_table(table_id)
@@ -218,18 +208,8 @@ impl NodeStore {
             index_document_in_txn(&write_txn, &updated_doc)?;
 
             // Update table counts
-            update_table_count_in_txn(
-                &write_txn,
-                &old_table_id,
-                -1,
-                -(doc.total_nodes as i64),
-            )?;
-            update_table_count_in_txn(
-                &write_txn,
-                new_table_id,
-                1,
-                doc.total_nodes as i64,
-            )?;
+            update_table_count_in_txn(&write_txn, &old_table_id, -1, -(doc.total_nodes as i64))?;
+            update_table_count_in_txn(&write_txn, new_table_id, 1, doc.total_nodes as i64)?;
         }
         write_txn.commit().map_err(StorageError::from)?;
         Ok(())

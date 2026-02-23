@@ -26,18 +26,24 @@ fn setup_test_data(store: &NodeStore) {
     doc1.set_metadata("status", serde_json::json!("active"));
     doc1.set_metadata("value", serde_json::json!(50000));
     // Add nested metadata for testing deep queries
-    doc1.set_metadata("employee", serde_json::json!({
-        "name": "John Smith",
-        "department": "Engineering",
-        "manager": {
-            "name": "Jane Doe",
-            "email": "jane@company.com"
-        }
-    }));
-    doc1.set_metadata("parties", serde_json::json!([
-        {"name": "Acme Corp", "role": "client"},
-        {"name": "Beta Inc", "role": "vendor"}
-    ]));
+    doc1.set_metadata(
+        "employee",
+        serde_json::json!({
+            "name": "John Smith",
+            "department": "Engineering",
+            "manager": {
+                "name": "Jane Doe",
+                "email": "jane@company.com"
+            }
+        }),
+    );
+    doc1.set_metadata(
+        "parties",
+        serde_json::json!([
+            {"name": "Acme Corp", "role": "client"},
+            {"name": "Beta Inc", "role": "vendor"}
+        ]),
+    );
     store.insert_document(&doc1).unwrap();
 
     let mut doc2 = Document::new("Contract B".to_string(), "legal");
@@ -45,14 +51,17 @@ fn setup_test_data(store: &NodeStore) {
     doc2.set_metadata("author", serde_json::json!("Bob"));
     doc2.set_metadata("status", serde_json::json!("draft"));
     doc2.set_metadata("value", serde_json::json!(25000));
-    doc2.set_metadata("employee", serde_json::json!({
-        "name": "Alice Johnson",
-        "department": "Legal",
-        "manager": {
-            "name": "Bob Wilson",
-            "email": "bob@company.com"
-        }
-    }));
+    doc2.set_metadata(
+        "employee",
+        serde_json::json!({
+            "name": "Alice Johnson",
+            "department": "Legal",
+            "manager": {
+                "name": "Bob Wilson",
+                "email": "bob@company.com"
+            }
+        }),
+    );
     store.insert_document(&doc2).unwrap();
 
     let mut doc3 = Document::new("Contract C".to_string(), "legal");
@@ -60,14 +69,17 @@ fn setup_test_data(store: &NodeStore) {
     doc3.set_metadata("author", serde_json::json!("Alice"));
     doc3.set_metadata("status", serde_json::json!("expired"));
     doc3.set_metadata("value", serde_json::json!(100000));
-    doc3.set_metadata("employee", serde_json::json!({
-        "name": "Charlie Brown",
-        "department": "Engineering",
-        "manager": {
-            "name": "Jane Doe",
-            "email": "jane@company.com"
-        }
-    }));
+    doc3.set_metadata(
+        "employee",
+        serde_json::json!({
+            "name": "Charlie Brown",
+            "department": "Engineering",
+            "manager": {
+                "name": "Jane Doe",
+                "email": "jane@company.com"
+            }
+        }),
+    );
     store.insert_document(&doc3).unwrap();
 }
 
@@ -115,8 +127,8 @@ fn test_parse_where_and_or() {
 
 #[test]
 fn test_parse_tags_contains() {
-    let query = Query::parse("SELECT * FROM legal WHERE tags CONTAINS ALL ('nda', 'active')")
-        .unwrap();
+    let query =
+        Query::parse("SELECT * FROM legal WHERE tags CONTAINS ALL ('nda', 'active')").unwrap();
     assert!(query.where_clause.is_some());
 }
 
@@ -280,7 +292,9 @@ fn test_execute_where_nested_metadata() {
     setup_test_data(&store);
 
     // Test nested object access: metadata.employee.department
-    let query = Query::parse("SELECT * FROM legal WHERE metadata.employee.department = 'Engineering'").unwrap();
+    let query =
+        Query::parse("SELECT * FROM legal WHERE metadata.employee.department = 'Engineering'")
+            .unwrap();
     let result = store.execute_rql(&query).unwrap();
 
     assert_eq!(result.total_count, 2); // Contract A and Contract C have Engineering department
@@ -292,7 +306,9 @@ fn test_execute_where_deeply_nested_metadata() {
     setup_test_data(&store);
 
     // Test deeply nested object access: metadata.employee.manager.name
-    let query = Query::parse("SELECT * FROM legal WHERE metadata.employee.manager.name = 'Jane Doe'").unwrap();
+    let query =
+        Query::parse("SELECT * FROM legal WHERE metadata.employee.manager.name = 'Jane Doe'")
+            .unwrap();
     let result = store.execute_rql(&query).unwrap();
 
     assert_eq!(result.total_count, 2); // Contract A and Contract C have Jane Doe as manager
@@ -304,7 +320,8 @@ fn test_execute_where_array_index_metadata() {
     setup_test_data(&store);
 
     // Test array access: metadata.parties[0].name
-    let query = Query::parse("SELECT * FROM legal WHERE metadata.parties[0].name = 'Acme Corp'").unwrap();
+    let query =
+        Query::parse("SELECT * FROM legal WHERE metadata.parties[0].name = 'Acme Corp'").unwrap();
     let result = store.execute_rql(&query).unwrap();
 
     assert_eq!(result.total_count, 1); // Only Contract A has parties array
@@ -317,7 +334,8 @@ fn test_execute_where_array_second_element() {
     setup_test_data(&store);
 
     // Test array access: metadata.parties[1].role
-    let query = Query::parse("SELECT * FROM legal WHERE metadata.parties[1].role = 'vendor'").unwrap();
+    let query =
+        Query::parse("SELECT * FROM legal WHERE metadata.parties[1].role = 'vendor'").unwrap();
     let result = store.execute_rql(&query).unwrap();
 
     assert_eq!(result.total_count, 1); // Only Contract A has parties[1]
@@ -417,13 +435,19 @@ fn test_builder_error_missing_from() {
 
 #[test]
 fn test_parse_update_single_field() {
-    let stmt = Statement::parse("UPDATE legal SET metadata.status = 'archived' WHERE metadata.status = 'expired'").unwrap();
+    let stmt = Statement::parse(
+        "UPDATE legal SET metadata.status = 'archived' WHERE metadata.status = 'expired'",
+    )
+    .unwrap();
     match stmt {
         Statement::Update(uq) => {
             assert_eq!(uq.table.table, "legal");
             assert_eq!(uq.assignments.len(), 1);
             assert_eq!(uq.assignments[0].field.to_string(), "metadata.status");
-            assert_eq!(uq.assignments[0].value, Value::String("archived".to_string()));
+            assert_eq!(
+                uq.assignments[0].value,
+                Value::String("archived".to_string())
+            );
             assert!(uq.where_clause.is_some());
         }
         _ => panic!("Expected Update statement"),
@@ -440,7 +464,10 @@ fn test_parse_update_multiple_fields() {
             assert_eq!(uq.assignments.len(), 2);
             assert_eq!(uq.assignments[0].field.to_string(), "metadata.status");
             assert_eq!(uq.assignments[1].field.to_string(), "title");
-            assert_eq!(uq.assignments[1].value, Value::String("New Title".to_string()));
+            assert_eq!(
+                uq.assignments[1].value,
+                Value::String("New Title".to_string())
+            );
         }
         _ => panic!("Expected Update statement"),
     }
@@ -504,8 +531,9 @@ fn test_parse_delete_all() {
 #[test]
 fn test_parse_delete_complex_where() {
     let stmt = Statement::parse(
-        "DELETE FROM legal WHERE metadata.author = 'Alice' AND metadata.value < 30000"
-    ).unwrap();
+        "DELETE FROM legal WHERE metadata.author = 'Alice' AND metadata.value < 30000",
+    )
+    .unwrap();
     match stmt {
         Statement::Delete(dq) => {
             assert!(dq.where_clause.is_some());
@@ -540,8 +568,9 @@ fn test_execute_update_metadata() {
     setup_test_data(&store);
 
     let stmt = Statement::parse(
-        "UPDATE legal SET metadata.status = 'archived' WHERE metadata.status = 'expired'"
-    ).unwrap();
+        "UPDATE legal SET metadata.status = 'archived' WHERE metadata.status = 'expired'",
+    )
+    .unwrap();
     match stmt {
         Statement::Update(ref uq) => {
             let result = store.execute_update(uq).unwrap();
@@ -563,8 +592,9 @@ fn test_execute_update_title() {
     setup_test_data(&store);
 
     let stmt = Statement::parse(
-        "UPDATE legal SET title = 'Renamed Contract' WHERE metadata.author = 'Bob'"
-    ).unwrap();
+        "UPDATE legal SET title = 'Renamed Contract' WHERE metadata.author = 'Bob'",
+    )
+    .unwrap();
     match stmt {
         Statement::Update(ref uq) => {
             let result = store.execute_update(uq).unwrap();
@@ -584,8 +614,9 @@ fn test_execute_update_multiple_rows() {
     setup_test_data(&store);
 
     let stmt = Statement::parse(
-        "UPDATE legal SET metadata.reviewed = true WHERE metadata.author = 'Alice'"
-    ).unwrap();
+        "UPDATE legal SET metadata.reviewed = true WHERE metadata.author = 'Alice'",
+    )
+    .unwrap();
     match stmt {
         Statement::Update(ref uq) => {
             let result = store.execute_update(uq).unwrap();
@@ -600,9 +631,9 @@ fn test_execute_update_no_match() {
     let (store, _dir) = create_test_store();
     setup_test_data(&store);
 
-    let stmt = Statement::parse(
-        "UPDATE legal SET metadata.status = 'x' WHERE metadata.author = 'Nobody'"
-    ).unwrap();
+    let stmt =
+        Statement::parse("UPDATE legal SET metadata.status = 'x' WHERE metadata.author = 'Nobody'")
+            .unwrap();
     match stmt {
         Statement::Update(ref uq) => {
             let result = store.execute_update(uq).unwrap();
@@ -619,9 +650,7 @@ fn test_execute_delete_with_where() {
     let (store, _dir) = create_test_store();
     setup_test_data(&store);
 
-    let stmt = Statement::parse(
-        "DELETE FROM legal WHERE metadata.status = 'expired'"
-    ).unwrap();
+    let stmt = Statement::parse("DELETE FROM legal WHERE metadata.status = 'expired'").unwrap();
     match stmt {
         Statement::Delete(ref dq) => {
             let result = store.execute_delete(dq).unwrap();
@@ -641,9 +670,7 @@ fn test_execute_delete_multiple() {
     let (store, _dir) = create_test_store();
     setup_test_data(&store);
 
-    let stmt = Statement::parse(
-        "DELETE FROM legal WHERE metadata.author = 'Alice'"
-    ).unwrap();
+    let stmt = Statement::parse("DELETE FROM legal WHERE metadata.author = 'Alice'").unwrap();
     match stmt {
         Statement::Delete(ref dq) => {
             let result = store.execute_delete(dq).unwrap();
@@ -682,9 +709,7 @@ fn test_execute_delete_no_match() {
     let (store, _dir) = create_test_store();
     setup_test_data(&store);
 
-    let stmt = Statement::parse(
-        "DELETE FROM legal WHERE metadata.author = 'Nobody'"
-    ).unwrap();
+    let stmt = Statement::parse("DELETE FROM legal WHERE metadata.author = 'Nobody'").unwrap();
     match stmt {
         Statement::Delete(ref dq) => {
             let result = store.execute_delete(dq).unwrap();
@@ -759,7 +784,11 @@ fn test_execute_search_with_bm25() {
     // Should find documents with "payment" - Contract A and Contract C
     assert!(result.stats.search_executed);
     assert_eq!(result.stats.index_used, Some("bm25_full_text".to_string()));
-    assert!(result.documents.len() >= 1, "Expected at least 1 match, got {}", result.documents.len());
+    assert!(
+        result.documents.len() >= 1,
+        "Expected at least 1 match, got {}",
+        result.documents.len()
+    );
 
     // Results should have scores
     assert!(result.documents[0].score.is_some());
@@ -794,7 +823,9 @@ fn test_parse_aggregates() {
     }
 
     // Multiple aggregates
-    let query = Query::parse("SELECT COUNT(*), MIN(metadata.value), MAX(metadata.value) FROM legal").unwrap();
+    let query =
+        Query::parse("SELECT COUNT(*), MIN(metadata.value), MAX(metadata.value) FROM legal")
+            .unwrap();
     match &query.select {
         SelectClause::Aggregates(aggs) => {
             assert_eq!(aggs.len(), 3);
@@ -874,21 +905,22 @@ fn test_execute_explain() {
     let (store, _dir) = create_test_store();
     setup_test_data(&store);
 
-    let query = Query::parse("EXPLAIN SELECT * FROM legal WHERE metadata.author = 'alice'").unwrap();
+    let query =
+        Query::parse("EXPLAIN SELECT * FROM legal WHERE metadata.author = 'alice'").unwrap();
     let result = store.execute_rql(&query).unwrap();
 
     assert!(result.explain.is_some());
     let plan = result.explain.unwrap();
-    
+
     // Should have multiple steps
     assert!(!plan.steps.is_empty());
-    
+
     // Should include TableScan
     assert!(plan.steps.iter().any(|s| s.step_type == "TableScan"));
-    
+
     // Should include Filter for WHERE clause
     assert!(plan.steps.iter().any(|s| s.step_type == "Filter"));
-    
+
     // Should list indexes used
     assert!(!plan.indexes_used.is_empty());
 }
@@ -903,10 +935,10 @@ fn test_execute_group_by() {
 
     assert!(result.aggregates.is_some());
     let aggs = result.aggregates.unwrap();
-    
+
     // Should have groups - one for Alice (2 docs), one for Bob (1 doc)
     assert!(aggs.len() >= 2);
-    
+
     // Each result should have a group_key
     for agg in &aggs {
         assert!(agg.group_key.is_some());

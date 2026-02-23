@@ -59,7 +59,7 @@ impl ExportOptions {
             pretty: true,
         }
     }
-    
+
     /// Create options for JSON Lines export
     pub fn jsonl() -> Self {
         Self {
@@ -70,7 +70,7 @@ impl ExportOptions {
             pretty: false,
         }
     }
-    
+
     /// Create options for CSV export
     pub fn csv() -> Self {
         Self {
@@ -81,20 +81,20 @@ impl ExportOptions {
             pretty: false,
         }
     }
-    
+
     /// Set scope to a specific table
     pub fn for_table(mut self, table_id: impl Into<String>) -> Self {
         self.scope = ExportScope::Table;
         self.table_id = Some(table_id.into());
         self
     }
-    
+
     /// Include nodes in export
     pub fn with_nodes(mut self) -> Self {
         self.include_nodes = true;
         self
     }
-    
+
     /// Disable pretty printing
     pub fn compact(mut self) -> Self {
         self.pretty = false;
@@ -131,7 +131,7 @@ impl ImportOptions {
             target_table_id: None,
         }
     }
-    
+
     /// Create options for JSON Lines import
     pub fn jsonl() -> Self {
         Self {
@@ -141,7 +141,7 @@ impl ImportOptions {
             target_table_id: None,
         }
     }
-    
+
     /// Create options for CSV import
     pub fn csv() -> Self {
         Self {
@@ -151,13 +151,13 @@ impl ImportOptions {
             target_table_id: None,
         }
     }
-    
+
     /// Set target table for import
     pub fn into_table(mut self, table_id: impl Into<String>) -> Self {
         self.target_table_id = Some(table_id.into());
         self
     }
-    
+
     /// Update existing records instead of skipping
     pub fn update_mode(mut self) -> Self {
         self.skip_existing = false;
@@ -216,23 +216,24 @@ impl Exporter {
         options: ExportOptions,
     ) -> Result<ExportMetadata> {
         let path = path.as_ref();
-        
+
         // Collect data based on scope
         let tables = match options.scope {
             ExportScope::All | ExportScope::Tables => store.list_tables()?,
             _ => Vec::new(),
         };
-        
+
         let documents = match options.scope {
             ExportScope::All | ExportScope::Documents => store.list_all_documents()?,
             ExportScope::Table => {
-                let table_id = options.table_id.as_ref()
-                    .ok_or_else(|| ReasonError::Backup("Table ID required for table export".to_string()))?;
+                let table_id = options.table_id.as_ref().ok_or_else(|| {
+                    ReasonError::Backup("Table ID required for table export".to_string())
+                })?;
                 store.get_table_documents(table_id)?
             }
             ExportScope::Tables => Vec::new(),
         };
-        
+
         let nodes = if options.include_nodes {
             let mut all_nodes = Vec::new();
             for doc in &documents {
@@ -242,7 +243,7 @@ impl Exporter {
         } else {
             Vec::new()
         };
-        
+
         let metadata = ExportMetadata {
             version: env!("CARGO_PKG_VERSION").to_string(),
             exported_at: chrono::Utc::now().to_rfc3339(),
@@ -251,7 +252,7 @@ impl Exporter {
             document_count: documents.len(),
             node_count: nodes.len(),
         };
-        
+
         // Write to file based on format
         match options.format {
             ExportFormat::Json => {
@@ -264,10 +265,10 @@ impl Exporter {
                 Self::export_csv(path, &documents)?;
             }
         }
-        
+
         Ok(metadata)
     }
-    
+
     fn export_json(
         path: &Path,
         tables: &[Table],
@@ -289,68 +290,73 @@ impl Exporter {
             documents: documents.to_vec(),
             nodes: nodes.to_vec(),
         };
-        
-        let file = File::create(path).map_err(|e| {
-            ReasonError::Backup(format!("Failed to create export file: {}", e))
-        })?;
+
+        let file = File::create(path)
+            .map_err(|e| ReasonError::Backup(format!("Failed to create export file: {}", e)))?;
         let writer = BufWriter::new(file);
-        
+
         if pretty {
             serde_json::to_writer_pretty(writer, &data)
         } else {
             serde_json::to_writer(writer, &data)
-        }.map_err(|e| ReasonError::Backup(format!("Failed to write JSON: {}", e)))?;
-        
-        Ok(())
-    }
-    
-    fn export_jsonl(path: &Path, documents: &[Document]) -> Result<()> {
-        let file = File::create(path).map_err(|e| {
-            ReasonError::Backup(format!("Failed to create export file: {}", e))
-        })?;
-        let mut writer = BufWriter::new(file);
-        
-        for doc in documents {
-            let line = serde_json::to_string(doc).map_err(|e| {
-                ReasonError::Backup(format!("Failed to serialize document: {}", e))
-            })?;
-            writeln!(writer, "{}", line).map_err(|e| {
-                ReasonError::Backup(format!("Failed to write line: {}", e))
-            })?;
         }
-        
+        .map_err(|e| ReasonError::Backup(format!("Failed to write JSON: {}", e)))?;
+
         Ok(())
     }
-    
+
+    fn export_jsonl(path: &Path, documents: &[Document]) -> Result<()> {
+        let file = File::create(path)
+            .map_err(|e| ReasonError::Backup(format!("Failed to create export file: {}", e)))?;
+        let mut writer = BufWriter::new(file);
+
+        for doc in documents {
+            let line = serde_json::to_string(doc)
+                .map_err(|e| ReasonError::Backup(format!("Failed to serialize document: {}", e)))?;
+            writeln!(writer, "{}", line)
+                .map_err(|e| ReasonError::Backup(format!("Failed to write line: {}", e)))?;
+        }
+
+        Ok(())
+    }
+
     fn export_csv(path: &Path, documents: &[Document]) -> Result<()> {
-        let file = File::create(path).map_err(|e| {
-            ReasonError::Backup(format!("Failed to create export file: {}", e))
-        })?;
+        let file = File::create(path)
+            .map_err(|e| ReasonError::Backup(format!("Failed to create export file: {}", e)))?;
         let mut writer = csv::Writer::from_writer(BufWriter::new(file));
-        
+
         // Write header
-        writer.write_record([
-            "id", "table_id", "title", "tags", 
-            "source_path", "created_at", "updated_at"
-        ]).map_err(|e| ReasonError::Backup(format!("Failed to write CSV header: {}", e)))?;
-        
+        writer
+            .write_record([
+                "id",
+                "table_id",
+                "title",
+                "tags",
+                "source_path",
+                "created_at",
+                "updated_at",
+            ])
+            .map_err(|e| ReasonError::Backup(format!("Failed to write CSV header: {}", e)))?;
+
         // Write documents
         for doc in documents {
-            writer.write_record([
-                &doc.id,
-                &doc.table_id,
-                &doc.title,
-                &doc.tags.join(";"),
-                &doc.source_path,
-                &doc.created_at.to_rfc3339(),
-                &doc.updated_at.to_rfc3339(),
-            ]).map_err(|e| ReasonError::Backup(format!("Failed to write CSV row: {}", e)))?;
+            writer
+                .write_record([
+                    &doc.id,
+                    &doc.table_id,
+                    &doc.title,
+                    &doc.tags.join(";"),
+                    &doc.source_path,
+                    &doc.created_at.to_rfc3339(),
+                    &doc.updated_at.to_rfc3339(),
+                ])
+                .map_err(|e| ReasonError::Backup(format!("Failed to write CSV row: {}", e)))?;
         }
-        
-        writer.flush().map_err(|e| {
-            ReasonError::Backup(format!("Failed to flush CSV: {}", e))
-        })?;
-        
+
+        writer
+            .flush()
+            .map_err(|e| ReasonError::Backup(format!("Failed to flush CSV: {}", e)))?;
+
         Ok(())
     }
 }
@@ -366,25 +372,27 @@ impl Importer {
         options: ImportOptions,
     ) -> Result<ImportResult> {
         let path = path.as_ref();
-        
+
         match options.format {
             ExportFormat::Json => Self::import_json(store, path, &options),
             ExportFormat::JsonLines => Self::import_jsonl(store, path, &options),
             ExportFormat::Csv => Self::import_csv(store, path, &options),
         }
     }
-    
-    fn import_json(store: &NodeStore, path: &Path, options: &ImportOptions) -> Result<ImportResult> {
-        let file = File::open(path).map_err(|e| {
-            ReasonError::Backup(format!("Failed to open import file: {}", e))
-        })?;
-        
-        let data: ExportData = serde_json::from_reader(BufReader::new(file)).map_err(|e| {
-            ReasonError::Backup(format!("Failed to parse JSON: {}", e))
-        })?;
-        
+
+    fn import_json(
+        store: &NodeStore,
+        path: &Path,
+        options: &ImportOptions,
+    ) -> Result<ImportResult> {
+        let file = File::open(path)
+            .map_err(|e| ReasonError::Backup(format!("Failed to open import file: {}", e)))?;
+
+        let data: ExportData = serde_json::from_reader(BufReader::new(file))
+            .map_err(|e| ReasonError::Backup(format!("Failed to parse JSON: {}", e)))?;
+
         let mut result = ImportResult::default();
-        
+
         // Import tables
         for table in data.tables {
             match store.insert_table(&table) {
@@ -393,7 +401,7 @@ impl Importer {
                 Err(e) => return Err(e),
             }
         }
-        
+
         // Import documents
         for doc in data.documents {
             match store.insert_document(&doc) {
@@ -402,7 +410,7 @@ impl Importer {
                 Err(e) => return Err(e),
             }
         }
-        
+
         // Import nodes
         for node in data.nodes {
             match store.insert_node(&node) {
@@ -411,82 +419,88 @@ impl Importer {
                 Err(e) => return Err(e),
             }
         }
-        
+
         Ok(result)
     }
-    
-    fn import_jsonl(store: &NodeStore, path: &Path, options: &ImportOptions) -> Result<ImportResult> {
+
+    fn import_jsonl(
+        store: &NodeStore,
+        path: &Path,
+        options: &ImportOptions,
+    ) -> Result<ImportResult> {
         use std::io::BufRead;
-        
-        let file = File::open(path).map_err(|e| {
-            ReasonError::Backup(format!("Failed to open import file: {}", e))
-        })?;
-        
+
+        let file = File::open(path)
+            .map_err(|e| ReasonError::Backup(format!("Failed to open import file: {}", e)))?;
+
         let reader = BufReader::new(file);
         let mut result = ImportResult::default();
-        
+
         for line in reader.lines() {
-            let line = line.map_err(|e| {
-                ReasonError::Backup(format!("Failed to read line: {}", e))
-            })?;
-            
+            let line =
+                line.map_err(|e| ReasonError::Backup(format!("Failed to read line: {}", e)))?;
+
             if line.trim().is_empty() {
                 continue;
             }
-            
-            let mut doc: Document = serde_json::from_str(&line).map_err(|e| {
-                ReasonError::Backup(format!("Failed to parse document: {}", e))
-            })?;
-            
+
+            let mut doc: Document = serde_json::from_str(&line)
+                .map_err(|e| ReasonError::Backup(format!("Failed to parse document: {}", e)))?;
+
             // Override table_id if specified
             if let Some(ref table_id) = options.target_table_id {
                 doc.table_id = table_id.clone();
             }
-            
+
             match store.insert_document(&doc) {
                 Ok(_) => result.documents_imported += 1,
                 Err(_) if options.skip_existing => result.documents_skipped += 1,
                 Err(e) => return Err(e),
             }
         }
-        
+
         Ok(result)
     }
-    
+
     fn import_csv(store: &NodeStore, path: &Path, options: &ImportOptions) -> Result<ImportResult> {
-        let file = File::open(path).map_err(|e| {
-            ReasonError::Backup(format!("Failed to open import file: {}", e))
-        })?;
-        
+        let file = File::open(path)
+            .map_err(|e| ReasonError::Backup(format!("Failed to open import file: {}", e)))?;
+
         let mut reader = csv::Reader::from_reader(BufReader::new(file));
         let mut result = ImportResult::default();
-        
-        let table_id = options.target_table_id.clone()
-            .ok_or_else(|| ReasonError::Backup("Target table ID required for CSV import".to_string()))?;
-        
+
+        let table_id = options.target_table_id.clone().ok_or_else(|| {
+            ReasonError::Backup("Target table ID required for CSV import".to_string())
+        })?;
+
         for record in reader.records() {
-            let record = record.map_err(|e| {
-                ReasonError::Backup(format!("Failed to read CSV record: {}", e))
-            })?;
-            
+            let record = record
+                .map_err(|e| ReasonError::Backup(format!("Failed to read CSV record: {}", e)))?;
+
             // Parse CSV fields
             let title = record.get(2).unwrap_or("Untitled").to_string();
-            let tags: Vec<String> = record.get(3)
-                .map(|s| s.split(';').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect())
+            let tags: Vec<String> = record
+                .get(3)
+                .map(|s| {
+                    s.split(';')
+                        .map(|t| t.trim().to_string())
+                        .filter(|t| !t.is_empty())
+                        .collect()
+                })
                 .unwrap_or_default();
             let source_path = record.get(4).unwrap_or("").to_string();
-            
+
             let mut doc = Document::new(title, &table_id);
             doc.tags = tags;
             doc.source_path = source_path;
-            
+
             match store.insert_document(&doc) {
                 Ok(_) => result.documents_imported += 1,
                 Err(_) if options.skip_existing => result.documents_skipped += 1,
                 Err(e) => return Err(e),
             }
         }
-        
+
         Ok(result)
     }
 }
@@ -512,67 +526,65 @@ pub struct ImportResult {
 mod tests {
     use super::*;
     use tempfile::tempdir;
-    
+
     #[test]
     fn test_export_options() {
-        let opts = ExportOptions::json()
-            .for_table("tbl_123")
-            .compact();
-        
+        let opts = ExportOptions::json().for_table("tbl_123").compact();
+
         assert_eq!(opts.format, ExportFormat::Json);
         assert_eq!(opts.scope, ExportScope::Table);
         assert_eq!(opts.table_id, Some("tbl_123".to_string()));
         assert!(!opts.pretty);
     }
-    
+
     #[test]
     fn test_json_export_import() {
         let dir = tempdir().unwrap();
         let db_path = dir.path().join("test.redb");
         let export_path = dir.path().join("export.json");
-        
+
         // Create store with data
         let store = NodeStore::open(&db_path).unwrap();
         let table = Table::new("Test".to_string());
         store.insert_table(&table).unwrap();
-        
+
         let mut doc = Document::new("Doc 1".to_string(), &table.id);
         doc.tags = vec!["test".to_string()];
         store.insert_document(&doc).unwrap();
-        
+
         // Export
         let metadata = Exporter::export(&store, &export_path, ExportOptions::json()).unwrap();
         assert_eq!(metadata.table_count, 1);
         assert_eq!(metadata.document_count, 1);
-        
+
         // Import to new store
         let db_path2 = dir.path().join("test2.redb");
         let store2 = NodeStore::open(&db_path2).unwrap();
         let result = Importer::import(&store2, &export_path, ImportOptions::json()).unwrap();
-        
+
         assert_eq!(result.tables_imported, 1);
         assert_eq!(result.documents_imported, 1);
     }
-    
+
     #[test]
     fn test_csv_export() {
         let dir = tempdir().unwrap();
         let db_path = dir.path().join("test.redb");
         let export_path = dir.path().join("export.csv");
-        
+
         let store = NodeStore::open(&db_path).unwrap();
         let table = Table::new("Test".to_string());
         store.insert_table(&table).unwrap();
-        
+
         let mut doc = Document::new("Test Doc".to_string(), &table.id);
         doc.set_metadata("author", serde_json::json!("Alice"));
         doc.tags = vec!["tag1".to_string(), "tag2".to_string()];
         store.insert_document(&doc).unwrap();
-        
+
         // Export
         let metadata = Exporter::export(&store, &export_path, ExportOptions::csv()).unwrap();
         assert_eq!(metadata.document_count, 1);
-        
+
         // Check file exists
         assert!(export_path.exists());
     }

@@ -264,7 +264,8 @@ impl RateLimitStore {
                 client_id,
                 RateLimitEntry {
                     bucket,
-                    last_access: now.checked_sub(Duration::from_secs(secs_since_access))
+                    last_access: now
+                        .checked_sub(Duration::from_secs(secs_since_access))
                         .unwrap_or(now),
                     config,
                 },
@@ -324,7 +325,10 @@ mod tests {
         // Should be able to make more requests
         for _ in 0..15 {
             let result = store.check(&client);
-            assert!(result.allowed, "Request should be allowed with premium limits");
+            assert!(
+                result.allowed,
+                "Request should be allowed with premium limits"
+            );
         }
     }
 
@@ -408,7 +412,10 @@ mod tests {
         });
 
         let snapshot_refs: Vec<(String, RateLimitSnapshot)> = snapshots;
-        let refs: Vec<_> = snapshot_refs.iter().map(|(k, v)| (k.as_str().to_string(), v.clone())).collect();
+        let refs: Vec<_> = snapshot_refs
+            .iter()
+            .map(|(k, v)| (k.as_str().to_string(), v.clone()))
+            .collect();
         let import_refs: Vec<_> = refs.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
         store2.import_snapshots(&import_refs);
 
@@ -416,7 +423,11 @@ mod tests {
 
         // The restored client should have ~5 remaining tokens (burst 10 - 5 consumed)
         let status = store2.status(&client);
-        assert!(status.remaining <= 5, "Remaining tokens should be <= 5 after restoring state, got {}", status.remaining);
+        assert!(
+            status.remaining <= 5,
+            "Remaining tokens should be <= 5 after restoring state, got {}",
+            status.remaining
+        );
     }
 
     #[test]
@@ -430,18 +441,39 @@ mod tests {
 
         let now_epoch = chrono::Utc::now().timestamp();
         let snapshots = vec![
-            ("key:my_api_key".to_string(), RateLimitSnapshot {
-                tokens: 8.0, max_tokens: 10.0, refill_rate: 1.0,
-                hourly_count: 2, last_access_epoch: now_epoch, hour_start_epoch: now_epoch,
-            }),
-            ("ip:10.0.0.1".to_string(), RateLimitSnapshot {
-                tokens: 5.0, max_tokens: 10.0, refill_rate: 1.0,
-                hourly_count: 5, last_access_epoch: now_epoch, hour_start_epoch: now_epoch,
-            }),
-            ("keyip:combo_key:10.0.0.2".to_string(), RateLimitSnapshot {
-                tokens: 3.0, max_tokens: 10.0, refill_rate: 1.0,
-                hourly_count: 7, last_access_epoch: now_epoch, hour_start_epoch: now_epoch,
-            }),
+            (
+                "key:my_api_key".to_string(),
+                RateLimitSnapshot {
+                    tokens: 8.0,
+                    max_tokens: 10.0,
+                    refill_rate: 1.0,
+                    hourly_count: 2,
+                    last_access_epoch: now_epoch,
+                    hour_start_epoch: now_epoch,
+                },
+            ),
+            (
+                "ip:10.0.0.1".to_string(),
+                RateLimitSnapshot {
+                    tokens: 5.0,
+                    max_tokens: 10.0,
+                    refill_rate: 1.0,
+                    hourly_count: 5,
+                    last_access_epoch: now_epoch,
+                    hour_start_epoch: now_epoch,
+                },
+            ),
+            (
+                "keyip:combo_key:10.0.0.2".to_string(),
+                RateLimitSnapshot {
+                    tokens: 3.0,
+                    max_tokens: 10.0,
+                    refill_rate: 1.0,
+                    hourly_count: 7,
+                    last_access_epoch: now_epoch,
+                    hour_start_epoch: now_epoch,
+                },
+            ),
         ];
 
         store.import_snapshots(&snapshots);
@@ -458,12 +490,17 @@ mod tests {
         });
 
         let old_epoch = chrono::Utc::now().timestamp() - 7200; // 2 hours ago
-        let snapshots = vec![
-            ("key:expired_key".to_string(), RateLimitSnapshot {
-                tokens: 8.0, max_tokens: 10.0, refill_rate: 1.0,
-                hourly_count: 2, last_access_epoch: old_epoch, hour_start_epoch: old_epoch,
-            }),
-        ];
+        let snapshots = vec![(
+            "key:expired_key".to_string(),
+            RateLimitSnapshot {
+                tokens: 8.0,
+                max_tokens: 10.0,
+                refill_rate: 1.0,
+                hourly_count: 2,
+                last_access_epoch: old_epoch,
+                hour_start_epoch: old_epoch,
+            },
+        )];
 
         store.import_snapshots(&snapshots);
         assert_eq!(store.client_count(), 0, "Expired entries should be skipped");

@@ -3,8 +3,8 @@
 //! This module implements the core search algorithm using LLM-guided
 //! tree traversal with beam search.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use tokio::sync::Mutex;
 use tracing::{debug, info, instrument, warn};
@@ -171,7 +171,8 @@ impl<R: ReasoningEngine + 'static> SearchEngine<R> {
     /// Search starting from a document's root node
     pub async fn search_document(&self, query: &str, document_id: &str) -> Result<SearchResponse> {
         let cancel = Arc::new(AtomicBool::new(false));
-        self.search_document_with_cancel(query, document_id, cancel).await
+        self.search_document_with_cancel(query, document_id, cancel)
+            .await
     }
 
     /// Search a document with a shared cancellation flag.
@@ -244,120 +245,151 @@ impl<R: ReasoningEngine + 'static> SearchEngine<R> {
         cancel: Arc<AtomicBool>,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
         Box::pin(async move {
-        // Check cancellation
-        if cancel.load(Ordering::Relaxed) {
-            return Ok(());
-        }
-        // Update stats
-        {
-            let mut s = stats.lock().await;
-            s.nodes_visited += 1;
-            s.depth_reached = s.depth_reached.max(depth);
-        }
-
-        debug!(
-            "Traversing node: {} (depth: {}, is_leaf: {})",
-            node.title,
-            depth,
-            node.is_leaf()
-        );
-
-        // Check depth limit
-        if depth > self.config.max_depth {
-            debug!("Max depth reached, stopping traversal");
-            return Ok(());
-        }
-
-        // Update path
-        let mut current_path = path;
-        current_path.push(node.title.clone());
-
-        // Base case: leaf node
-        if node.is_leaf() {
-            return self
-                .verify_leaf(query, node, current_path, reasoning_trace, results, stats, cancel)
-                .await;
-        }
-
-        // Get children
-        let children = self.store.get_children(node)?;
-        if children.is_empty() {
-            debug!("No children found for node: {}", node.title);
-            return Ok(());
-        }
-
-        // Ask LLM which branches to explore
-        let candidates: Vec<NodeSummary> = children.iter().map(NodeSummary::from).collect();
-
-        let context = if self.config.include_path {
-            current_path.join(" > ")
-        } else {
-            node.summary.clone()
-        };
-
-        // Increment LLM call count
-        {
-            let mut s = stats.lock().await;
-            s.llm_calls += 1;
-        }
-
-        let decisions = self
-            .reasoner
-            .decide_next_step(query, &context, &candidates)
-            .await?;
-
-        // Filter by confidence threshold
-        let selected: Vec<_> = decisions
-            .into_iter()
-            .filter(|d| d.confidence >= self.config.min_confidence)
-            .take(self.config.beam_width)
-            .collect();
-
-        // Track pruned nodes
-        {
-            let mut s = stats.lock().await;
-            s.nodes_pruned += children.len() - selected.len();
-        }
-
-        if selected.is_empty() {
-            debug!("No branches selected, stopping at: {}", node.title);
-            return Ok(());
-        }
-
-        // Build reasoning trace
-        let mut traces: Vec<(PageNode, Vec<ReasoningStep>)> = Vec::new();
-        for decision in &selected {
-            if let Some(child) = children.iter().find(|c| c.id == decision.node_id) {
-                let mut trace = reasoning_trace.clone();
-                trace.push(ReasoningStep {
-                    node_title: child.title.clone(),
-                    decision: decision.reasoning.clone(),
-                    confidence: decision.confidence,
-                });
-                traces.push((child.clone(), trace));
-            }
-        }
-
-        // Early exit: skip traversal if we already have enough results
-        {
-            let current_results = results.lock().await;
-            if current_results.len() >= self.config.max_results {
-                debug!("Already have {} results, skipping further traversal", current_results.len());
+            // Check cancellation
+            if cancel.load(Ordering::Relaxed) {
                 return Ok(());
             }
-        }
+            // Update stats
+            {
+                let mut s = stats.lock().await;
+                s.nodes_visited += 1;
+                s.depth_reached = s.depth_reached.max(depth);
+            }
 
-        if self.config.parallel_branches && traces.len() > 1 {
-            let children: Vec<PageNode> = traces.iter().map(|(c, _)| c.clone()).collect();
-            let trace_list: Vec<Vec<ReasoningStep>> = traces.into_iter().map(|(_, t)| t).collect();
+            debug!(
+                "Traversing node: {} (depth: {}, is_leaf: {})",
+                node.title,
+                depth,
+                node.is_leaf()
+            );
 
-            let futures: Vec<_> = children
-                .iter()
-                .zip(trace_list.into_iter())
-                .map(|(child, trace)| {
+            // Check depth limit
+            if depth > self.config.max_depth {
+                debug!("Max depth reached, stopping traversal");
+                return Ok(());
+            }
+
+            // Update path
+            let mut current_path = path;
+            current_path.push(node.title.clone());
+
+            // Base case: leaf node
+            if node.is_leaf() {
+                return self
+                    .verify_leaf(
+                        query,
+                        node,
+                        current_path,
+                        reasoning_trace,
+                        results,
+                        stats,
+                        cancel,
+                    )
+                    .await;
+            }
+
+            // Get children
+            let children = self.store.get_children(node)?;
+            if children.is_empty() {
+                debug!("No children found for node: {}", node.title);
+                return Ok(());
+            }
+
+            // Ask LLM which branches to explore
+            let candidates: Vec<NodeSummary> = children.iter().map(NodeSummary::from).collect();
+
+            let context = if self.config.include_path {
+                current_path.join(" > ")
+            } else {
+                node.summary.clone()
+            };
+
+            // Increment LLM call count
+            {
+                let mut s = stats.lock().await;
+                s.llm_calls += 1;
+            }
+
+            let decisions = self
+                .reasoner
+                .decide_next_step(query, &context, &candidates)
+                .await?;
+
+            // Filter by confidence threshold
+            let selected: Vec<_> = decisions
+                .into_iter()
+                .filter(|d| d.confidence >= self.config.min_confidence)
+                .take(self.config.beam_width)
+                .collect();
+
+            // Track pruned nodes
+            {
+                let mut s = stats.lock().await;
+                s.nodes_pruned += children.len() - selected.len();
+            }
+
+            if selected.is_empty() {
+                debug!("No branches selected, stopping at: {}", node.title);
+                return Ok(());
+            }
+
+            // Build reasoning trace
+            let mut traces: Vec<(PageNode, Vec<ReasoningStep>)> = Vec::new();
+            for decision in &selected {
+                if let Some(child) = children.iter().find(|c| c.id == decision.node_id) {
+                    let mut trace = reasoning_trace.clone();
+                    trace.push(ReasoningStep {
+                        node_title: child.title.clone(),
+                        decision: decision.reasoning.clone(),
+                        confidence: decision.confidence,
+                    });
+                    traces.push((child.clone(), trace));
+                }
+            }
+
+            // Early exit: skip traversal if we already have enough results
+            {
+                let current_results = results.lock().await;
+                if current_results.len() >= self.config.max_results {
+                    debug!(
+                        "Already have {} results, skipping further traversal",
+                        current_results.len()
+                    );
+                    return Ok(());
+                }
+            }
+
+            if self.config.parallel_branches && traces.len() > 1 {
+                let children: Vec<PageNode> = traces.iter().map(|(c, _)| c.clone()).collect();
+                let trace_list: Vec<Vec<ReasoningStep>> =
+                    traces.into_iter().map(|(_, t)| t).collect();
+
+                let futures: Vec<_> = children
+                    .iter()
+                    .zip(trace_list)
+                    .map(|(child, trace)| {
+                        self.traverse(
+                            query,
+                            child,
+                            current_path.clone(),
+                            trace,
+                            results.clone(),
+                            stats.clone(),
+                            depth + 1,
+                            cancel.clone(),
+                        )
+                    })
+                    .collect();
+
+                let outcomes = futures::future::join_all(futures).await;
+                for outcome in outcomes {
+                    outcome?;
+                }
+            } else {
+                for (child, trace) in traces {
                     self.traverse(
                         query,
-                        child,
+                        &child,
                         current_path.clone(),
                         trace,
                         results.clone(),
@@ -365,34 +397,16 @@ impl<R: ReasoningEngine + 'static> SearchEngine<R> {
                         depth + 1,
                         cancel.clone(),
                     )
-                })
-                .collect();
-
-            let outcomes = futures::future::join_all(futures).await;
-            for outcome in outcomes {
-                outcome?;
+                    .await?;
+                }
             }
-        } else {
-            for (child, trace) in traces {
-                self.traverse(
-                    query,
-                    &child,
-                    current_path.clone(),
-                    trace,
-                    results.clone(),
-                    stats.clone(),
-                    depth + 1,
-                    cancel.clone(),
-                )
-                .await?;
-            }
-        }
 
-        Ok(())
+            Ok(())
         }) // End Box::pin(async move)
     }
 
     /// Verify a leaf node and potentially add it to results
+    #[allow(clippy::too_many_arguments)]
     async fn verify_leaf(
         &self,
         query: &str,
@@ -562,7 +576,10 @@ mod tests {
 
         let engine = SearchEngine::new(store, reasoner);
 
-        let response = engine.search("What is the revenue?", &root_id).await.unwrap();
+        let response = engine
+            .search("What is the revenue?", &root_id)
+            .await
+            .unwrap();
 
         assert!(!response.results.is_empty());
         assert!(response.stats.nodes_visited > 0);
@@ -593,7 +610,10 @@ mod tests {
         if !response.results.is_empty() {
             let result = &response.results[0];
             assert!(!result.path.is_empty(), "Path should be populated");
-            assert!(result.path[0].contains("Document Root"), "Should start at root");
+            assert!(
+                result.path[0].contains("Document Root"),
+                "Should start at root"
+            );
         }
     }
 
@@ -699,8 +719,7 @@ mod tests {
 
         // Both should visit similar number of nodes
         assert_eq!(
-            seq_response.stats.nodes_visited,
-            par_response.stats.nodes_visited,
+            seq_response.stats.nodes_visited, par_response.stats.nodes_visited,
             "Sequential and parallel should visit same nodes"
         );
     }

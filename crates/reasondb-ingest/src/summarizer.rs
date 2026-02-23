@@ -3,9 +3,9 @@
 //! Generates summaries for each node in the document tree,
 //! working bottom-up from leaves to root.
 
+use futures::stream::{FuturesUnordered, StreamExt};
 use std::collections::HashMap;
 use std::sync::Arc;
-use futures::stream::{FuturesUnordered, StreamExt};
 use tokio::sync::Semaphore;
 use tracing::{debug, info};
 
@@ -58,7 +58,11 @@ impl<'a, R: ReasoningEngine> NodeSummarizer<'a, R> {
 
     /// Summarize all nodes in a document tree (bottom-up, concurrent per depth level)
     pub async fn summarize_tree(&self, nodes: &mut [PageNode]) -> Result<()> {
-        info!("Summarizing {} nodes (max_concurrent: {})", nodes.len(), self.config.max_concurrent);
+        info!(
+            "Summarizing {} nodes (max_concurrent: {})",
+            nodes.len(),
+            self.config.max_concurrent
+        );
 
         let node_map: HashMap<String, usize> = nodes
             .iter()
@@ -89,9 +93,10 @@ impl<'a, R: ReasoningEngine> NodeSummarizer<'a, R> {
                 .map(|&idx| {
                     let node = &nodes[idx];
                     let content = self.get_summarization_content(node, nodes, &node_map);
-                    let parent_summary = node.parent_id.as_ref().and_then(|pid| {
-                        node_map.get(pid).map(|&i| nodes[i].summary.clone())
-                    });
+                    let parent_summary = node
+                        .parent_id
+                        .as_ref()
+                        .and_then(|pid| node_map.get(pid).map(|&i| nodes[i].summary.clone()));
                     let context = SummarizationContext {
                         title: Some(node.title.clone()),
                         parent_summary,
@@ -110,10 +115,20 @@ impl<'a, R: ReasoningEngine> NodeSummarizer<'a, R> {
                 futures.push(async move {
                     let _permit = permit.acquire().await.unwrap();
                     if content.is_empty() {
-                        return Ok((idx, format!("Section: {}", context.title.as_deref().unwrap_or("Untitled"))));
+                        return Ok((
+                            idx,
+                            format!(
+                                "Section: {}",
+                                context.title.as_deref().unwrap_or("Untitled")
+                            ),
+                        ));
                     }
-                    let truncated: String = content.chars().take(self.config.max_content_length).collect();
-                    let summary = self.reasoner
+                    let truncated: String = content
+                        .chars()
+                        .take(self.config.max_content_length)
+                        .collect();
+                    let summary = self
+                        .reasoner
                         .summarize(&truncated, &context)
                         .await
                         .map_err(|e| IngestError::Summarization(e.to_string()))?;
@@ -265,14 +280,14 @@ impl<'a, R: ReasoningEngine> BatchSummarizer<'a, R> {
                     let content = self.get_content_for_node(node, nodes, &node_map);
 
                     if content.is_empty() {
-                        nodes[idx].summary =
-                            format!("Section: {}", nodes[idx].title);
+                        nodes[idx].summary = format!("Section: {}", nodes[idx].title);
                         continue;
                     }
 
-                    let parent_summary = node.parent_id.as_ref().and_then(|pid| {
-                        node_map.get(pid).map(|&i| nodes[i].summary.clone())
-                    });
+                    let parent_summary = node
+                        .parent_id
+                        .as_ref()
+                        .and_then(|pid| node_map.get(pid).map(|&i| nodes[i].summary.clone()));
                     let context = SummarizationContext {
                         title: Some(node.title.clone()),
                         parent_summary,
@@ -297,15 +312,13 @@ impl<'a, R: ReasoningEngine> BatchSummarizer<'a, R> {
                     .await
                     .map_err(|e| IngestError::Summarization(e.to_string()))?;
 
-                let summary_map: HashMap<String, String> =
-                    summaries.into_iter().collect();
+                let summary_map: HashMap<String, String> = summaries.into_iter().collect();
 
                 for (idx, node_id, _, _) in &llm_items {
                     if let Some(summary) = summary_map.get(node_id) {
                         nodes[*idx].summary = summary.clone();
                     } else {
-                        nodes[*idx].summary =
-                            format!("Section: {}", nodes[*idx].title);
+                        nodes[*idx].summary = format!("Section: {}", nodes[*idx].title);
                     }
                 }
             }

@@ -68,8 +68,7 @@ pub(crate) const IDX_TABLE_SLUG: TableDefinition<&str, &str> =
 pub(crate) const JOBS_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("jobs");
 
 /// Job ordering index (timestamp_jobId -> JobId) for FIFO ordering
-pub(crate) const JOBS_ORDER_TABLE: TableDefinition<&str, &str> =
-    TableDefinition::new("jobs_order");
+pub(crate) const JOBS_ORDER_TABLE: TableDefinition<&str, &str> = TableDefinition::new("jobs_order");
 
 /// Rate limit snapshots (ClientId -> bincode bytes) for persistence across restarts
 pub(crate) const RATE_LIMITS_TABLE: TableDefinition<&str, &[u8]> =
@@ -154,7 +153,9 @@ impl NodeStore {
         let write_txn = db.begin_write().map_err(StorageError::from)?;
         {
             // Primary tables
-            let _ = write_txn.open_table(NODES_TABLE).map_err(StorageError::from)?;
+            let _ = write_txn
+                .open_table(NODES_TABLE)
+                .map_err(StorageError::from)?;
             let _ = write_txn
                 .open_table(DOCUMENTS_TABLE)
                 .map_err(StorageError::from)?;
@@ -232,13 +233,16 @@ impl NodeStore {
         Ok(StoreStats {
             total_nodes: nodes_table
                 .len()
-                .map_err(|e| StorageError::TableError(e.to_string()))? as usize,
+                .map_err(|e| StorageError::TableError(e.to_string()))?
+                as usize,
             total_documents: docs_table
                 .len()
-                .map_err(|e| StorageError::TableError(e.to_string()))? as usize,
+                .map_err(|e| StorageError::TableError(e.to_string()))?
+                as usize,
             total_tables: tables_table
                 .len()
-                .map_err(|e| StorageError::TableError(e.to_string()))? as usize,
+                .map_err(|e| StorageError::TableError(e.to_string()))?
+                as usize,
         })
     }
 }

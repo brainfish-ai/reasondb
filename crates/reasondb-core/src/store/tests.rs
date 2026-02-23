@@ -145,8 +145,12 @@ fn test_table_crud() {
 fn test_list_tables() {
     let (store, _dir) = create_test_store();
 
-    store.insert_table(&Table::new("Table 1".to_string())).unwrap();
-    store.insert_table(&Table::new("Table 2".to_string())).unwrap();
+    store
+        .insert_table(&Table::new("Table 1".to_string()))
+        .unwrap();
+    store
+        .insert_table(&Table::new("Table 2".to_string()))
+        .unwrap();
 
     let tables = store.list_tables().unwrap();
     assert_eq!(tables.len(), 2);
@@ -354,9 +358,15 @@ fn test_list_documents() {
     let table = Table::new("Test Table".to_string());
     store.insert_table(&table).unwrap();
 
-    store.insert_document(&Document::new("Doc 1".to_string(), &table.id)).unwrap();
-    store.insert_document(&Document::new("Doc 2".to_string(), &table.id)).unwrap();
-    store.insert_document(&Document::new("Doc 3".to_string(), &table.id)).unwrap();
+    store
+        .insert_document(&Document::new("Doc 1".to_string(), &table.id))
+        .unwrap();
+    store
+        .insert_document(&Document::new("Doc 2".to_string(), &table.id))
+        .unwrap();
+    store
+        .insert_document(&Document::new("Doc 3".to_string(), &table.id))
+        .unwrap();
 
     let docs = store.list_documents().unwrap();
     assert_eq!(docs.len(), 3);
@@ -375,9 +385,15 @@ fn test_document_table_index() {
     store.insert_table(&table2).unwrap();
 
     // Create documents in different tables
-    store.insert_document(&Document::new("Doc 1".to_string(), &table1.id)).unwrap();
-    store.insert_document(&Document::new("Doc 2".to_string(), &table1.id)).unwrap();
-    store.insert_document(&Document::new("Doc 3".to_string(), &table2.id)).unwrap();
+    store
+        .insert_document(&Document::new("Doc 1".to_string(), &table1.id))
+        .unwrap();
+    store
+        .insert_document(&Document::new("Doc 2".to_string(), &table1.id))
+        .unwrap();
+    store
+        .insert_document(&Document::new("Doc 3".to_string(), &table2.id))
+        .unwrap();
 
     // Query by table
     let legal_docs = store.get_documents_in_table(&table1.id).unwrap();
@@ -455,7 +471,8 @@ fn test_find_documents_with_filter() {
     assert_eq!(results2.len(), 2);
 
     // Filter by metadata (author is now in metadata)
-    let filter3 = SearchFilter::new().with_metadata("author", Value::String("Legal Team".to_string()));
+    let filter3 =
+        SearchFilter::new().with_metadata("author", Value::String("Legal Team".to_string()));
     let results3 = store.find_documents(&filter3).unwrap();
     assert_eq!(results3.len(), 2);
 

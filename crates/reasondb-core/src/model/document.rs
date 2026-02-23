@@ -61,7 +61,6 @@ pub struct Document {
     pub updated_at: DateTime<Utc>,
 
     // === Table & Metadata Fields ===
-
     /// Table this document belongs to (REQUIRED)
     pub table_id: TableId,
 

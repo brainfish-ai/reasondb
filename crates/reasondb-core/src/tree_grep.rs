@@ -34,11 +34,7 @@ const FIELD_WEIGHT_CONTENT: f32 = 1.0;
 
 /// Recursively grep through a document's node tree, scoring term matches
 /// at each level. Shallower matches and title matches are weighted higher.
-pub fn tree_grep(
-    store: &NodeStore,
-    document_id: &str,
-    terms: &[String],
-) -> Result<TreeGrepResult> {
+pub fn tree_grep(store: &NodeStore, document_id: &str, terms: &[String]) -> Result<TreeGrepResult> {
     if terms.is_empty() {
         return Ok(TreeGrepResult {
             document_id: document_id.to_string(),
@@ -222,8 +218,16 @@ mod tests {
         let terms = extract_query_terms("termination");
         let result = tree_grep(&store, &doc_id, &terms).unwrap();
 
-        let shallow: Vec<_> = result.matched_nodes.iter().filter(|h| h.depth <= 1).collect();
-        let deep: Vec<_> = result.matched_nodes.iter().filter(|h| h.depth > 1).collect();
+        let shallow: Vec<_> = result
+            .matched_nodes
+            .iter()
+            .filter(|h| h.depth <= 1)
+            .collect();
+        let deep: Vec<_> = result
+            .matched_nodes
+            .iter()
+            .filter(|h| h.depth > 1)
+            .collect();
 
         assert!(!shallow.is_empty(), "Should have shallow matches");
         assert!(!deep.is_empty(), "Should have deep matches");

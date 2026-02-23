@@ -6,8 +6,8 @@ use colored::Colorize;
 use std::path::PathBuf;
 
 use reasondb_core::{
-    BackupManager, BackupOptions, BackupType, ExportFormat, ExportOptions, ExportScope,
-    Exporter, ImportOptions, Importer, NodeStore, RestoreOptions,
+    BackupManager, BackupOptions, BackupType, ExportFormat, ExportOptions, ExportScope, Exporter,
+    ImportOptions, Importer, NodeStore, RestoreOptions,
 };
 
 use crate::output::Output;
@@ -201,8 +201,7 @@ impl BackupArgs {
                 description,
                 no_verify,
             } => {
-                let store = NodeStore::open(database)
-                    .context("Failed to open database")?;
+                let store = NodeStore::open(database).context("Failed to open database")?;
                 let manager = BackupManager::new(&store, backup_dir)
                     .context("Failed to initialize backup manager")?;
 
@@ -244,9 +243,11 @@ impl BackupArgs {
                 Ok(())
             }
 
-            BackupCommand::List { backup_dir, database } => {
-                let store = NodeStore::open(database)
-                    .context("Failed to open database")?;
+            BackupCommand::List {
+                backup_dir,
+                database,
+            } => {
+                let store = NodeStore::open(database).context("Failed to open database")?;
                 let manager = BackupManager::new(&store, backup_dir)
                     .context("Failed to initialize backup manager")?;
                 let backups = manager.list_backups()?;
@@ -281,13 +282,17 @@ impl BackupArgs {
                 Ok(())
             }
 
-            BackupCommand::Show { backup_id, backup_dir, database } => {
-                let store = NodeStore::open(database)
-                    .context("Failed to open database")?;
+            BackupCommand::Show {
+                backup_id,
+                backup_dir,
+                database,
+            } => {
+                let store = NodeStore::open(database).context("Failed to open database")?;
                 let manager = BackupManager::new(&store, backup_dir)
                     .context("Failed to initialize backup manager")?;
 
-                let backup = manager.get_backup(backup_id)?
+                let backup = manager
+                    .get_backup(backup_id)?
                     .ok_or_else(|| anyhow::anyhow!("Backup not found: {}", backup_id))?;
 
                 if output.is_json() {
@@ -314,9 +319,14 @@ impl BackupArgs {
                 Ok(())
             }
 
-            BackupCommand::Restore { backup_id, target, backup_dir, database, force } => {
-                let store = NodeStore::open(database)
-                    .context("Failed to open database")?;
+            BackupCommand::Restore {
+                backup_id,
+                target,
+                backup_dir,
+                database,
+                force,
+            } => {
+                let store = NodeStore::open(database).context("Failed to open database")?;
                 let manager = BackupManager::new(&store, backup_dir)
                     .context("Failed to initialize backup manager")?;
 
@@ -327,7 +337,10 @@ impl BackupArgs {
 
                 if output.is_json() {
                     manager.restore(backup_id, target, options)?;
-                    println!(r#"{{"status": "restored", "target": "{}"}}"#, target.display());
+                    println!(
+                        r#"{{"status": "restored", "target": "{}"}}"#,
+                        target.display()
+                    );
                 } else {
                     println!("{}", "Restoring backup...".cyan());
                     manager.restore(backup_id, target, options)?;
@@ -338,9 +351,13 @@ impl BackupArgs {
                 Ok(())
             }
 
-            BackupCommand::Delete { backup_id, backup_dir, database, yes } => {
-                let store = NodeStore::open(database)
-                    .context("Failed to open database")?;
+            BackupCommand::Delete {
+                backup_id,
+                backup_dir,
+                database,
+                yes,
+            } => {
+                let store = NodeStore::open(database).context("Failed to open database")?;
                 let manager = BackupManager::new(&store, backup_dir)
                     .context("Failed to initialize backup manager")?;
 
@@ -365,9 +382,12 @@ impl BackupArgs {
                 Ok(())
             }
 
-            BackupCommand::Verify { backup_id, backup_dir, database } => {
-                let store = NodeStore::open(database)
-                    .context("Failed to open database")?;
+            BackupCommand::Verify {
+                backup_id,
+                backup_dir,
+                database,
+            } => {
+                let store = NodeStore::open(database).context("Failed to open database")?;
                 let manager = BackupManager::new(&store, backup_dir)
                     .context("Failed to initialize backup manager")?;
 
@@ -384,9 +404,13 @@ impl BackupArgs {
                 Ok(())
             }
 
-            BackupCommand::Prune { keep_full, keep_incremental, backup_dir, database } => {
-                let store = NodeStore::open(database)
-                    .context("Failed to open database")?;
+            BackupCommand::Prune {
+                keep_full,
+                keep_incremental,
+                backup_dir,
+                database,
+            } => {
+                let store = NodeStore::open(database).context("Failed to open database")?;
                 let manager = BackupManager::new(&store, backup_dir)
                     .context("Failed to initialize backup manager")?;
 
@@ -414,8 +438,7 @@ impl BackupArgs {
                 include_nodes,
                 compact,
             } => {
-                let store = NodeStore::open(database)
-                    .context("Failed to open database")?;
+                let store = NodeStore::open(database).context("Failed to open database")?;
 
                 let export_format = match format.to_lowercase().as_str() {
                     "json" => ExportFormat::Json,
@@ -470,8 +493,7 @@ impl BackupArgs {
                 table,
                 update,
             } => {
-                let store = NodeStore::open(database)
-                    .context("Failed to open database")?;
+                let store = NodeStore::open(database).context("Failed to open database")?;
 
                 let import_format = match format.to_lowercase().as_str() {
                     "json" => ExportFormat::Json,
@@ -515,8 +537,16 @@ impl BackupArgs {
                     println!();
                     println!("  {} {}", "Tables imported:".bold(), result.tables_imported);
                     println!("  {} {}", "Tables skipped:".bold(), result.tables_skipped);
-                    println!("  {} {}", "Documents imported:".bold(), result.documents_imported);
-                    println!("  {} {}", "Documents skipped:".bold(), result.documents_skipped);
+                    println!(
+                        "  {} {}",
+                        "Documents imported:".bold(),
+                        result.documents_imported
+                    );
+                    println!(
+                        "  {} {}",
+                        "Documents skipped:".bold(),
+                        result.documents_skipped
+                    );
                     println!("  {} {}", "Nodes imported:".bold(), result.nodes_imported);
                     println!("  {} {}", "Nodes skipped:".bold(), result.nodes_skipped);
                 }

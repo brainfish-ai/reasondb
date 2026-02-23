@@ -55,7 +55,7 @@ impl<R: ReasoningEngine> AppState<R> {
         let rate_limit_store = RateLimitStore::new(config.rate_limit.clone());
         let store = Arc::new(store);
         let (job_queue, job_rx) = JobQueue::new(store.clone());
-        
+
         let cluster_node = if config.cluster.enabled {
             let node_id = NodeId::new(config.cluster.node_id.clone());
             let cluster_config = ClusterConfig {
@@ -67,15 +67,19 @@ impl<R: ReasoningEngine> AppState<R> {
             };
             let apply_cb = crate::replication::create_apply_callback(store.clone());
             let state_machine = Arc::new(ClusterStateMachine::with_callback(apply_cb));
-            Some(Arc::new(RaftNode::new(node_id, cluster_config, state_machine)))
+            Some(Arc::new(RaftNode::new(
+                node_id,
+                cluster_config,
+                state_machine,
+            )))
         } else {
             None
         };
-        
+
         let shard_router = Arc::new(ShardRouter::single_node(&config.cluster.node_id));
 
-        let plugins_dir = std::env::var("REASONDB_PLUGINS_DIR")
-            .unwrap_or_else(|_| "./plugins".to_string());
+        let plugins_dir =
+            std::env::var("REASONDB_PLUGINS_DIR").unwrap_or_else(|_| "./plugins".to_string());
         let plugins_enabled = std::env::var("REASONDB_PLUGINS_ENABLED")
             .map(|v| v != "false" && v != "0")
             .unwrap_or(true);
@@ -85,28 +89,35 @@ impl<R: ReasoningEngine> AppState<R> {
             if let Err(e) = pm.discover() {
                 tracing::warn!("Plugin discovery failed: {}", e);
             } else {
-                tracing::info!("Discovered {} plugins from {}", pm.plugin_count(), plugins_dir);
+                tracing::info!(
+                    "Discovered {} plugins from {}",
+                    pm.plugin_count(),
+                    plugins_dir
+                );
             }
             Arc::new(pm)
         } else {
             Arc::new(PluginManager::disabled())
         };
 
-        (Self {
-            store,
-            text_index: Arc::new(text_index),
-            reasoner: Arc::new(reasoner),
-            query_cache: Arc::new(QueryCache::new()),
-            api_key_store: Arc::new(api_key_store),
-            rate_limit_store: Arc::new(rate_limit_store),
-            cluster_node,
-            config,
-            job_queue,
-            shard_router,
-            plugin_manager,
-        }, job_rx)
+        (
+            Self {
+                store,
+                text_index: Arc::new(text_index),
+                reasoner: Arc::new(reasoner),
+                query_cache: Arc::new(QueryCache::new()),
+                api_key_store: Arc::new(api_key_store),
+                rate_limit_store: Arc::new(rate_limit_store),
+                cluster_node,
+                config,
+                job_queue,
+                shard_router,
+                plugin_manager,
+            },
+            job_rx,
+        )
     }
-    
+
     /// Check if this node is the leader
     pub async fn is_leader(&self) -> bool {
         match &self.cluster_node {
@@ -114,12 +125,12 @@ impl<R: ReasoningEngine> AppState<R> {
             None => true, // Single node is always leader
         }
     }
-    
+
     /// Check if this node can accept writes
     pub async fn can_accept_writes(&self) -> bool {
         self.is_leader().await
     }
-    
+
     /// Check if clustering is enabled
     pub fn is_clustered(&self) -> bool {
         self.cluster_node.is_some()
@@ -202,29 +213,29 @@ impl ClusterNodeConfig {
         let enabled = std::env::var("REASONDB_CLUSTER_ENABLED")
             .map(|v| v == "true" || v == "1")
             .unwrap_or(false);
-            
-        let node_id = std::env::var("REASONDB_NODE_ID")
-            .unwrap_or_else(|_| uuid::Uuid::new_v4().to_string());
-            
+
+        let node_id =
+            std::env::var("REASONDB_NODE_ID").unwrap_or_else(|_| uuid::Uuid::new_v4().to_string());
+
         let cluster_name = std::env::var("REASONDB_CLUSTER_NAME")
             .unwrap_or_else(|_| "reasondb-cluster".to_string());
-            
-        let raft_addr = std::env::var("REASONDB_RAFT_ADDR")
-            .unwrap_or_else(|_| "127.0.0.1:4445".to_string());
-            
+
+        let raft_addr =
+            std::env::var("REASONDB_RAFT_ADDR").unwrap_or_else(|_| "127.0.0.1:4445".to_string());
+
         let initial_members = std::env::var("REASONDB_CLUSTER_MEMBERS")
             .map(|s| s.split(',').map(|s| s.trim().to_string()).collect())
             .unwrap_or_default();
-            
+
         let min_quorum = std::env::var("REASONDB_MIN_QUORUM")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(2);
-            
+
         let enable_read_scaling = std::env::var("REASONDB_READ_SCALING")
             .map(|v| v == "true" || v == "1")
             .unwrap_or(true);
-        
+
         Self {
             enabled,
             node_id,

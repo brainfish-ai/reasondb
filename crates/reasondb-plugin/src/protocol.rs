@@ -178,10 +178,18 @@ pub struct ChunkConfig {
     pub overlap: usize,
 }
 
-fn default_target_size() -> usize { 1500 }
-fn default_min_size() -> usize { 500 }
-fn default_max_size() -> usize { 3000 }
-fn default_overlap() -> usize { 100 }
+fn default_target_size() -> usize {
+    1500
+}
+fn default_min_size() -> usize {
+    500
+}
+fn default_max_size() -> usize {
+    3000
+}
+fn default_overlap() -> usize {
+    100
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChunkResult {

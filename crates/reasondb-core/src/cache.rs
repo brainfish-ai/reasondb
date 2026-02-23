@@ -33,19 +33,19 @@ impl<V: Clone> Cache<V> {
     /// Get a value from the cache
     pub fn get(&self, key: &str) -> Option<V> {
         let mut data = self.data.write().ok()?;
-        
+
         if let Some(entry) = data.get_mut(key) {
             // Check TTL
             if entry.last_access.elapsed() > self.ttl {
                 data.remove(key);
                 return None;
             }
-            
+
             entry.last_access = Instant::now();
             entry.access_count += 1;
             return Some(entry.value.clone());
         }
-        
+
         None
     }
 
@@ -61,11 +61,14 @@ impl<V: Clone> Cache<V> {
             self.evict_lru(&mut data);
         }
 
-        data.insert(key, CacheEntry {
-            value,
-            last_access: Instant::now(),
-            access_count: 1,
-        });
+        data.insert(
+            key,
+            CacheEntry {
+                value,
+                last_access: Instant::now(),
+                access_count: 1,
+            },
+        );
     }
 
     /// Remove a value from the cache
@@ -264,7 +267,8 @@ impl QueryCache {
     /// Generate cache key from query and table
     fn cache_key(query: &str, table_id: &str) -> String {
         // Normalize query: lowercase, trim, collapse whitespace
-        let normalized = query.to_lowercase()
+        let normalized = query
+            .to_lowercase()
             .split_whitespace()
             .collect::<Vec<_>>()
             .join(" ");
@@ -280,7 +284,8 @@ impl QueryCache {
                 Some(result)
             }
             None => {
-                self.misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                self.misses
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 None
             }
         }
@@ -307,7 +312,11 @@ impl QueryCache {
         QueryCacheStats {
             hits,
             misses,
-            hit_rate: if total > 0 { hits as f64 / total as f64 } else { 0.0 },
+            hit_rate: if total > 0 {
+                hits as f64 / total as f64
+            } else {
+                0.0
+            },
             size: self.cache.stats().size,
             max_size: self.cache.stats().max_size,
         }
@@ -344,7 +353,7 @@ mod tests {
     #[test]
     fn test_cache_basic() {
         let cache: Cache<String> = Cache::new(10, 3600);
-        
+
         cache.insert("key1".to_string(), "value1".to_string());
         assert_eq!(cache.get("key1"), Some("value1".to_string()));
         assert_eq!(cache.get("key2"), None);
@@ -353,11 +362,11 @@ mod tests {
     #[test]
     fn test_cache_eviction() {
         let cache: Cache<i32> = Cache::new(2, 3600);
-        
+
         cache.insert("a".to_string(), 1);
         cache.insert("b".to_string(), 2);
         cache.insert("c".to_string(), 3); // Should evict "a"
-        
+
         assert_eq!(cache.get("c"), Some(3));
         assert_eq!(cache.get("b"), Some(2));
         // "a" might or might not be evicted depending on timing
@@ -366,7 +375,7 @@ mod tests {
     #[test]
     fn test_summary_cache() {
         let cache = SummaryCache::new();
-        
+
         let summary = CachedDocSummary {
             id: "doc1".to_string(),
             title: "Test Doc".to_string(),
@@ -374,9 +383,9 @@ mod tests {
             tags: vec!["test".to_string()],
             table_id: "table1".to_string(),
         };
-        
+
         cache.insert(summary.clone());
-        
+
         let retrieved = cache.get("doc1").unwrap();
         assert_eq!(retrieved.title, "Test Doc");
     }
@@ -384,7 +393,7 @@ mod tests {
     #[test]
     fn test_get_many() {
         let cache = SummaryCache::new();
-        
+
         cache.insert(CachedDocSummary {
             id: "doc1".to_string(),
             title: "Doc 1".to_string(),
@@ -392,7 +401,7 @@ mod tests {
             tags: vec![],
             table_id: "t1".to_string(),
         });
-        
+
         cache.insert(CachedDocSummary {
             id: "doc2".to_string(),
             title: "Doc 2".to_string(),
@@ -400,10 +409,10 @@ mod tests {
             tags: vec![],
             table_id: "t1".to_string(),
         });
-        
+
         let ids = vec!["doc1".to_string(), "doc2".to_string(), "doc3".to_string()];
         let (found, missing) = cache.get_many(&ids);
-        
+
         assert_eq!(found.len(), 2);
         assert_eq!(missing, vec!["doc3".to_string()]);
     }
@@ -411,10 +420,10 @@ mod tests {
     #[test]
     fn test_query_cache() {
         let cache = QueryCache::new();
-        
+
         // Miss on first query
         assert!(cache.get("What are penalties?", "legal").is_none());
-        
+
         // Insert result
         let result = CachedQueryResult {
             query: "What are penalties?".to_string(),
@@ -442,13 +451,13 @@ mod tests {
             llm_calls_saved: 5,
         };
         cache.insert("What are penalties?", "legal", result);
-        
+
         // Hit on second query
         let cached = cache.get("What are penalties?", "legal").unwrap();
         assert_eq!(cached.matches.len(), 1);
         assert_eq!(cached.matches[0].matched_nodes.len(), 1);
         assert_eq!(cached.matches[0].matched_nodes[0].title, "Late Fees");
-        
+
         // Check stats
         let stats = cache.stats();
         assert_eq!(stats.hits, 1);
@@ -459,7 +468,7 @@ mod tests {
     #[test]
     fn test_query_cache_normalization() {
         let cache = QueryCache::new();
-        
+
         let result = CachedQueryResult {
             query: "test".to_string(),
             table_id: "t1".to_string(),
@@ -467,10 +476,10 @@ mod tests {
             cached_at: Instant::now(),
             llm_calls_saved: 1,
         };
-        
+
         // Insert with extra whitespace and caps
         cache.insert("  What  ARE   penalties?  ", "legal", result);
-        
+
         // Should hit with normalized query
         assert!(cache.get("what are penalties?", "legal").is_some());
         assert!(cache.get("WHAT ARE PENALTIES?", "legal").is_some());

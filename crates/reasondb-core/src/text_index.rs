@@ -93,13 +93,11 @@ impl TextIndex {
         let table_id_field = schema_builder.add_text_field("table_id", STRING | STORED);
 
         // Searchable text fields with English stemming
-        let text_options = TextOptions::default()
-            .set_stored()
-            .set_indexing_options(
-                TextFieldIndexing::default()
-                    .set_tokenizer("en_stem")
-                    .set_index_option(IndexRecordOption::WithFreqsAndPositions),
-            );
+        let text_options = TextOptions::default().set_stored().set_indexing_options(
+            TextFieldIndexing::default()
+                .set_tokenizer("en_stem")
+                .set_index_option(IndexRecordOption::WithFreqsAndPositions),
+        );
 
         let title_field = schema_builder.add_text_field("title", text_options.clone());
         let content_field = schema_builder.add_text_field("content", text_options);
@@ -117,15 +115,18 @@ impl TextIndex {
         };
 
         // Register the English stemmer tokenizer
-        index
-            .tokenizers()
-            .register("en_stem", tantivy::tokenizer::TextAnalyzer::builder(
-                tantivy::tokenizer::SimpleTokenizer::default()
+        index.tokenizers().register(
+            "en_stem",
+            tantivy::tokenizer::TextAnalyzer::builder(
+                tantivy::tokenizer::SimpleTokenizer::default(),
             )
             .filter(tantivy::tokenizer::RemoveLongFilter::limit(40))
             .filter(tantivy::tokenizer::LowerCaser)
-            .filter(tantivy::tokenizer::Stemmer::new(tantivy::tokenizer::Language::English))
-            .build());
+            .filter(tantivy::tokenizer::Stemmer::new(
+                tantivy::tokenizer::Language::English,
+            ))
+            .build(),
+        );
 
         // Create writer with 50MB buffer
         let writer = index
@@ -162,13 +163,11 @@ impl TextIndex {
         let node_id_field = schema_builder.add_text_field("node_id", STRING | STORED);
         let table_id_field = schema_builder.add_text_field("table_id", STRING | STORED);
 
-        let text_options = TextOptions::default()
-            .set_stored()
-            .set_indexing_options(
-                TextFieldIndexing::default()
-                    .set_tokenizer("en_stem")
-                    .set_index_option(IndexRecordOption::WithFreqsAndPositions),
-            );
+        let text_options = TextOptions::default().set_stored().set_indexing_options(
+            TextFieldIndexing::default()
+                .set_tokenizer("en_stem")
+                .set_index_option(IndexRecordOption::WithFreqsAndPositions),
+        );
 
         let title_field = schema_builder.add_text_field("title", text_options.clone());
         let content_field = schema_builder.add_text_field("content", text_options);
@@ -178,15 +177,18 @@ impl TextIndex {
         let index = Index::create_in_ram(schema.clone());
 
         // Register tokenizer
-        index
-            .tokenizers()
-            .register("en_stem", tantivy::tokenizer::TextAnalyzer::builder(
-                tantivy::tokenizer::SimpleTokenizer::default()
+        index.tokenizers().register(
+            "en_stem",
+            tantivy::tokenizer::TextAnalyzer::builder(
+                tantivy::tokenizer::SimpleTokenizer::default(),
             )
             .filter(tantivy::tokenizer::RemoveLongFilter::limit(40))
             .filter(tantivy::tokenizer::LowerCaser)
-            .filter(tantivy::tokenizer::Stemmer::new(tantivy::tokenizer::Language::English))
-            .build());
+            .filter(tantivy::tokenizer::Stemmer::new(
+                tantivy::tokenizer::Language::English,
+            ))
+            .build(),
+        );
 
         let writer = index
             .writer(50_000_000)
@@ -331,9 +333,9 @@ impl TextIndex {
         // Convert results
         let mut results = Vec::with_capacity(top_docs.len());
         for (score, doc_address) in top_docs {
-            let doc: TantivyDocument = searcher
-                .doc(doc_address)
-                .map_err(|e| ReasonError::Internal(format!("Failed to retrieve document: {}", e)))?;
+            let doc: TantivyDocument = searcher.doc(doc_address).map_err(|e| {
+                ReasonError::Internal(format!("Failed to retrieve document: {}", e))
+            })?;
 
             let document_id = doc
                 .get_first(self.document_id_field)
@@ -475,14 +477,7 @@ mod tests {
         let index = TextIndex::in_memory().unwrap();
 
         index
-            .index_node(
-                "doc_1",
-                "node_1",
-                "tbl_1",
-                "Test Doc",
-                "Test content",
-                &[],
-            )
+            .index_node("doc_1", "node_1", "tbl_1", "Test Doc", "Test content", &[])
             .unwrap();
         index.commit().unwrap();
 

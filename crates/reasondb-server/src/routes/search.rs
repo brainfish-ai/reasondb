@@ -168,11 +168,7 @@ pub async fn search<R: ReasoningEngine + Send + Sync + 'static>(
     };
 
     // Create search engine
-    let engine = SearchEngine::with_config(
-        state.store.clone(),
-        state.reasoner.clone(),
-        config,
-    );
+    let engine = SearchEngine::with_config(state.store.clone(), state.reasoner.clone(), config);
 
     // Execute search
     let start = std::time::Instant::now();
@@ -203,7 +199,9 @@ pub async fn search<R: ReasoningEngine + Send + Sync + 'static>(
         }
 
         // Get matching documents
-        let documents = state.store.find_documents(&filter)
+        let documents = state
+            .store
+            .find_documents(&filter)
             .map_err(|e| ApiError::StorageError(e.to_string()))?;
 
         let mut all_results = Vec::new();
@@ -240,7 +238,9 @@ pub async fn search<R: ReasoningEngine + Send + Sync + 'static>(
         .into_iter()
         .map(|r| {
             // Get document_id from the node if needed
-            let doc_id = state.store.get_node(&r.node_id)
+            let doc_id = state
+                .store
+                .get_node(&r.node_id)
                 .ok()
                 .flatten()
                 .map(|n| n.document_id)

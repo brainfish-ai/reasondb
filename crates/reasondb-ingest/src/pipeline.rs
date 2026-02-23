@@ -131,13 +131,21 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
     /// Ingest a file using registered extractor plugins.
     ///
     /// The `table_id` must reference an existing table in the database.
-    pub async fn ingest_file<P: AsRef<Path>>(&self, path: P, table_id: &str) -> Result<IngestResult> {
+    pub async fn ingest_file<P: AsRef<Path>>(
+        &self,
+        path: P,
+        table_id: &str,
+    ) -> Result<IngestResult> {
         let path = path.as_ref();
         let start = std::time::Instant::now();
         let mut stats = IngestStats::default();
 
         let doc_type = DocumentType::from_path(path);
-        info!("Starting ingestion of {} file: {}", doc_type.name(), path.display());
+        info!(
+            "Starting ingestion of {} file: {}",
+            doc_type.name(),
+            path.display()
+        );
 
         // Extract document content
         let extraction_start = std::time::Instant::now();
@@ -153,7 +161,12 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
 
         // Process the markdown content
         let result = self
-            .process_markdown(&extraction.title, table_id, &extraction.markdown, &mut stats)
+            .process_markdown(
+                &extraction.title,
+                table_id,
+                &extraction.markdown,
+                &mut stats,
+            )
             .await?;
 
         stats.total_time_ms = start.elapsed().as_millis() as u64;
@@ -191,7 +204,12 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
 
         // Process the markdown content
         let result = self
-            .process_markdown(&extraction.title, table_id, &extraction.markdown, &mut stats)
+            .process_markdown(
+                &extraction.title,
+                table_id,
+                &extraction.markdown,
+                &mut stats,
+            )
             .await?;
 
         stats.total_time_ms = start.elapsed().as_millis() as u64;
@@ -227,13 +245,20 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
         if let Some(ref pm) = self.plugin_manager {
             if pm.has_post_processors() {
                 debug!("Running post-processor plugins");
-                match pm.run_post_processors(&processed_markdown, &std::collections::HashMap::new()) {
+                match pm.run_post_processors(&processed_markdown, &std::collections::HashMap::new())
+                {
                     Ok(result) => {
                         processed_markdown = result.markdown;
-                        debug!("Post-processing complete, {} chars", processed_markdown.len());
+                        debug!(
+                            "Post-processing complete, {} chars",
+                            processed_markdown.len()
+                        );
                     }
                     Err(e) => {
-                        warn!("Post-processor plugin failed, using original markdown: {}", e);
+                        warn!(
+                            "Post-processor plugin failed, using original markdown: {}",
+                            e
+                        );
                     }
                 }
             }
@@ -251,29 +276,27 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
                     overlap: 100,
                 };
                 match pm.chunk(&processed_markdown, &config) {
-                    Ok(result) => {
-                        result
-                            .chunks
-                            .into_iter()
-                            .map(|c| {
-                                let word_count = c.content.split_whitespace().count();
-                                crate::chunker::TextChunk {
-                                    id: uuid::Uuid::new_v4().to_string(),
-                                    content: c.content,
-                                    heading: c.heading.map(|text| crate::chunker::DetectedHeading {
-                                        text,
-                                        level: c.level,
-                                        offset: 0,
-                                        page_number: None,
-                                    }),
-                                    char_count: c.char_count,
-                                    word_count,
-                                    start_page: None,
-                                    end_page: None,
-                                }
-                            })
-                            .collect()
-                    }
+                    Ok(result) => result
+                        .chunks
+                        .into_iter()
+                        .map(|c| {
+                            let word_count = c.content.split_whitespace().count();
+                            crate::chunker::TextChunk {
+                                id: uuid::Uuid::new_v4().to_string(),
+                                content: c.content,
+                                heading: c.heading.map(|text| crate::chunker::DetectedHeading {
+                                    text,
+                                    level: c.level,
+                                    offset: 0,
+                                    page_number: None,
+                                }),
+                                char_count: c.char_count,
+                                word_count,
+                                start_page: None,
+                                end_page: None,
+                            }
+                        })
+                        .collect(),
                     Err(e) => {
                         warn!("Plugin chunker failed, falling back to built-in: {}", e);
                         self.chunker.chunk_text(&processed_markdown)?
@@ -307,15 +330,19 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
                     debug!("Using plugin summarizer");
                     for node in &mut nodes {
                         if let Some(ref content) = node.content {
-                            let context = std::collections::HashMap::from([
-                                ("title".to_string(), node.title.clone()),
-                            ]);
+                            let context = std::collections::HashMap::from([(
+                                "title".to_string(),
+                                node.title.clone(),
+                            )]);
                             match pm.summarize(content, &context) {
                                 Ok(result) => {
                                     node.summary = result.summary;
                                 }
                                 Err(e) => {
-                                    warn!("Plugin summarizer failed for node '{}': {}", node.title, e);
+                                    warn!(
+                                        "Plugin summarizer failed for node '{}': {}",
+                                        node.title, e
+                                    );
                                 }
                             }
                         }
@@ -357,14 +384,21 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
     /// Ingest plain text or markdown content.
     ///
     /// The `table_id` must reference an existing table in the database.
-    pub async fn ingest_text(&self, title: &str, table_id: &str, text: &str) -> Result<IngestResult> {
+    pub async fn ingest_text(
+        &self,
+        title: &str,
+        table_id: &str,
+        text: &str,
+    ) -> Result<IngestResult> {
         let start = std::time::Instant::now();
         let mut stats = IngestStats::default();
 
         info!("Starting text ingestion: {}", title);
         stats.chars_extracted = text.chars().count();
 
-        let result = self.process_markdown(title, table_id, text, &mut stats).await?;
+        let result = self
+            .process_markdown(title, table_id, text, &mut stats)
+            .await?;
 
         stats.total_time_ms = start.elapsed().as_millis() as u64;
 
@@ -443,7 +477,10 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
             if result.is_empty() {
                 return text.to_string();
             }
-            debug!("Stripped YAML frontmatter ({} chars removed)", text.len() - result.len());
+            debug!(
+                "Stripped YAML frontmatter ({} chars removed)",
+                text.len() - result.len()
+            );
             result
         } else {
             text.to_string()
@@ -614,7 +651,10 @@ Chapter 3: Conclusion
 In conclusion, our findings suggest significant results.
 "#;
 
-        let result = pipeline.ingest_text("Test Document", "test-table", text).await.unwrap();
+        let result = pipeline
+            .ingest_text("Test Document", "test-table", text)
+            .await
+            .unwrap();
 
         assert_eq!(result.document.title, "Test Document");
         assert_eq!(result.document.table_id, "test-table");

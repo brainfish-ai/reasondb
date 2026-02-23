@@ -28,9 +28,9 @@
 
 mod ast;
 mod error;
+mod executor;
 mod lexer;
 mod parser;
-mod executor;
 
 #[cfg(test)]
 mod tests;
@@ -269,7 +269,9 @@ impl QueryBuilder {
 
     /// Add a full-text search clause (BM25).
     pub fn search(mut self, query: &str) -> Self {
-        self.search = Some(SearchClause { query: query.to_string() });
+        self.search = Some(SearchClause {
+            query: query.to_string(),
+        });
         self
     }
 
@@ -332,9 +334,9 @@ impl QueryBuilder {
 
     /// Build the query.
     pub fn build(self) -> RqlResult<Query> {
-        let from = self.from.ok_or_else(|| {
-            RqlError::Validation("FROM clause is required".to_string())
-        })?;
+        let from = self
+            .from
+            .ok_or_else(|| RqlError::Validation("FROM clause is required".to_string()))?;
 
         // Combine conditions with AND
         let where_clause = if self.conditions.is_empty() {
@@ -345,7 +347,9 @@ impl QueryBuilder {
             let combined = iter.fold(first, |acc, cond| {
                 Condition::And(Box::new(acc), Box::new(cond))
             });
-            Some(WhereClause { condition: combined })
+            Some(WhereClause {
+                condition: combined,
+            })
         };
 
         let limit_clause = self.limit.map(|count| LimitClause {

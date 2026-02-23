@@ -61,18 +61,22 @@ pub enum PluginKind {
     Formatter,
 }
 
-impl PluginKind {
-    pub fn from_str(s: &str) -> Option<Self> {
+impl std::str::FromStr for PluginKind {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s {
-            "extractor" => Some(Self::Extractor),
-            "post_processor" | "postprocessor" => Some(Self::PostProcessor),
-            "chunker" => Some(Self::Chunker),
-            "summarizer" => Some(Self::Summarizer),
-            "formatter" => Some(Self::Formatter),
-            _ => None,
+            "extractor" => Ok(Self::Extractor),
+            "post_processor" | "postprocessor" => Ok(Self::PostProcessor),
+            "chunker" => Ok(Self::Chunker),
+            "summarizer" => Ok(Self::Summarizer),
+            "formatter" => Ok(Self::Formatter),
+            other => Err(format!("Unknown plugin kind '{}'", other)),
         }
     }
+}
 
+impl PluginKind {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Extractor => "extractor",
@@ -95,11 +99,7 @@ impl std::fmt::Display for PluginKind {
 /// Plugins must use one of these commands so the Docker image ships the
 /// required runtime. Compiled binaries (Rust, Go, C++) use a relative
 /// path like `"./my-binary"`.
-const SUPPORTED_COMMANDS: &[&str] = &[
-    "python3", "python",
-    "node",
-    "bash", "sh",
-];
+const SUPPORTED_COMMANDS: &[&str] = &["python3", "python", "node", "bash", "sh"];
 
 /// How to invoke the plugin process.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -152,9 +152,8 @@ pub struct PluginManifest {
 impl PluginManifest {
     /// Load and validate a manifest from a `plugin.toml` file.
     pub fn load(path: &Path) -> Result<Self> {
-        let content = std::fs::read_to_string(path).map_err(|e| {
-            PluginError::Manifest(format!("Cannot read {}: {}", path.display(), e))
-        })?;
+        let content = std::fs::read_to_string(path)
+            .map_err(|e| PluginError::Manifest(format!("Cannot read {}: {}", path.display(), e)))?;
         Self::parse(&content, path)
     }
 
@@ -165,7 +164,7 @@ impl PluginManifest {
             .map_err(|e| PluginError::Manifest(format!("Invalid TOML: {}", e)))?;
 
         let inner = file.plugin;
-        let kind = PluginKind::from_str(&inner.capabilities.kind).ok_or_else(|| {
+        let kind: PluginKind = inner.capabilities.kind.parse().map_err(|_| {
             PluginError::Manifest(format!(
                 "Unknown plugin kind '{}'. Expected: extractor, post_processor, chunker, summarizer, formatter",
                 inner.capabilities.kind
@@ -183,10 +182,7 @@ impl PluginManifest {
             )));
         }
 
-        let dir = file_path
-            .parent()
-            .unwrap_or(Path::new("."))
-            .to_path_buf();
+        let dir = file_path.parent().unwrap_or(Path::new(".")).to_path_buf();
 
         Ok(Self {
             name: inner.name,
@@ -259,7 +255,8 @@ priority = 200
 
     #[test]
     fn test_parse_manifest() {
-        let manifest = PluginManifest::parse(SAMPLE_MANIFEST, Path::new("/tmp/test/plugin.toml")).unwrap();
+        let manifest =
+            PluginManifest::parse(SAMPLE_MANIFEST, Path::new("/tmp/test/plugin.toml")).unwrap();
         assert_eq!(manifest.name, "test-extractor");
         assert_eq!(manifest.version, "1.0.0");
         assert_eq!(manifest.capabilities.kind, PluginKind::Extractor);
@@ -274,7 +271,8 @@ priority = 200
 
     #[test]
     fn test_handles_format() {
-        let manifest = PluginManifest::parse(SAMPLE_MANIFEST, Path::new("/tmp/plugin.toml")).unwrap();
+        let manifest =
+            PluginManifest::parse(SAMPLE_MANIFEST, Path::new("/tmp/plugin.toml")).unwrap();
         assert!(manifest.handles_format("pdf"));
         assert!(manifest.handles_format("PDF"));
         assert!(manifest.handles_format("docx"));
@@ -283,7 +281,8 @@ priority = 200
 
     #[test]
     fn test_handles_url_wildcard() {
-        let manifest = PluginManifest::parse(SAMPLE_MANIFEST, Path::new("/tmp/plugin.toml")).unwrap();
+        let manifest =
+            PluginManifest::parse(SAMPLE_MANIFEST, Path::new("/tmp/plugin.toml")).unwrap();
         assert!(manifest.handles_url("https://example.com"));
         assert!(manifest.handles_url("https://youtube.com/watch?v=123"));
     }
@@ -373,7 +372,10 @@ kind = "extractor"
 "#;
         let err = PluginManifest::parse(toml, Path::new("/tmp/plugin.toml"));
         assert!(err.is_err());
-        assert!(err.unwrap_err().to_string().contains("Unsupported plugin command"));
+        assert!(err
+            .unwrap_err()
+            .to_string()
+            .contains("Unsupported plugin command"));
     }
 
     #[test]
@@ -392,7 +394,13 @@ kind = "extractor"
 
     #[test]
     fn test_post_processor_alias() {
-        assert_eq!(PluginKind::from_str("post_processor"), Some(PluginKind::PostProcessor));
-        assert_eq!(PluginKind::from_str("postprocessor"), Some(PluginKind::PostProcessor));
+        assert_eq!(
+            "post_processor".parse::<PluginKind>(),
+            Ok(PluginKind::PostProcessor)
+        );
+        assert_eq!(
+            "postprocessor".parse::<PluginKind>(),
+            Ok(PluginKind::PostProcessor)
+        );
     }
 }

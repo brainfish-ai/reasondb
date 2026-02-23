@@ -255,9 +255,7 @@ impl NodeStore {
             let mut idx_pair = txn.open_table(IDX_DOC_PAIR).map_err(StorageError::from)?;
 
             // Remove from primary table
-            relations
-                .remove(relation_id)
-                .map_err(StorageError::from)?;
+            relations.remove(relation_id).map_err(StorageError::from)?;
 
             // Remove from indexes
             idx_from

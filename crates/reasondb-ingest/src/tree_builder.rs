@@ -367,7 +367,9 @@ mod tests {
             },
         ];
 
-        let (doc, nodes) = builder.build("Test Document", "test-table", chunks).unwrap();
+        let (doc, nodes) = builder
+            .build("Test Document", "test-table", chunks)
+            .unwrap();
 
         assert_eq!(doc.title, "Test Document");
         assert_eq!(doc.table_id, "test-table");

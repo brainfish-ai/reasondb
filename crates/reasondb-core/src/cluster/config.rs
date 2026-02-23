@@ -44,13 +44,11 @@ impl NodeConfig {
 
     /// Get or generate the node ID
     pub fn get_or_create_id(&mut self) -> NodeId {
-        self.node_id
-            .clone()
-            .unwrap_or_else(|| {
-                let id = NodeId::generate();
-                self.node_id = Some(id.clone());
-                id
-            })
+        self.node_id.clone().unwrap_or_else(|| {
+            let id = NodeId::generate();
+            self.node_id = Some(id.clone());
+            id
+        })
     }
 }
 
@@ -190,10 +188,11 @@ impl ClusterMember {
 
         Some(Self { node_id, raft_addr })
     }
+}
 
-    /// Format as string: "node_id@host:port"
-    pub fn to_string(&self) -> String {
-        format!("{}@{}", self.node_id, self.raft_addr)
+impl std::fmt::Display for ClusterMember {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}@{}", self.node_id, self.raft_addr)
     }
 }
 

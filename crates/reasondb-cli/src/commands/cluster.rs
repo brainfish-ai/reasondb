@@ -130,9 +130,12 @@ pub async fn execute(cmd: ClusterCommands, output: Output) -> anyhow::Result<()>
     match cmd {
         ClusterCommands::Status { server } => get_status(&server, output).await,
         ClusterCommands::Nodes { server } => list_nodes(&server, output).await,
-        ClusterCommands::AddNode { node_id, raft_addr, api_addr, server } => {
-            add_node(&server, &node_id, &raft_addr, api_addr.as_deref(), output).await
-        }
+        ClusterCommands::AddNode {
+            node_id,
+            raft_addr,
+            api_addr,
+            server,
+        } => add_node(&server, &node_id, &raft_addr, api_addr.as_deref(), output).await,
         ClusterCommands::RemoveNode { node_id, server } => {
             remove_node(&server, &node_id, output).await
         }
@@ -146,7 +149,7 @@ async fn get_status(server: &str, output: Output) -> anyhow::Result<()> {
     let url = format!("{}/v1/cluster/status", server);
 
     let response = client.get(&url).send().await?;
-    
+
     if !response.status().is_success() {
         let error_text = response.text().await?;
         anyhow::bail!("Failed to get cluster status: {}", error_text);
@@ -160,27 +163,43 @@ async fn get_status(server: &str, output: Output) -> anyhow::Result<()> {
         println!("{}", "Cluster Status".bold().cyan());
         println!("{}", "═".repeat(50).cyan());
         println!();
-        
+
         if status.enabled {
             println!("  {} {}", "Mode:".bold(), "Clustered".green());
             println!("  {} {}", "Cluster:".bold(), status.cluster_name);
-            println!("  {} {}", "Node ID:".bold(), status.node_id.unwrap_or_default());
-            println!("  {} {}", "Role:".bold(), format_role(&status.role.unwrap_or_default()));
+            println!(
+                "  {} {}",
+                "Node ID:".bold(),
+                status.node_id.unwrap_or_default()
+            );
+            println!(
+                "  {} {}",
+                "Role:".bold(),
+                format_role(&status.role.unwrap_or_default())
+            );
             println!("  {} {}", "Term:".bold(), status.term.unwrap_or(0));
             println!();
             println!("  {} {}", "Nodes:".bold(), status.node_count);
-            println!("  {} {}", "Has Quorum:".bold(), format_bool(status.has_quorum));
-            
+            println!(
+                "  {} {}",
+                "Has Quorum:".bold(),
+                format_bool(status.has_quorum)
+            );
+
             if let Some(leader) = &status.leader_id {
                 println!("  {} {}", "Leader:".bold(), leader);
             } else {
                 println!("  {} {}", "Leader:".bold(), "None".red());
             }
-            
+
             if let Some(applied) = status.last_applied {
                 println!();
                 println!("  {} {}", "Last Applied:".bold(), applied);
-                println!("  {} {}", "Commit Index:".bold(), status.commit_index.unwrap_or(0));
+                println!(
+                    "  {} {}",
+                    "Commit Index:".bold(),
+                    status.commit_index.unwrap_or(0)
+                );
             }
         } else {
             println!("  {} {}", "Mode:".bold(), "Standalone".yellow());
@@ -197,7 +216,7 @@ async fn list_nodes(server: &str, output: Output) -> anyhow::Result<()> {
     let url = format!("{}/v1/cluster/nodes", server);
 
     let response = client.get(&url).send().await?;
-    
+
     if !response.status().is_success() {
         let error_text = response.text().await?;
         anyhow::bail!("Failed to list nodes: {}", error_text);
@@ -211,7 +230,7 @@ async fn list_nodes(server: &str, output: Output) -> anyhow::Result<()> {
         println!("{}", "Cluster Nodes".bold().cyan());
         println!("{}", "═".repeat(80).cyan());
         println!();
-        
+
         if nodes_response.nodes.is_empty() {
             println!("  No nodes found");
         } else {
@@ -225,18 +244,22 @@ async fn list_nodes(server: &str, output: Output) -> anyhow::Result<()> {
                 "API Address".bold()
             );
             println!("  {}", "─".repeat(76));
-            
+
             for node in &nodes_response.nodes {
                 println!(
                     "  {:<16} {:<12} {:<10} {:<10} {:<24}",
                     truncate(&node.id, 14),
                     format_role(&node.role),
                     format_status(&node.status),
-                    if node.is_leader { "✓".green().to_string() } else { "-".dimmed().to_string() },
+                    if node.is_leader {
+                        "✓".green().to_string()
+                    } else {
+                        "-".dimmed().to_string()
+                    },
                     node.api_addr
                 );
             }
-            
+
             println!();
             println!("  Total: {} node(s)", nodes_response.count);
         }
@@ -263,7 +286,7 @@ async fn add_node(
     });
 
     let response = client.post(&url).json(&body).send().await?;
-    
+
     if !response.status().is_success() {
         let error_text = response.text().await?;
         anyhow::bail!("Failed to add node: {}", error_text);
@@ -293,7 +316,7 @@ async fn remove_node(server: &str, node_id: &str, output: Output) -> anyhow::Res
     });
 
     let response = client.post(&url).json(&body).send().await?;
-    
+
     if !response.status().is_success() {
         let error_text = response.text().await?;
         anyhow::bail!("Failed to remove node: {}", error_text);
@@ -319,7 +342,7 @@ async fn get_leader(server: &str, output: Output) -> anyhow::Result<()> {
     let url = format!("{}/v1/cluster/leader", server);
 
     let response = client.get(&url).send().await?;
-    
+
     if response.status().as_u16() == 503 {
         if output.is_json() {
             println!(r#"{{"error": "No leader elected"}}"#);
@@ -328,7 +351,7 @@ async fn get_leader(server: &str, output: Output) -> anyhow::Result<()> {
         }
         return Ok(());
     }
-    
+
     if !response.status().is_success() {
         let error_text = response.text().await?;
         anyhow::bail!("Failed to get leader: {}", error_text);
@@ -358,9 +381,9 @@ async fn check_health(server: &str, output: Output) -> anyhow::Result<()> {
     let url = format!("{}/v1/cluster/health", server);
 
     let response = client.get(&url).send().await?;
-    
+
     let is_healthy = response.status().is_success();
-    
+
     let health: ClusterHealthResponse = if is_healthy {
         response.json().await?
     } else {
@@ -379,19 +402,31 @@ async fn check_health(server: &str, output: Output) -> anyhow::Result<()> {
         println!("{}", "Cluster Health".bold().cyan());
         println!("{}", "═".repeat(50).cyan());
         println!();
-        
+
         if health.healthy {
             println!("  {} {}", "Status:".bold(), "Healthy".green().bold());
         } else {
             println!("  {} {}", "Status:".bold(), "Unhealthy".red().bold());
         }
-        
-        println!("  {} {}", "Has Quorum:".bold(), format_bool(health.has_quorum));
-        println!("  {} {}", "Has Leader:".bold(), format_bool(health.has_leader));
+
+        println!(
+            "  {} {}",
+            "Has Quorum:".bold(),
+            format_bool(health.has_quorum)
+        );
+        println!(
+            "  {} {}",
+            "Has Leader:".bold(),
+            format_bool(health.has_leader)
+        );
         println!("  {} {}", "Node Count:".bold(), health.node_count);
-        println!("  {} {}", "This Node Role:".bold(), format_role(&health.role));
+        println!(
+            "  {} {}",
+            "This Node Role:".bold(),
+            format_role(&health.role)
+        );
         println!();
-        
+
         if !health.healthy {
             std::process::exit(1);
         }

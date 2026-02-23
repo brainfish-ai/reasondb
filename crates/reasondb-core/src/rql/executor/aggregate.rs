@@ -4,8 +4,8 @@
 
 use std::collections::HashMap;
 
-use crate::store::NodeStore;
 use crate::rql::ast::*;
+use crate::store::NodeStore;
 
 use super::filter::{get_field_value, value_to_json};
 use super::types::{AggregateResult, AggregateValue, DocumentMatch};

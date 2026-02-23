@@ -9,7 +9,7 @@ use super::provider::LLMProvider;
 use crate::error::{ReasonError, Result};
 
 /// Provider-specific and general LLM options
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct LlmOptions {
     /// Temperature (0.0 = deterministic, 1.0 = creative). None = provider default.
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -34,20 +34,6 @@ pub struct LlmOptions {
     pub disable_thinking: bool,
 }
 
-impl Default for LlmOptions {
-    fn default() -> Self {
-        Self {
-            temperature: None,
-            max_tokens: None,
-            system_prompt: None,
-            top_p: None,
-            frequency_penalty: None,
-            presence_penalty: None,
-            disable_thinking: false,
-        }
-    }
-}
-
 /// Configuration for a single LLM model (provider + credentials + options)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmModelConfig {
@@ -70,9 +56,8 @@ pub struct LlmModelConfig {
 impl LlmModelConfig {
     /// Convert this config into an `LLMProvider` enum variant.
     pub fn to_provider(&self) -> Result<LLMProvider> {
-        let model_or = |default: &str| -> String {
-            self.model.clone().unwrap_or_else(|| default.to_string())
-        };
+        let model_or =
+            |default: &str| -> String { self.model.clone().unwrap_or_else(|| default.to_string()) };
 
         match self.provider.to_lowercase().as_str() {
             "openai" => {
@@ -269,7 +254,10 @@ mod tests {
         let config = LlmModelConfig::from(&provider);
         assert_eq!(config.provider, "ollama");
         assert!(config.api_key.is_none());
-        assert_eq!(config.base_url.as_deref(), Some("http://localhost:11434/v1"));
+        assert_eq!(
+            config.base_url.as_deref(),
+            Some("http://localhost:11434/v1")
+        );
 
         let back = config.to_provider().unwrap();
         assert_eq!(back.provider_name(), "ollama");

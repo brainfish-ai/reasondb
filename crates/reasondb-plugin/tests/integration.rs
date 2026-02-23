@@ -305,8 +305,7 @@ ANOTHER = "world"
 kind = "extractor"
 formats = ["pdf"]
 "#;
-    let manifest =
-        PluginManifest::parse(toml, std::path::Path::new("/tmp/plugin.toml")).unwrap();
+    let manifest = PluginManifest::parse(toml, std::path::Path::new("/tmp/plugin.toml")).unwrap();
     assert_eq!(manifest.runner.env.len(), 2);
     assert_eq!(manifest.runner.env.get("MY_VAR").unwrap(), "hello");
 }

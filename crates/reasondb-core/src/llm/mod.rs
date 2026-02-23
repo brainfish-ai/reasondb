@@ -214,11 +214,7 @@ pub trait ReasoningEngine: Send + Sync {
     /// # Returns
     ///
     /// A verification result indicating relevance and confidence.
-    async fn verify_answer(
-        &self,
-        query: &str,
-        content: &str,
-    ) -> Result<VerificationResult>;
+    async fn verify_answer(&self, query: &str, content: &str) -> Result<VerificationResult>;
 
     /// Generate a summary for a node during ingestion.
     ///
@@ -233,11 +229,7 @@ pub trait ReasoningEngine: Send + Sync {
     /// # Returns
     ///
     /// A concise summary suitable for LLM-guided navigation.
-    async fn summarize(
-        &self,
-        content: &str,
-        context: &SummarizationContext,
-    ) -> Result<String>;
+    async fn summarize(&self, content: &str, context: &SummarizationContext) -> Result<String>;
 
     /// Summarize multiple nodes in a single LLM request.
     ///

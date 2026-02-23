@@ -3,8 +3,8 @@
 //! This module handles WHERE clause evaluation and document filtering.
 
 use crate::model::Document;
-use crate::store::NodeStore;
 use crate::rql::ast::*;
+use crate::store::NodeStore;
 
 /// Check if a document matches a condition.
 pub fn matches_condition(store: &NodeStore, doc: &Document, condition: &Condition) -> bool {
@@ -151,12 +151,10 @@ fn matches_in(value: &Option<Value>, list: &Value) -> bool {
 fn matches_contains_all(doc: &Document, path: &FieldPath, values: &Value) -> bool {
     let field_name = path.first_field().unwrap_or("");
     match (field_name, values) {
-        ("tags", Value::Array(required)) => {
-            required.iter().all(|v| match v {
-                Value::String(tag) => doc.tags.contains(tag),
-                _ => false,
-            })
-        }
+        ("tags", Value::Array(required)) => required.iter().all(|v| match v {
+            Value::String(tag) => doc.tags.contains(tag),
+            _ => false,
+        }),
         _ => false,
     }
 }
@@ -165,12 +163,10 @@ fn matches_contains_all(doc: &Document, path: &FieldPath, values: &Value) -> boo
 fn matches_contains_any(doc: &Document, path: &FieldPath, values: &Value) -> bool {
     let field_name = path.first_field().unwrap_or("");
     match (field_name, values) {
-        ("tags", Value::Array(candidates)) => {
-            candidates.iter().any(|v| match v {
-                Value::String(tag) => doc.tags.contains(tag),
-                _ => false,
-            })
-        }
+        ("tags", Value::Array(candidates)) => candidates.iter().any(|v| match v {
+            Value::String(tag) => doc.tags.contains(tag),
+            _ => false,
+        }),
         _ => false,
     }
 }

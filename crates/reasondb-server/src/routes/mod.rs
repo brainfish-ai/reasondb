@@ -36,7 +36,9 @@ pub fn create_routes<R: ReasoningEngine + Clone + Send + Sync + 'static>(
 }
 
 /// V1 API routes
-fn v1_routes<R: ReasoningEngine + Clone + Send + Sync + 'static>(state: Arc<AppState<R>>) -> Router {
+fn v1_routes<R: ReasoningEngine + Clone + Send + Sync + 'static>(
+    state: Arc<AppState<R>>,
+) -> Router {
     Router::new()
         // Tables
         .route("/tables", post(tables::create_table::<R>))
@@ -44,9 +46,18 @@ fn v1_routes<R: ReasoningEngine + Clone + Send + Sync + 'static>(state: Arc<AppS
         .route("/tables/:id", get(tables::get_table::<R>))
         .route("/tables/:id", patch(tables::update_table::<R>))
         .route("/tables/:id", delete(tables::delete_table::<R>))
-        .route("/tables/:id/documents", get(tables::get_table_documents::<R>))
-        .route("/tables/:id/schema/metadata", get(tables::get_table_metadata_schema::<R>))
-        .route("/tables/:id/values/:column", get(tables::get_column_values::<R>))
+        .route(
+            "/tables/:id/documents",
+            get(tables::get_table_documents::<R>),
+        )
+        .route(
+            "/tables/:id/schema/metadata",
+            get(tables::get_table_metadata_schema::<R>),
+        )
+        .route(
+            "/tables/:id/values/:column",
+            get(tables::get_column_values::<R>),
+        )
         // Ingestion
         .route("/ingest/file", post(ingest::ingest_file::<R>))
         .route("/ingest/text", post(ingest::ingest_text::<R>))
@@ -65,12 +76,27 @@ fn v1_routes<R: ReasoningEngine + Clone + Send + Sync + 'static>(state: Arc<AppS
         .route("/documents", get(documents::list_documents::<R>))
         .route("/documents/:id", get(documents::get_document::<R>))
         .route("/documents/:id", delete(documents::delete_document::<R>))
-        .route("/documents/:id/nodes", get(documents::get_document_nodes::<R>))
-        .route("/documents/:id/tree", get(documents::get_document_tree::<R>))
+        .route(
+            "/documents/:id/nodes",
+            get(documents::get_document_nodes::<R>),
+        )
+        .route(
+            "/documents/:id/tree",
+            get(documents::get_document_tree::<R>),
+        )
         // Document Relations
-        .route("/documents/:id/relations", get(relations::get_document_relations::<R>))
-        .route("/documents/:id/related", get(relations::get_related_documents::<R>))
-        .route("/documents/:id/related-to/:other_id", get(relations::check_documents_related::<R>))
+        .route(
+            "/documents/:id/relations",
+            get(relations::get_document_relations::<R>),
+        )
+        .route(
+            "/documents/:id/related",
+            get(relations::get_related_documents::<R>),
+        )
+        .route(
+            "/documents/:id/related-to/:other_id",
+            get(relations::check_documents_related::<R>),
+        )
         // Relations
         .route("/relations", post(relations::create_relation::<R>))
         .route("/relations/:id", get(relations::get_relation::<R>))

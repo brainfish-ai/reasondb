@@ -233,7 +233,8 @@ fn test_search_filter_matches() {
     assert!(!filter3.matches_tags(&doc));
 
     // Should match metadata (author is now in metadata)
-    let filter4 = SearchFilter::new().with_metadata("author", Value::String("Legal Team".to_string()));
+    let filter4 =
+        SearchFilter::new().with_metadata("author", Value::String("Legal Team".to_string()));
     assert!(filter4.matches_metadata(&doc));
 
     // Should match metadata

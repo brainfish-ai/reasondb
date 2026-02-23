@@ -64,18 +64,23 @@ pub async fn run(url: &str, cmd: TablesCommands, format: OutputFormat) -> Result
                 }
                 OutputFormat::Table => {
                     if response.tables.is_empty() {
-                        output::info("No tables found. Create one with: reasondb tables create <name>");
+                        output::info(
+                            "No tables found. Create one with: reasondb tables create <name>",
+                        );
                     } else {
-                        let mut t = output::create_table(vec![
-                            "ID", "Name", "Docs", "Nodes",
-                        ]);
+                        let mut t = output::create_table(vec!["ID", "Name", "Docs", "Nodes"]);
 
                         for table in &response.tables {
                             t.add_row(vec![
                                 Cell::new(output::format_id(&table.id)),
                                 Cell::new(&table.name),
                                 Cell::new(table.document_count.to_string()),
-                                Cell::new(table.total_nodes.map(|n| n.to_string()).unwrap_or("-".to_string())),
+                                Cell::new(
+                                    table
+                                        .total_nodes
+                                        .map(|n| n.to_string())
+                                        .unwrap_or("-".to_string()),
+                                ),
                             ]);
                         }
 
@@ -91,8 +96,11 @@ pub async fn run(url: &str, cmd: TablesCommands, format: OutputFormat) -> Result
         }
 
         TablesCommands::Create { name, description } => {
-            let request = CreateTableRequest { name: name.clone(), description };
-            
+            let request = CreateTableRequest {
+                name: name.clone(),
+                description,
+            };
+
             let response: Table = client
                 .post(format!("{}/v1/tables", url))
                 .json(&request)
@@ -158,10 +166,10 @@ pub async fn run(url: &str, cmd: TablesCommands, format: OutputFormat) -> Result
                     "Warning:".yellow().bold(),
                     id.cyan()
                 );
-                
+
                 let mut input = String::new();
                 std::io::stdin().read_line(&mut input)?;
-                
+
                 if !input.trim().eq_ignore_ascii_case("y") {
                     output::info("Cancelled");
                     return Ok(());

@@ -121,7 +121,9 @@ where
     ),
     tag = "cluster"
 )]
-pub async fn get_cluster_status<R: reasondb_core::llm::ReasoningEngine + Clone + Send + Sync + 'static>(
+pub async fn get_cluster_status<
+    R: reasondb_core::llm::ReasoningEngine + Clone + Send + Sync + 'static,
+>(
     State(state): State<Arc<AppState<R>>>,
 ) -> crate::error::ApiResult<Json<ClusterStatusResponse>> {
     let response = if let Some(node) = &state.cluster_node {
@@ -170,10 +172,10 @@ pub async fn list_nodes<R: reasondb_core::llm::ReasoningEngine + Clone + Send + 
 ) -> crate::error::ApiResult<Json<ListNodesResponse>> {
     let nodes = if let Some(node) = &state.cluster_node {
         let cluster_state = node.state_machine().state();
-        let state_guard = cluster_state.read().map_err(|_| {
-            ApiError::Internal("Failed to read cluster state".to_string())
-        })?;
-        
+        let state_guard = cluster_state
+            .read()
+            .map_err(|_| ApiError::Internal("Failed to read cluster state".to_string()))?;
+
         state_guard
             .nodes
             .values()
@@ -224,18 +226,23 @@ pub async fn add_node<R: reasondb_core::llm::ReasoningEngine + Clone + Send + Sy
     Json(req): Json<AddNodeRequest>,
 ) -> crate::error::ApiResult<Json<OperationResponse>> {
     let Some(node) = &state.cluster_node else {
-        return Err(ApiError::BadRequest("Clustering is not enabled".to_string()));
+        return Err(ApiError::BadRequest(
+            "Clustering is not enabled".to_string(),
+        ));
     };
 
     // Only leader can add nodes
     if !node.is_leader().await {
-        return Err(ApiError::BadRequest("Only leader can add nodes".to_string()));
+        return Err(ApiError::BadRequest(
+            "Only leader can add nodes".to_string(),
+        ));
     }
 
     let node_id = NodeId::new(&req.node_id);
-    let raft_addr: std::net::SocketAddr = req.raft_addr.parse().map_err(|_| {
-        ApiError::BadRequest("Invalid raft_addr format".to_string())
-    })?;
+    let raft_addr: std::net::SocketAddr = req
+        .raft_addr
+        .parse()
+        .map_err(|_| ApiError::BadRequest("Invalid raft_addr format".to_string()))?;
 
     // Add peer to network
     node.add_peer(&node_id, raft_addr).await;
@@ -262,12 +269,16 @@ pub async fn remove_node<R: reasondb_core::llm::ReasoningEngine + Clone + Send +
     Json(req): Json<RemoveNodeRequest>,
 ) -> crate::error::ApiResult<Json<OperationResponse>> {
     let Some(node) = &state.cluster_node else {
-        return Err(ApiError::BadRequest("Clustering is not enabled".to_string()));
+        return Err(ApiError::BadRequest(
+            "Clustering is not enabled".to_string(),
+        ));
     };
 
     // Only leader can remove nodes
     if !node.is_leader().await {
-        return Err(ApiError::BadRequest("Only leader can remove nodes".to_string()));
+        return Err(ApiError::BadRequest(
+            "Only leader can remove nodes".to_string(),
+        ));
     }
 
     let node_id = NodeId::new(&req.node_id);
@@ -294,10 +305,10 @@ pub async fn get_leader<R: reasondb_core::llm::ReasoningEngine + Clone + Send + 
 ) -> crate::error::ApiResult<Json<NodeInfo>> {
     if let Some(node) = &state.cluster_node {
         let cluster_state = node.state_machine().state();
-        let state_guard = cluster_state.read().map_err(|_| {
-            ApiError::Internal("Failed to read cluster state".to_string())
-        })?;
-        
+        let state_guard = cluster_state
+            .read()
+            .map_err(|_| ApiError::Internal("Failed to read cluster state".to_string()))?;
+
         if let Some(leader) = state_guard.get_leader() {
             return Ok(Json(NodeInfo {
                 id: leader.id.to_string(),
@@ -311,9 +322,11 @@ pub async fn get_leader<R: reasondb_core::llm::ReasoningEngine + Clone + Send + 
                 last_heartbeat: leader.last_heartbeat,
             }));
         }
-        
+
         // No leader elected
-        return Err(ApiError::ServiceUnavailable("No leader elected".to_string()));
+        return Err(ApiError::ServiceUnavailable(
+            "No leader elected".to_string(),
+        ));
     }
 
     // Single node mode - this node is leader
@@ -340,18 +353,22 @@ pub async fn get_leader<R: reasondb_core::llm::ReasoningEngine + Clone + Send + 
     ),
     tag = "cluster"
 )]
-pub async fn cluster_health<R: reasondb_core::llm::ReasoningEngine + Clone + Send + Sync + 'static>(
+pub async fn cluster_health<
+    R: reasondb_core::llm::ReasoningEngine + Clone + Send + Sync + 'static,
+>(
     State(state): State<Arc<AppState<R>>>,
 ) -> crate::error::ApiResult<Json<ClusterHealthResponse>> {
     if let Some(node) = &state.cluster_node {
         let status = node.status().await;
-        
+
         let healthy = status.has_quorum && status.leader_id.is_some();
-        
+
         if !healthy {
-            return Err(ApiError::ServiceUnavailable("Cluster does not have quorum".to_string()));
+            return Err(ApiError::ServiceUnavailable(
+                "Cluster does not have quorum".to_string(),
+            ));
         }
-        
+
         return Ok(Json(ClusterHealthResponse {
             healthy: true,
             has_quorum: status.has_quorum,

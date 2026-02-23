@@ -183,8 +183,6 @@ impl SearchFilter {
 
     /// Check if a document matches all non-indexed filters.
     pub fn matches_document(&self, doc: &Document) -> bool {
-        self.matches_date_range(doc)
-            && self.matches_tags(doc)
-            && self.matches_metadata(doc)
+        self.matches_date_range(doc) && self.matches_tags(doc) && self.matches_metadata(doc)
     }
 }

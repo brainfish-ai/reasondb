@@ -38,7 +38,7 @@ pub async fn run(
     title: Option<String>,
 ) -> Result<()> {
     let path = Path::new(&file);
-    
+
     if !path.exists() {
         return Err(anyhow::anyhow!("File not found: {}", file));
     }
@@ -52,9 +52,7 @@ pub async fn run(
     match extension.as_str() {
         "json" => import_json(url, &file, table).await,
         "csv" => import_csv(url, &file, table).await,
-        "txt" | "md" | "markdown" => {
-            import_text(url, &file, table, title).await
-        }
+        "txt" | "md" | "markdown" => import_text(url, &file, table, title).await,
         _ => {
             // Try to import as text
             output::warning(&format!(
@@ -127,12 +125,12 @@ async fn import_json(url: &str, file: &str, table: Option<String>) -> Result<()>
 
 async fn import_csv(url: &str, file: &str, table: Option<String>) -> Result<()> {
     let mut reader = csv::Reader::from_path(file)?;
-    
+
     // Check headers
     let headers = reader.headers()?.clone();
     let title_idx = headers.iter().position(|h| h == "title");
     let content_idx = headers.iter().position(|h| h == "content");
-    
+
     if title_idx.is_none() || content_idx.is_none() {
         return Err(anyhow::anyhow!(
             "CSV must have 'title' and 'content' columns"
@@ -167,10 +165,10 @@ async fn import_csv(url: &str, file: &str, table: Option<String>) -> Result<()> 
 
     for result in reader.records() {
         let record = result?;
-        
+
         let title = record.get(title_idx).unwrap_or("").to_string();
         let content = record.get(content_idx).unwrap_or("").to_string();
-        
+
         if title.is_empty() || content.is_empty() {
             failed += 1;
             pb.inc(1);
@@ -232,7 +230,7 @@ async fn import_text(
 ) -> Result<()> {
     let content = std::fs::read_to_string(file)?;
     let path = Path::new(file);
-    
+
     let title = title.unwrap_or_else(|| {
         path.file_stem()
             .and_then(|s| s.to_str())

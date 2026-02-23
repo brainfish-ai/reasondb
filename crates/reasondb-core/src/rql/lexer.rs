@@ -59,21 +59,21 @@ pub enum Token {
     False,
 
     // Symbols
-    Star,           // *
-    Comma,          // ,
-    Dot,            // .
-    LParen,         // (
-    RParen,         // )
-    LBracket,       // [
-    RBracket,       // ]
+    Star,     // *
+    Comma,    // ,
+    Dot,      // .
+    LParen,   // (
+    RParen,   // )
+    LBracket, // [
+    RBracket, // ]
 
     // Operators
-    Eq,             // =
-    Ne,             // != or <>
-    Lt,             // <
-    Gt,             // >
-    Le,             // <=
-    Ge,             // >=
+    Eq, // =
+    Ne, // != or <>
+    Lt, // <
+    Gt, // >
+    Le, // <=
+    Ge, // >=
 
     // Literals
     String(String),
@@ -191,7 +191,7 @@ impl Lexer {
         }
 
         // Numbers
-        if ch.is_ascii_digit() || (ch == '-' && self.peek().map_or(false, |c| c.is_ascii_digit())) {
+        if ch.is_ascii_digit() || (ch == '-' && self.peek().is_some_and(|c| c.is_ascii_digit())) {
             return self.read_number();
         }
 

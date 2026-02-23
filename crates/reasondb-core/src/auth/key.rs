@@ -3,8 +3,8 @@
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-use super::permissions::Permissions;
 use super::hash_api_key;
+use super::permissions::Permissions;
 
 /// Unique identifier for an API key
 pub type ApiKeyId = String;
@@ -88,7 +88,11 @@ impl ApiKey {
     /// Generate a new API key
     ///
     /// Returns (ApiKey, raw_key) - the raw key is only available at creation time!
-    pub fn generate(name: String, environment: KeyPrefix, permissions: Permissions) -> (Self, String) {
+    pub fn generate(
+        name: String,
+        environment: KeyPrefix,
+        permissions: Permissions,
+    ) -> (Self, String) {
         let id = format!("key_{}", generate_id(12));
         let raw_key = generate_raw_key(environment);
         let key_hash = hash_api_key(&raw_key);
@@ -103,7 +107,7 @@ impl ApiKey {
             permissions,
             description: None,
             owner_id: None,
-            rate_limit_rpm: Some(60),  // Default: 60 requests/minute
+            rate_limit_rpm: Some(60),    // Default: 60 requests/minute
             rate_limit_rpd: Some(10000), // Default: 10k requests/day
             created_at: chrono::Utc::now().timestamp_millis(),
             last_used_at: None,
@@ -199,7 +203,7 @@ fn generate_raw_key(prefix: KeyPrefix) -> String {
     // Format: rdb_live_<32 random chars><3 char checksum>
     let random_part = generate_id(32);
     let full = format!("{}{}", prefix.as_str(), random_part);
-    
+
     // Add simple checksum (last 3 chars based on hash)
     let checksum = &hash_api_key(&full)[..3];
     format!("{}{}", full, checksum)

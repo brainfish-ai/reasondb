@@ -73,16 +73,10 @@ fn extract_json_from_response(response: &str) -> &str {
 fn repair_duplicate_key_json(json_str: &str, duplicate_field: &str) -> Option<String> {
     use regex::Regex;
 
-    let pattern = format!(
-        r#",\s*"{}"\s*:"#,
-        regex::escape(duplicate_field)
-    );
+    let pattern = format!(r#",\s*"{}"\s*:"#, regex::escape(duplicate_field));
     let split_re = Regex::new(&pattern).ok()?;
 
-    let first_field_pattern = format!(
-        r#""{}"\s*:"#,
-        regex::escape(duplicate_field)
-    );
+    let first_field_pattern = format!(r#""{}"\s*:"#, regex::escape(duplicate_field));
     let first_re = Regex::new(&first_field_pattern).ok()?;
 
     let all_matches: Vec<_> = first_re.find_iter(json_str).collect();
@@ -97,7 +91,10 @@ fn repair_duplicate_key_json(json_str: &str, duplicate_field: &str) -> Option<St
     );
 
     if serde_json::from_str::<serde_json::Value>(&repaired).is_ok() {
-        debug!("Repaired duplicate-key JSON for field '{}'", duplicate_field);
+        debug!(
+            "Repaired duplicate-key JSON for field '{}'",
+            duplicate_field
+        );
         Some(repaired.into_owned())
     } else {
         None
@@ -322,7 +319,11 @@ impl Reasoner {
         if let Some(pp) = self.options.presence_penalty {
             map.insert("presence_penalty".into(), serde_json::json!(pp));
         }
-        if map.is_empty() { None } else { Some(serde_json::Value::Object(map)) }
+        if map.is_empty() {
+            None
+        } else {
+            Some(serde_json::Value::Object(map))
+        }
     }
 
     /// Get the effective preamble: options override, or fallback to the provided default.
@@ -377,9 +378,10 @@ impl Reasoner {
                 }
                 let extractor = builder.build();
 
-                extractor.extract(prompt).await.map_err(|e| {
-                    ReasonError::Reasoning(format!("OpenAI extraction error: {}", e))
-                })
+                extractor
+                    .extract(prompt)
+                    .await
+                    .map_err(|e| ReasonError::Reasoning(format!("OpenAI extraction error: {}", e)))
             }
             LLMProvider::Anthropic { api_key, model } => {
                 // rig-core 0.6.1's ExtractorBuilder doesn't expose max_tokens()
@@ -457,9 +459,10 @@ impl Reasoner {
                 }
                 let extractor = builder.build();
 
-                extractor.extract(prompt).await.map_err(|e| {
-                    ReasonError::Reasoning(format!("Gemini extraction error: {}", e))
-                })
+                extractor
+                    .extract(prompt)
+                    .await
+                    .map_err(|e| ReasonError::Reasoning(format!("Gemini extraction error: {}", e)))
             }
             LLMProvider::Cohere { api_key, model } => {
                 let client = rig::providers::cohere::Client::new(api_key);
@@ -469,35 +472,43 @@ impl Reasoner {
                 }
                 let extractor = builder.build();
 
-                extractor.extract(prompt).await.map_err(|e| {
-                    ReasonError::Reasoning(format!("Cohere extraction error: {}", e))
-                })
+                extractor
+                    .extract(prompt)
+                    .await
+                    .map_err(|e| ReasonError::Reasoning(format!("Cohere extraction error: {}", e)))
             }
             LLMProvider::Glm { api_key, model } => {
-                let client = rig::providers::openai::Client::from_url(api_key, "https://open.bigmodel.cn/api/paas/v4");
+                let client = rig::providers::openai::Client::from_url(
+                    api_key,
+                    "https://open.bigmodel.cn/api/paas/v4",
+                );
                 let mut builder = client.extractor::<T>(model);
                 if let Some(preamble) = &self.options.system_prompt {
                     builder = builder.preamble(preamble);
                 }
                 let extractor = builder.build();
 
-                extractor.extract(prompt).await.map_err(|e| {
-                    ReasonError::Reasoning(format!("GLM extraction error: {}", e))
-                })
+                extractor
+                    .extract(prompt)
+                    .await
+                    .map_err(|e| ReasonError::Reasoning(format!("GLM extraction error: {}", e)))
             }
             LLMProvider::Kimi { api_key, model } => {
-                let client = rig::providers::openai::Client::from_url(api_key, "https://api.moonshot.ai/v1");
+                let client =
+                    rig::providers::openai::Client::from_url(api_key, "https://api.moonshot.ai/v1");
                 let default_preamble = "You are a structured data extraction assistant. Extract the requested information accurately.";
-                let mut builder = client.extractor::<T>(model)
+                let mut builder = client
+                    .extractor::<T>(model)
                     .preamble(self.effective_preamble(default_preamble));
                 if let Some(preamble) = &self.options.system_prompt {
                     builder = builder.preamble(preamble);
                 }
                 let extractor = builder.build();
 
-                extractor.extract(prompt).await.map_err(|e| {
-                    ReasonError::Reasoning(format!("Kimi extraction error: {}", e))
-                })
+                extractor
+                    .extract(prompt)
+                    .await
+                    .map_err(|e| ReasonError::Reasoning(format!("Kimi extraction error: {}", e)))
             }
             LLMProvider::Ollama { base_url, model } => {
                 let client = rig::providers::openai::Client::from_url("ollama", base_url);
@@ -507,9 +518,10 @@ impl Reasoner {
                 }
                 let extractor = builder.build();
 
-                extractor.extract(prompt).await.map_err(|e| {
-                    ReasonError::Reasoning(format!("Ollama extraction error: {}", e))
-                })
+                extractor
+                    .extract(prompt)
+                    .await
+                    .map_err(|e| ReasonError::Reasoning(format!("Ollama extraction error: {}", e)))
             }
         }
     }
@@ -558,9 +570,10 @@ impl Reasoner {
                 let client = rig::providers::openai::Client::new(api_key);
                 let agent = self.apply_agent_options(client.agent(model)).build();
 
-                agent.prompt(prompt).await.map_err(|e| {
-                    ReasonError::Reasoning(format!("OpenAI completion error: {}", e))
-                })
+                agent
+                    .prompt(prompt)
+                    .await
+                    .map_err(|e| ReasonError::Reasoning(format!("OpenAI completion error: {}", e)))
             }
             LLMProvider::Anthropic { api_key, model } => {
                 let client = rig::providers::anthropic::ClientBuilder::new(api_key).build();
@@ -579,45 +592,54 @@ impl Reasoner {
                 let client = rig::providers::gemini::Client::new(api_key);
                 let agent = self.apply_agent_options(client.agent(model)).build();
 
-                agent.prompt(prompt).await.map_err(|e| {
-                    ReasonError::Reasoning(format!("Gemini completion error: {}", e))
-                })
+                agent
+                    .prompt(prompt)
+                    .await
+                    .map_err(|e| ReasonError::Reasoning(format!("Gemini completion error: {}", e)))
             }
             LLMProvider::Cohere { api_key, model } => {
                 let client = rig::providers::cohere::Client::new(api_key);
                 let agent = self.apply_agent_options(client.agent(model)).build();
 
-                agent.prompt(prompt).await.map_err(|e| {
-                    ReasonError::Reasoning(format!("Cohere completion error: {}", e))
-                })
+                agent
+                    .prompt(prompt)
+                    .await
+                    .map_err(|e| ReasonError::Reasoning(format!("Cohere completion error: {}", e)))
             }
             LLMProvider::Glm { api_key, model } => {
-                let client = rig::providers::openai::Client::from_url(api_key, "https://open.bigmodel.cn/api/paas/v4");
+                let client = rig::providers::openai::Client::from_url(
+                    api_key,
+                    "https://open.bigmodel.cn/api/paas/v4",
+                );
                 let agent = self.apply_agent_options(client.agent(model)).build();
 
-                agent.prompt(prompt).await.map_err(|e| {
-                    ReasonError::Reasoning(format!("GLM completion error: {}", e))
-                })
+                agent
+                    .prompt(prompt)
+                    .await
+                    .map_err(|e| ReasonError::Reasoning(format!("GLM completion error: {}", e)))
             }
             LLMProvider::Kimi { api_key, model } => {
-                let client = rig::providers::openai::Client::from_url(api_key, "https://api.moonshot.ai/v1");
+                let client =
+                    rig::providers::openai::Client::from_url(api_key, "https://api.moonshot.ai/v1");
                 let mut builder = client.agent(model);
                 if self.options.system_prompt.is_none() {
                     builder = builder.preamble("You are a helpful assistant.");
                 }
                 let agent = self.apply_agent_options(builder).build();
 
-                agent.prompt(prompt).await.map_err(|e| {
-                    ReasonError::Reasoning(format!("Kimi completion error: {}", e))
-                })
+                agent
+                    .prompt(prompt)
+                    .await
+                    .map_err(|e| ReasonError::Reasoning(format!("Kimi completion error: {}", e)))
             }
             LLMProvider::Ollama { base_url, model } => {
                 let client = rig::providers::openai::Client::from_url("ollama", base_url);
                 let agent = self.apply_agent_options(client.agent(model)).build();
 
-                agent.prompt(prompt).await.map_err(|e| {
-                    ReasonError::Reasoning(format!("Ollama completion error: {}", e))
-                })
+                agent
+                    .prompt(prompt)
+                    .await
+                    .map_err(|e| ReasonError::Reasoning(format!("Ollama completion error: {}", e)))
             }
         }
     }
@@ -762,7 +784,11 @@ Provide only the summary, no additional commentary."#,
             .iter()
             .map(|(node_id, content, ctx)| {
                 let truncated: String = content.chars().take(2000).collect();
-                let node_type = if ctx.is_leaf { "content" } else { "section summaries" };
+                let node_type = if ctx.is_leaf {
+                    "content"
+                } else {
+                    "section summaries"
+                };
                 let title = ctx.title.as_deref().unwrap_or("Untitled");
                 format!(
                     "[node_id: \"{}\"] Title: \"{}\" ({})\n{}",
@@ -823,12 +849,10 @@ Return summaries for ALL {count} sections."#,
                 } else {
                     &doc.summary
                 };
-                let mut entry = format!(
-                    "{}. [{}] \"{}\" - {}",
-                    i + 1, doc.id, doc.title, summary
-                );
+                let mut entry = format!("{}. [{}] \"{}\" - {}", i + 1, doc.id, doc.title, summary);
                 if !doc.matched_sections.is_empty() {
-                    let sections: Vec<&str> = doc.matched_sections
+                    let sections: Vec<&str> = doc
+                        .matched_sections
                         .iter()
                         .take(MAX_SECTIONS)
                         .map(|s| s.as_str())
@@ -866,7 +890,11 @@ Format: {{"rankings": [{{"document_id": "...", "relevance": 0.9}}]}}"#,
         let result: DocumentRankings = self.extract_lean(&prompt).await?;
 
         let mut rankings = result.rankings;
-        rankings.sort_by(|a, b| b.relevance.partial_cmp(&a.relevance).unwrap_or(std::cmp::Ordering::Equal));
+        rankings.sort_by(|a, b| {
+            b.relevance
+                .partial_cmp(&a.relevance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         rankings.truncate(top_k);
 
         Ok(rankings)
@@ -907,14 +935,18 @@ mod tests {
         assert_eq!(kimi.provider_name(), "kimi");
 
         let kimi_long = LLMProvider::kimi_long("test-key");
-        assert!(matches!(kimi_long, LLMProvider::Kimi { model, .. } if model == "moonshot-v1-128k"));
+        assert!(
+            matches!(kimi_long, LLMProvider::Kimi { model, .. } if model == "moonshot-v1-128k")
+        );
 
         let ollama = LLMProvider::ollama("llama3.3");
         assert!(matches!(ollama, LLMProvider::Ollama { ref model, .. } if model == "llama3.3"));
         assert_eq!(ollama.provider_name(), "ollama");
 
         let ollama_custom = LLMProvider::ollama_from_url("http://remote:11434/v1", "qwen2.5");
-        assert!(matches!(ollama_custom, LLMProvider::Ollama { base_url, model } if base_url == "http://remote:11434/v1" && model == "qwen2.5"));
+        assert!(
+            matches!(ollama_custom, LLMProvider::Ollama { base_url, model } if base_url == "http://remote:11434/v1" && model == "qwen2.5")
+        );
     }
 
     #[test]
@@ -949,8 +981,10 @@ mod tests {
     fn test_repair_duplicate_key_json() {
         let malformed = r#"{"selections": [{"node_id": "aaa", "confidence": 0.95, "reasoning": "first reason", "node_id": "bbb", "confidence": 0.75, "reasoning": "second reason"}]}"#;
 
-        let repaired = repair_duplicate_key_json(malformed, "node_id").expect("repair should succeed");
-        let parsed: serde_json::Value = serde_json::from_str(&repaired).expect("repaired JSON should parse");
+        let repaired =
+            repair_duplicate_key_json(malformed, "node_id").expect("repair should succeed");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&repaired).expect("repaired JSON should parse");
         let selections = parsed["selections"].as_array().unwrap();
         assert_eq!(selections.len(), 2);
         assert_eq!(selections[0]["node_id"], "aaa");
@@ -961,15 +995,18 @@ mod tests {
     fn test_repair_duplicate_reasoning_field() {
         let malformed = r#"{"selections": [{"node_id": "aaa", "confidence": 0.95, "reasoning": "first", "reasoning": "second"}]}"#;
 
-        let repaired = repair_duplicate_key_json(malformed, "reasoning").expect("repair should succeed");
-        let parsed: serde_json::Value = serde_json::from_str(&repaired).expect("repaired JSON should parse");
+        let repaired =
+            repair_duplicate_key_json(malformed, "reasoning").expect("repair should succeed");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&repaired).expect("repaired JSON should parse");
         let selections = parsed["selections"].as_array().unwrap();
         assert_eq!(selections.len(), 2);
     }
 
     #[test]
     fn test_repair_no_duplicates_returns_none() {
-        let valid = r#"{"selections": [{"node_id": "aaa", "confidence": 0.95, "reasoning": "ok"}]}"#;
+        let valid =
+            r#"{"selections": [{"node_id": "aaa", "confidence": 0.95, "reasoning": "ok"}]}"#;
         assert!(repair_duplicate_key_json(valid, "node_id").is_none());
     }
 
@@ -981,8 +1018,7 @@ mod tests {
             ..Default::default()
         };
 
-        let reasoner =
-            Reasoner::new(LLMProvider::openai_mini("test")).with_config(config.clone());
+        let reasoner = Reasoner::new(LLMProvider::openai_mini("test")).with_config(config.clone());
 
         assert_eq!(reasoner.config.beam_width, 5);
         assert_eq!(reasoner.config.min_confidence, 0.5);

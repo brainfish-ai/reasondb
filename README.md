@@ -135,6 +135,13 @@ flowchart TD
 
 Get from zero to intelligent document search in under 5 minutes.
 
+#### Install with Homebrew (macOS / Linux)
+
+```bash
+brew tap reasondb/tap
+brew install reasondb
+```
+
 #### Install from source
 
 ```bash

@@ -58,12 +58,7 @@ pub async fn run(url: &str, cmd: DocsCommands, format: OutputFormat) -> Result<(
                 request_url.push_str(&format!("&table_id={}", table_id));
             }
 
-            let documents: Vec<Document> = client
-                .get(&request_url)
-                .send()
-                .await?
-                .json()
-                .await?;
+            let documents: Vec<Document> = client.get(&request_url).send().await?.json().await?;
 
             match format {
                 OutputFormat::Json => {
@@ -85,11 +80,12 @@ pub async fn run(url: &str, cmd: DocsCommands, format: OutputFormat) -> Result<(
                 }
                 OutputFormat::Table => {
                     if documents.is_empty() {
-                        output::info("No documents found. Ingest one with: reasondb docs ingest <title>");
+                        output::info(
+                            "No documents found. Ingest one with: reasondb docs ingest <title>",
+                        );
                     } else {
-                        let mut t = output::create_table(vec![
-                            "ID", "Title", "Tags", "Author", "Nodes",
-                        ]);
+                        let mut t =
+                            output::create_table(vec!["ID", "Title", "Tags", "Author", "Nodes"]);
 
                         for doc in &documents {
                             t.add_row(vec![
@@ -97,7 +93,11 @@ pub async fn run(url: &str, cmd: DocsCommands, format: OutputFormat) -> Result<(
                                 Cell::new(truncate(&doc.title, 40)),
                                 Cell::new(truncate(&doc.tags.join(", "), 20)),
                                 Cell::new(doc.author.as_deref().unwrap_or("-")),
-                                Cell::new(doc.total_nodes.map(|n| n.to_string()).unwrap_or("-".to_string())),
+                                Cell::new(
+                                    doc.total_nodes
+                                        .map(|n| n.to_string())
+                                        .unwrap_or("-".to_string()),
+                                ),
                             ]);
                         }
 
@@ -168,10 +168,10 @@ pub async fn run(url: &str, cmd: DocsCommands, format: OutputFormat) -> Result<(
                     "Warning:".yellow().bold(),
                     id.cyan()
                 );
-                
+
                 let mut input = String::new();
                 std::io::stdin().read_line(&mut input)?;
-                
+
                 if !input.trim().eq_ignore_ascii_case("y") {
                     output::info("Cancelled");
                     return Ok(());
@@ -204,11 +204,8 @@ pub async fn run(url: &str, cmd: DocsCommands, format: OutputFormat) -> Result<(
                 ));
             };
 
-            let tags: Option<Vec<String>> = tags.map(|t| {
-                t.split(',')
-                    .map(|s| s.trim().to_string())
-                    .collect()
-            });
+            let tags: Option<Vec<String>> =
+                tags.map(|t| t.split(',').map(|s| s.trim().to_string()).collect());
 
             let request = IngestRequest {
                 title: title.clone(),

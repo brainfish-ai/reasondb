@@ -146,7 +146,8 @@ async fn run_keys(url: &str, cmd: KeysCommands) -> Result<()> {
             let req = CreateKeyRequest {
                 name: name.clone(),
                 environment,
-                permissions: permissions.map(|p| p.split(',').map(|s| s.trim().to_string()).collect()),
+                permissions: permissions
+                    .map(|p| p.split(',').map(|s| s.trim().to_string()).collect()),
                 description,
                 expires_in_days,
             };
@@ -167,7 +168,11 @@ async fn run_keys(url: &str, cmd: KeysCommands) -> Result<()> {
                 println!("  {} {}", "ID:".dimmed(), data.id);
                 println!("  {} {}", "Name:".dimmed(), data.name);
                 println!("  {} {}", "Environment:".dimmed(), data.environment);
-                println!("  {} {}", "Permissions:".dimmed(), data.permissions.join(", "));
+                println!(
+                    "  {} {}",
+                    "Permissions:".dimmed(),
+                    data.permissions.join(", ")
+                );
                 if let Some(exp) = data.expires_at {
                     let dt = chrono::DateTime::from_timestamp_millis(exp)
                         .map(|d| d.format("%Y-%m-%d %H:%M:%S UTC").to_string())
@@ -175,7 +180,10 @@ async fn run_keys(url: &str, cmd: KeysCommands) -> Result<()> {
                     println!("  {} {}", "Expires:".dimmed(), dt);
                 }
                 println!();
-                println!("  {}", "⚠️  Save this key now - it will not be shown again!".yellow());
+                println!(
+                    "  {}",
+                    "⚠️  Save this key now - it will not be shown again!".yellow()
+                );
                 println!();
                 println!("  {} {}", "API Key:".cyan().bold(), data.key.green());
                 println!();
@@ -251,11 +259,19 @@ async fn run_keys(url: &str, cmd: KeysCommands) -> Result<()> {
                 println!("  {} {}", "Name:".dimmed(), key.name);
                 println!("  {} {}", "Prefix:".dimmed(), key.key_prefix_hint);
                 println!("  {} {}", "Environment:".dimmed(), key.environment);
-                println!("  {} {}", "Permissions:".dimmed(), key.permissions.join(", "));
+                println!(
+                    "  {} {}",
+                    "Permissions:".dimmed(),
+                    key.permissions.join(", ")
+                );
                 println!(
                     "  {} {}",
                     "Status:".dimmed(),
-                    if key.is_active { "active".green() } else { "revoked".red() }
+                    if key.is_active {
+                        "active".green()
+                    } else {
+                        "revoked".red()
+                    }
                 );
                 if let Some(desc) = &key.description {
                     println!("  {} {}", "Description:".dimmed(), desc);
@@ -315,7 +331,10 @@ async fn run_keys(url: &str, cmd: KeysCommands) -> Result<()> {
                 println!("  {} {}", "Name:".dimmed(), data.name);
                 println!();
                 println!("  {}", "⚠️  The old key has been revoked!".yellow());
-                println!("  {}", "⚠️  Save this new key now - it will not be shown again!".yellow());
+                println!(
+                    "  {}",
+                    "⚠️  Save this new key now - it will not be shown again!".yellow()
+                );
                 println!();
                 println!("  {} {}", "New API Key:".cyan().bold(), data.key.green());
                 println!();

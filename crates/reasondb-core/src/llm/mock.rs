@@ -223,11 +223,7 @@ impl ReasoningEngine for MockReasoner {
         })
     }
 
-    async fn summarize(
-        &self,
-        content: &str,
-        context: &SummarizationContext,
-    ) -> Result<String> {
+    async fn summarize(&self, content: &str, context: &SummarizationContext) -> Result<String> {
         self.log_call(MockCall::Summarize {
             content_len: content.len(),
         });
@@ -245,11 +241,7 @@ impl ReasoningEngine for MockReasoner {
             .collect::<String>()
             .replace('\n', " ");
 
-        Ok(format!(
-            "{}{}...",
-            title_part,
-            preview.trim()
-        ))
+        Ok(format!("{}{}...", title_part, preview.trim()))
     }
 
     async fn summarize_batch(
@@ -275,7 +267,10 @@ impl ReasoningEngine for MockReasoner {
                     .collect::<String>()
                     .replace('\n', " ");
 
-                Ok((node_id.clone(), format!("{}{}...", title_part, preview.trim())))
+                Ok((
+                    node_id.clone(),
+                    format!("{}{}...", title_part, preview.trim()),
+                ))
             })
             .collect()
     }
@@ -394,10 +389,7 @@ mod tests {
     async fn test_call_logging() {
         let reasoner = MockReasoner::new();
 
-        let _ = reasoner
-            .verify_answer("test", "content")
-            .await
-            .unwrap();
+        let _ = reasoner.verify_answer("test", "content").await.unwrap();
 
         let log = reasoner.get_call_log();
         assert_eq!(log.len(), 1);

@@ -119,7 +119,12 @@ impl From<&ApiKey> for ApiKeyInfo {
             name: key.name.clone(),
             key_prefix_hint: key.key_prefix_hint.clone(),
             environment: format!("{:?}", key.environment).to_lowercase(),
-            permissions: key.permissions.to_vec().iter().map(|p| p.to_string()).collect(),
+            permissions: key
+                .permissions
+                .to_vec()
+                .iter()
+                .map(|p| p.to_string())
+                .collect(),
             description: key.description.clone(),
             rate_limit_rpm: key.rate_limit_rpm,
             rate_limit_rpd: key.rate_limit_rpd,
@@ -266,7 +271,12 @@ pub async fn create_key<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         key_prefix_hint: key.key_prefix_hint.clone(),
         name: key.name.clone(),
         environment: format!("{:?}", key.environment).to_lowercase(),
-        permissions: key.permissions.to_vec().iter().map(|p| p.to_string()).collect(),
+        permissions: key
+            .permissions
+            .to_vec()
+            .iter()
+            .map(|p| p.to_string())
+            .collect(),
         expires_at: key.expires_at,
         warning: "⚠️ Save this key now! It will not be shown again.".to_string(),
     };
@@ -316,7 +326,12 @@ pub async fn list_keys<R: ReasoningEngine + Clone + Send + Sync + 'static>(
             name: m.name.clone(),
             key_prefix_hint: m.key_prefix_hint.clone(),
             environment: format!("{:?}", m.environment).to_lowercase(),
-            permissions: m.permissions.to_vec().iter().map(|p| p.to_string()).collect(),
+            permissions: m
+                .permissions
+                .to_vec()
+                .iter()
+                .map(|p| p.to_string())
+                .collect(),
             description: m.description.clone(),
             rate_limit_rpm: m.rate_limit_rpm,
             rate_limit_rpd: m.rate_limit_rpd,
@@ -461,8 +476,11 @@ pub async fn rotate_key<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         .ok_or_else(|| ApiError::NotFound(format!("API key not found: {}", id)))?;
 
     // Create new key with same settings
-    let (mut new_key, raw_key) =
-        ApiKey::generate(old_key.name.clone(), old_key.environment, old_key.permissions.clone());
+    let (mut new_key, raw_key) = ApiKey::generate(
+        old_key.name.clone(),
+        old_key.environment,
+        old_key.permissions.clone(),
+    );
     new_key.description = old_key.description.clone();
     new_key.owner_id = old_key.owner_id.clone();
     new_key.rate_limit_rpm = old_key.rate_limit_rpm;
@@ -487,7 +505,12 @@ pub async fn rotate_key<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         key_prefix_hint: new_key.key_prefix_hint.clone(),
         name: new_key.name.clone(),
         environment: format!("{:?}", new_key.environment).to_lowercase(),
-        permissions: new_key.permissions.to_vec().iter().map(|p| p.to_string()).collect(),
+        permissions: new_key
+            .permissions
+            .to_vec()
+            .iter()
+            .map(|p| p.to_string())
+            .collect(),
         expires_at: new_key.expires_at,
         warning: "⚠️ Save this key now! The old key has been revoked.".to_string(),
     };

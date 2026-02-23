@@ -89,11 +89,7 @@ pub fn extract_client_id(headers: &HeaderMap, addr: Option<SocketAddr>) -> Clien
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
-        .or_else(|| {
-            headers
-                .get("X-API-Key")
-                .and_then(|v| v.to_str().ok())
-        });
+        .or_else(|| headers.get("X-API-Key").and_then(|v| v.to_str().ok()));
 
     // Get IP address
     let ip = headers
@@ -160,7 +156,6 @@ pub async fn rate_limit_middleware(
 
     response
 }
-
 
 #[cfg(test)]
 mod tests {

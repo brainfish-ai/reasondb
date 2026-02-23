@@ -113,11 +113,7 @@ impl ReasoningEngine for DynamicReasoner {
         self.retrieval().verify_answer(query, content).await
     }
 
-    async fn summarize(
-        &self,
-        content: &str,
-        context: &SummarizationContext,
-    ) -> Result<String> {
+    async fn summarize(&self, content: &str, context: &SummarizationContext) -> Result<String> {
         self.ingestion().summarize(content, context).await
     }
 

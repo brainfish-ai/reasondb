@@ -35,10 +35,7 @@ pub enum NetworkMessage {
         last_log_term: u64,
     },
     /// Raft RequestVote response
-    RequestVoteResponse {
-        term: u64,
-        vote_granted: bool,
-    },
+    RequestVoteResponse { term: u64, vote_granted: bool },
     /// Install snapshot request
     InstallSnapshot {
         term: u64,
@@ -50,10 +47,7 @@ pub enum NetworkMessage {
         done: bool,
     },
     /// Install snapshot response
-    InstallSnapshotResponse {
-        term: u64,
-        success: bool,
-    },
+    InstallSnapshotResponse { term: u64, success: bool },
     /// Heartbeat (lightweight AppendEntries)
     Heartbeat {
         term: u64,
@@ -61,15 +55,9 @@ pub enum NetworkMessage {
         leader_commit: u64,
     },
     /// Heartbeat response
-    HeartbeatResponse {
-        term: u64,
-        success: bool,
-    },
+    HeartbeatResponse { term: u64, success: bool },
     /// Forward write request to leader
-    ForwardWrite {
-        request_id: String,
-        entry: Vec<u8>,
-    },
+    ForwardWrite { request_id: String, entry: Vec<u8> },
     /// Forward write response
     ForwardWriteResponse {
         request_id: String,
@@ -147,7 +135,7 @@ impl NetworkClient {
     ) -> Result<NetworkMessage, NetworkError> {
         let peers = self.peers.read().await;
         let addr = peers.get(&node_id.0).ok_or(NetworkError::PeerNotFound)?;
-        
+
         self.send_to_addr(*addr, message).await
     }
 
@@ -188,7 +176,10 @@ impl NetworkClient {
     }
 
     /// Broadcast a message to all peers
-    pub async fn broadcast(&self, message: NetworkMessage) -> Vec<(NodeId, Result<NetworkMessage, NetworkError>)> {
+    pub async fn broadcast(
+        &self,
+        message: NetworkMessage,
+    ) -> Vec<(NodeId, Result<NetworkMessage, NetworkError>)> {
         let peers: Vec<_> = {
             let peers = self.peers.read().await;
             peers
@@ -286,7 +277,11 @@ mod tests {
         let decoded = NetworkMessage::from_bytes(&bytes).unwrap();
 
         match decoded {
-            NetworkMessage::Heartbeat { term, leader_id, leader_commit } => {
+            NetworkMessage::Heartbeat {
+                term,
+                leader_id,
+                leader_commit,
+            } => {
                 assert_eq!(term, 5);
                 assert_eq!(leader_id, "node-1");
                 assert_eq!(leader_commit, 100);
@@ -298,13 +293,17 @@ mod tests {
     #[tokio::test]
     async fn test_network_client_peers() {
         let client = NetworkClient::new();
-        
-        client.add_peer(&NodeId::new("node-1"), "127.0.0.1:4445".parse().unwrap()).await;
-        client.add_peer(&NodeId::new("node-2"), "127.0.0.1:4446".parse().unwrap()).await;
-        
+
+        client
+            .add_peer(&NodeId::new("node-1"), "127.0.0.1:4445".parse().unwrap())
+            .await;
+        client
+            .add_peer(&NodeId::new("node-2"), "127.0.0.1:4446".parse().unwrap())
+            .await;
+
         let peers = client.get_peers().await;
         assert_eq!(peers.len(), 2);
-        
+
         client.remove_peer(&NodeId::new("node-1")).await;
         let peers = client.get_peers().await;
         assert_eq!(peers.len(), 1);

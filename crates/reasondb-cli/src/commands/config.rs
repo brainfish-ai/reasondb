@@ -401,7 +401,12 @@ async fn run_llm_config(server_url: &str, cmd: LlmConfigCommands) -> Result<()> 
             println!();
         }
 
-        LlmConfigCommands::Set { provider, api_key, model, base_url } => {
+        LlmConfigCommands::Set {
+            provider,
+            api_key,
+            model,
+            base_url,
+        } => {
             let config = build_model_json(&provider, api_key, model, base_url, None, None, false);
             let body = serde_json::json!({
                 "ingestion": config,
@@ -414,14 +419,30 @@ async fn run_llm_config(server_url: &str, cmd: LlmConfigCommands) -> Result<()> 
                 let body = resp.text().await.unwrap_or_default();
                 anyhow::bail!("Server returned {}: {}", status, body);
             }
-            println!("  {} LLM settings updated (both ingestion & retrieval)", "✓".green());
+            println!(
+                "  {} LLM settings updated (both ingestion & retrieval)",
+                "✓".green()
+            );
         }
 
         LlmConfigCommands::SetIngestion {
-            provider, api_key, model, base_url,
-            temperature, max_tokens, disable_thinking,
+            provider,
+            api_key,
+            model,
+            base_url,
+            temperature,
+            max_tokens,
+            disable_thinking,
         } => {
-            let config = build_model_json(&provider, api_key, model, base_url, temperature, max_tokens, disable_thinking);
+            let config = build_model_json(
+                &provider,
+                api_key,
+                model,
+                base_url,
+                temperature,
+                max_tokens,
+                disable_thinking,
+            );
             let body = serde_json::json!({ "ingestion": config });
 
             let resp = client.patch(&url).json(&body).send().await?;
@@ -434,10 +455,22 @@ async fn run_llm_config(server_url: &str, cmd: LlmConfigCommands) -> Result<()> 
         }
 
         LlmConfigCommands::SetRetrieval {
-            provider, api_key, model, base_url,
-            temperature, max_tokens,
+            provider,
+            api_key,
+            model,
+            base_url,
+            temperature,
+            max_tokens,
         } => {
-            let config = build_model_json(&provider, api_key, model, base_url, temperature, max_tokens, false);
+            let config = build_model_json(
+                &provider,
+                api_key,
+                model,
+                base_url,
+                temperature,
+                max_tokens,
+                false,
+            );
             let body = serde_json::json!({ "retrieval": config });
 
             let resp = client.patch(&url).json(&body).send().await?;
@@ -524,7 +557,11 @@ fn print_model_config(config: Option<&serde_json::Value>) {
             if let Some(mt) = opts.get("max_tokens").and_then(|v| v.as_u64()) {
                 println!("  max_tokens  = {}", mt.to_string().green());
             }
-            if opts.get("disable_thinking").and_then(|v| v.as_bool()).unwrap_or(false) {
+            if opts
+                .get("disable_thinking")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+            {
                 println!("  disable_thinking = {}", "true".green());
             }
         }
@@ -607,10 +644,7 @@ async fn init_interactive() -> Result<()> {
     }
 
     // Server URL
-    print!(
-        "\nServer URL [{}]: ",
-        config.server.url.dimmed()
-    );
+    print!("\nServer URL [{}]: ", config.server.url.dimmed());
     io::stdout().flush()?;
 
     let mut url = String::new();

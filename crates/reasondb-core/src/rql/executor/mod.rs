@@ -16,11 +16,11 @@
 //! - `plan` - Query plan building for EXPLAIN
 //! - `reason` - LLM-powered semantic search execution
 
-mod types;
-mod filter;
 mod aggregate;
+mod filter;
 mod plan;
 mod reason;
+mod types;
 
 // Re-export public types
 pub use types::*;
@@ -131,7 +131,11 @@ impl NodeStore {
         let filtered = self.apply_where_filter_with_scores(documents, query.where_clause.as_ref());
 
         // Sort (BM25 already sorted, only sort if no search)
-        let sorted = self.sort_search_results(filtered, query, text_index.is_some() && query.search.is_some());
+        let sorted = self.sort_search_results(
+            filtered,
+            query,
+            text_index.is_some() && query.search.is_some(),
+        );
 
         // Get total count before pagination
         let total_count = sorted.len();
@@ -166,7 +170,8 @@ impl NodeStore {
         // Handle aggregates
         if let SelectClause::Aggregates(ref aggs) = query.select {
             let matches = self.convert_to_matches_with_scores(sorted, true);
-            let aggregates = aggregate::compute_aggregates(self, &matches, aggs, query.group_by.as_ref());
+            let aggregates =
+                aggregate::compute_aggregates(self, &matches, aggs, query.group_by.as_ref());
             return Ok(QueryResult {
                 documents: Vec::new(),
                 total_count,
@@ -189,7 +194,8 @@ impl NodeStore {
             total_count,
             execution_time_ms: start.elapsed().as_millis() as u64,
             stats: QueryStats {
-                rows_returned: total_count.min(query.limit.as_ref().map(|l| l.count).unwrap_or(total_count)),
+                rows_returned: total_count
+                    .min(query.limit.as_ref().map(|l| l.count).unwrap_or(total_count)),
                 ..stats
             },
             aggregates: None,
@@ -239,7 +245,8 @@ impl NodeStore {
                 reason_clause.min_confidence,
                 text_index,
                 reasoner,
-            ).await;
+            )
+            .await;
         }
 
         // For non-REASON queries, delegate to execute_rql_with_search
@@ -266,7 +273,8 @@ impl NodeStore {
                 text_index,
                 reasoner,
                 progress_tx,
-            ).await;
+            )
+            .await;
         }
 
         self.execute_rql_with_search(query, text_index)
@@ -296,7 +304,11 @@ impl NodeStore {
     }
 
     /// Apply WHERE clause filtering to documents.
-    fn apply_where_filter(&self, documents: Vec<Document>, where_clause: Option<&WhereClause>) -> Vec<Document> {
+    fn apply_where_filter(
+        &self,
+        documents: Vec<Document>,
+        where_clause: Option<&WhereClause>,
+    ) -> Vec<Document> {
         if let Some(wc) = where_clause {
             documents
                 .into_iter()
@@ -362,7 +374,7 @@ impl NodeStore {
         use crate::model::RelationType;
 
         // Convert RQL RelationFilter to model RelationType
-        let relation_type = relation_filter.map(|rf| match rf {
+        let relation_type = relation_filter.and_then(|rf| match rf {
             RelationFilter::Any => None,
             RelationFilter::References => Some(RelationType::References),
             RelationFilter::ReferencedBy => Some(RelationType::ReferencedBy),
@@ -373,7 +385,7 @@ impl NodeStore {
             RelationFilter::ParentOf => Some(RelationType::ParentOf),
             RelationFilter::ChildOf => Some(RelationType::ChildOf),
             RelationFilter::Custom(s) => Some(RelationType::Custom(s.clone())),
-        }).flatten();
+        });
 
         // Get related document IDs using the store's relation methods
         let related_ids = self.get_related_documents(document_id, relation_type.as_ref())?;
@@ -550,7 +562,8 @@ impl NodeStore {
             llm_calls: 0,
         };
 
-        let aggregates = aggregate::compute_aggregates(self, &matches, aggs, query.group_by.as_ref());
+        let aggregates =
+            aggregate::compute_aggregates(self, &matches, aggs, query.group_by.as_ref());
 
         Ok(QueryResult {
             documents: Vec::new(),

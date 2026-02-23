@@ -157,7 +157,9 @@ pub struct TreeNode {
     pub summary: String,
     /// Original content (only present for leaf nodes)
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(example = "Neural networks are computing systems inspired by biological neural networks...")]
+    #[schema(
+        example = "Neural networks are computing systems inspired by biological neural networks..."
+    )]
     pub content: Option<String>,
     /// Depth in the tree (0 = root)
     #[schema(example = 1)]

@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
+type ApplyCallback = Box<dyn Fn(&LogEntry) -> Result<ApplyResult, ReasonError> + Send + Sync>;
+
 /// Result of applying a log entry
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApplyResult {
@@ -83,10 +85,7 @@ impl ClusterState {
 
     /// Get all healthy nodes
     pub fn healthy_nodes(&self) -> Vec<&ClusterNode> {
-        self.nodes
-            .values()
-            .filter(|n| n.is_healthy())
-            .collect()
+        self.nodes.values().filter(|n| n.is_healthy()).collect()
     }
 
     /// Get all nodes that can serve reads
@@ -101,7 +100,12 @@ impl ClusterState {
     pub fn voting_members(&self) -> usize {
         self.nodes
             .values()
-            .filter(|n| matches!(n.role, NodeRole::Leader | NodeRole::Follower | NodeRole::Candidate))
+            .filter(|n| {
+                matches!(
+                    n.role,
+                    NodeRole::Leader | NodeRole::Follower | NodeRole::Candidate
+                )
+            })
             .count()
     }
 
@@ -128,7 +132,7 @@ pub struct ClusterStateMachine {
     /// Cluster state
     state: Arc<RwLock<ClusterState>>,
     /// Callback for applying entries to the database
-    apply_callback: Option<Box<dyn Fn(&LogEntry) -> Result<ApplyResult, ReasonError> + Send + Sync>>,
+    apply_callback: Option<ApplyCallback>,
 }
 
 impl ClusterStateMachine {
@@ -159,29 +163,36 @@ impl ClusterStateMachine {
     /// Apply a log entry to the state machine
     pub fn apply(&self, entry: &LogEntry) -> Result<ApplyResult, ReasonError> {
         // Handle membership changes internally
-        if let LogEntryType::MembershipChange { change_type, node_id, raft_addr } = &entry.entry_type {
+        if let LogEntryType::MembershipChange {
+            change_type,
+            node_id,
+            raft_addr,
+        } = &entry.entry_type
+        {
             return self.apply_membership_change(*change_type, node_id, raft_addr.as_deref());
         }
 
         // Apply through callback if set
         if let Some(callback) = &self.apply_callback {
             let result = callback(entry)?;
-            
+
             // Update last applied
-            let mut state = self.state.write().map_err(|_| {
-                ReasonError::Internal("Failed to acquire state lock".to_string())
-            })?;
+            let mut state = self
+                .state
+                .write()
+                .map_err(|_| ReasonError::Internal("Failed to acquire state lock".to_string()))?;
             state.last_applied = entry.index;
-            
+
             return Ok(result);
         }
 
         // No callback, just update index
-        let mut state = self.state.write().map_err(|_| {
-            ReasonError::Internal("Failed to acquire state lock".to_string())
-        })?;
+        let mut state = self
+            .state
+            .write()
+            .map_err(|_| ReasonError::Internal("Failed to acquire state lock".to_string()))?;
         state.last_applied = entry.index;
-        
+
         Ok(ApplyResult::Success)
     }
 
@@ -194,9 +205,10 @@ impl ClusterStateMachine {
     ) -> Result<ApplyResult, ReasonError> {
         use super::log::MembershipChangeType::*;
 
-        let mut state = self.state.write().map_err(|_| {
-            ReasonError::Internal("Failed to acquire state lock".to_string())
-        })?;
+        let mut state = self
+            .state
+            .write()
+            .map_err(|_| ReasonError::Internal("Failed to acquire state lock".to_string()))?;
 
         match change_type {
             AddVoter | AddLearner => {
@@ -233,21 +245,22 @@ impl ClusterStateMachine {
 
     /// Get a snapshot of the state
     pub fn snapshot(&self) -> Result<Vec<u8>, ReasonError> {
-        let state = self.state.read().map_err(|_| {
-            ReasonError::Internal("Failed to acquire state lock".to_string())
-        })?;
+        let state = self
+            .state
+            .read()
+            .map_err(|_| ReasonError::Internal("Failed to acquire state lock".to_string()))?;
         Ok(state.to_bytes())
     }
 
     /// Restore from a snapshot
     pub fn restore(&self, snapshot: &[u8]) -> Result<(), ReasonError> {
-        let new_state = ClusterState::from_bytes(snapshot).ok_or_else(|| {
-            ReasonError::Internal("Failed to deserialize snapshot".to_string())
-        })?;
+        let new_state = ClusterState::from_bytes(snapshot)
+            .ok_or_else(|| ReasonError::Internal("Failed to deserialize snapshot".to_string()))?;
 
-        let mut state = self.state.write().map_err(|_| {
-            ReasonError::Internal("Failed to acquire state lock".to_string())
-        })?;
+        let mut state = self
+            .state
+            .write()
+            .map_err(|_| ReasonError::Internal("Failed to acquire state lock".to_string()))?;
         *state = new_state;
 
         Ok(())
@@ -267,14 +280,14 @@ mod tests {
     #[test]
     fn test_cluster_state_basic() {
         let mut state = ClusterState::new();
-        
+
         let node = ClusterNode::new(
             NodeId::new("node-1"),
             "Primary".to_string(),
             "127.0.0.1:4444".parse().unwrap(),
             "127.0.0.1:4445".parse().unwrap(),
         );
-        
+
         state.upsert_node(node);
         assert!(state.get_node(&NodeId::new("node-1")).is_some());
     }
@@ -282,7 +295,7 @@ mod tests {
     #[test]
     fn test_leader_election() {
         let mut state = ClusterState::new();
-        
+
         // Add three nodes
         for i in 1..=3 {
             let mut node = ClusterNode::new(
@@ -294,14 +307,14 @@ mod tests {
             node.status = NodeStatus::Healthy;
             state.upsert_node(node);
         }
-        
+
         // Elect node-2 as leader
         state.set_leader(Some(NodeId::new("node-2")));
-        
+
         let leader = state.get_leader().unwrap();
         assert_eq!(leader.id.as_str(), "node-2");
         assert!(leader.is_leader());
-        
+
         // Other nodes should be followers
         let node1 = state.get_node(&NodeId::new("node-1")).unwrap();
         assert_eq!(node1.role, NodeRole::Follower);
@@ -310,7 +323,7 @@ mod tests {
     #[test]
     fn test_quorum() {
         let mut state = ClusterState::new();
-        
+
         // Add 3 nodes, 2 healthy
         for i in 1..=3 {
             let mut node = ClusterNode::new(
@@ -319,12 +332,16 @@ mod tests {
                 format!("127.0.0.1:{}", 4444 + i).parse().unwrap(),
                 format!("127.0.0.1:{}", 4544 + i).parse().unwrap(),
             );
-            node.status = if i <= 2 { NodeStatus::Healthy } else { NodeStatus::Down };
+            node.status = if i <= 2 {
+                NodeStatus::Healthy
+            } else {
+                NodeStatus::Down
+            };
             state.upsert_node(node);
         }
-        
+
         assert!(state.has_quorum()); // 2 out of 3 healthy
-        
+
         // Mark another node down
         state.get_node_mut(&NodeId::new("node-2")).unwrap().status = NodeStatus::Down;
         assert!(!state.has_quorum()); // Only 1 out of 3 healthy

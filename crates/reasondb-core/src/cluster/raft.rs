@@ -30,7 +30,11 @@ pub struct RaftNodeInfo {
 
 impl std::fmt::Display for RaftNodeInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "RaftNode(api={}, raft={})", self.api_addr, self.raft_addr)
+        write!(
+            f,
+            "RaftNode(api={}, raft={})",
+            self.api_addr, self.raft_addr
+        )
     }
 }
 
@@ -83,7 +87,7 @@ impl RaftNode {
     fn node_id_to_raft_id(node_id: &NodeId) -> RaftId {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
-        
+
         let mut hasher = DefaultHasher::new();
         node_id.0.hash(&mut hasher);
         hasher.finish()
@@ -128,7 +132,9 @@ impl RaftNode {
     pub async fn start(&self) -> Result<(), ReasonError> {
         let mut running = self.running.write().await;
         if *running {
-            return Err(ReasonError::InvalidOperation("Node already running".to_string()));
+            return Err(ReasonError::InvalidOperation(
+                "Node already running".to_string(),
+            ));
         }
         *running = true;
 
@@ -140,10 +146,10 @@ impl RaftNode {
 
         // Initialize cluster state
         let state = self.state_machine.state();
-        let mut cluster_state = state.write().map_err(|_| {
-            ReasonError::Internal("Failed to acquire state lock".to_string())
-        })?;
-        
+        let mut cluster_state = state
+            .write()
+            .map_err(|_| ReasonError::Internal("Failed to acquire state lock".to_string()))?;
+
         // Add self to cluster state
         let self_node = ClusterNode::new(
             self.node_id.clone(),
@@ -179,7 +185,7 @@ impl RaftNode {
         // Check if we're the leader
         if !self.is_leader().await {
             return Err(ReasonError::InvalidOperation(
-                "Not the leader - forward to leader".to_string()
+                "Not the leader - forward to leader".to_string(),
             ));
         }
 
@@ -190,7 +196,7 @@ impl RaftNode {
     /// Become the leader (for single-node or testing)
     pub async fn become_leader(&self) {
         *self.role.write().await = NodeRole::Leader;
-        
+
         // Update cluster state
         let state = self.state_machine.state();
         if let Ok(mut cluster_state) = state.write() {
@@ -207,7 +213,7 @@ impl RaftNode {
     /// Step down from leader
     pub async fn step_down(&self) {
         *self.role.write().await = NodeRole::Follower;
-        
+
         tracing::info!(
             node_id = %self.node_id,
             "Stepped down from leader"
@@ -297,7 +303,7 @@ impl RaftNode {
         // Read role and term first (these are tokio RwLock which is Send)
         let role = *self.role.read().await;
         let term = *self.current_term.read().await;
-        
+
         // Then read cluster state (this is std RwLock, don't hold across await)
         let (leader_id, nodes, last_applied, commit_index, has_quorum) = {
             let state = self.state_machine.state();
@@ -310,7 +316,7 @@ impl RaftNode {
                 cluster_state.has_quorum(),
             )
         };
-        
+
         ClusterStatus {
             node_id: self.node_id.clone(),
             raft_id: self.raft_id,
@@ -372,9 +378,9 @@ mod tests {
         let node_id = NodeId::new("test-node");
         let config = ClusterConfig::default();
         let state_machine = Arc::new(ClusterStateMachine::new());
-        
+
         let raft_node = RaftNode::new(node_id.clone(), config, state_machine);
-        
+
         assert_eq!(raft_node.node_id().as_str(), "test-node");
         assert!(!raft_node.is_leader().await);
         assert_eq!(raft_node.current_term().await, 0);
@@ -385,16 +391,16 @@ mod tests {
         let node_id = NodeId::new("test-node");
         let config = ClusterConfig::default();
         let state_machine = Arc::new(ClusterStateMachine::new());
-        
+
         let raft_node = RaftNode::new(node_id, config, state_machine);
-        
+
         // Start
         raft_node.start().await.unwrap();
         assert!(raft_node.is_running().await);
-        
+
         // Starting again should fail
         assert!(raft_node.start().await.is_err());
-        
+
         // Stop
         raft_node.stop().await.unwrap();
         assert!(!raft_node.is_running().await);
@@ -405,15 +411,15 @@ mod tests {
         let node_id = NodeId::new("leader-node");
         let config = ClusterConfig::default();
         let state_machine = Arc::new(ClusterStateMachine::new());
-        
+
         let raft_node = RaftNode::new(node_id.clone(), config, state_machine);
         raft_node.start().await.unwrap();
-        
+
         assert!(!raft_node.is_leader().await);
-        
+
         raft_node.become_leader().await;
         assert!(raft_node.is_leader().await);
-        
+
         let status = raft_node.status().await;
         assert_eq!(status.role, NodeRole::Leader);
         assert_eq!(status.leader_id, Some(node_id));
@@ -424,19 +430,19 @@ mod tests {
         let node_id = NodeId::new("voter");
         let config = ClusterConfig::default();
         let state_machine = Arc::new(ClusterStateMachine::new());
-        
+
         let raft_node = RaftNode::new(node_id, config, state_machine);
-        
+
         // Vote for candidate with higher term
         let (term, granted) = raft_node.handle_vote_request(1, 12345, 0, 0).await;
         assert_eq!(term, 1);
         assert!(granted);
-        
+
         // Reject vote for same term (already voted)
         let (term, granted) = raft_node.handle_vote_request(1, 99999, 0, 0).await;
         assert_eq!(term, 1);
         assert!(!granted);
-        
+
         // Accept vote for higher term
         let (term, granted) = raft_node.handle_vote_request(2, 99999, 0, 0).await;
         assert_eq!(term, 2);
@@ -448,20 +454,15 @@ mod tests {
         let node_id = NodeId::new("follower");
         let config = ClusterConfig::default();
         let state_machine = Arc::new(ClusterStateMachine::new());
-        
+
         let raft_node = RaftNode::new(node_id, config, state_machine);
         raft_node.start().await.unwrap();
-        
+
         // Receive append entries from leader
-        let (term, success) = raft_node.handle_append_entries(
-            1,
-            "leader-1".to_string(),
-            0,
-            0,
-            vec![],
-            0,
-        ).await;
-        
+        let (term, success) = raft_node
+            .handle_append_entries(1, "leader-1".to_string(), 0, 0, vec![], 0)
+            .await;
+
         assert_eq!(term, 1);
         assert!(success);
         assert_eq!(raft_node.role().await, NodeRole::Follower);

@@ -25,8 +25,8 @@ pub struct RateLimitSnapshot {
 impl NodeStore {
     /// Save a rate limit snapshot for a client.
     pub fn save_rate_limit(&self, client_key: &str, snapshot: &RateLimitSnapshot) -> Result<()> {
-        let data = bincode::serialize(snapshot)
-            .map_err(|e| StorageError::Serialization(e.to_string()))?;
+        let data =
+            bincode::serialize(snapshot).map_err(|e| StorageError::Serialization(e.to_string()))?;
 
         let write_txn = self.db.begin_write().map_err(StorageError::from)?;
         {
@@ -212,8 +212,12 @@ mod tests {
     fn test_load_all_rate_limits() {
         let (store, _dir) = create_test_store();
 
-        store.save_rate_limit("client_x", &make_snapshot(1.0)).unwrap();
-        store.save_rate_limit("client_y", &make_snapshot(2.0)).unwrap();
+        store
+            .save_rate_limit("client_x", &make_snapshot(1.0))
+            .unwrap();
+        store
+            .save_rate_limit("client_y", &make_snapshot(2.0))
+            .unwrap();
 
         let all = store.load_all_rate_limits().unwrap();
         assert_eq!(all.len(), 2);
@@ -227,8 +231,12 @@ mod tests {
     fn test_clear_rate_limits() {
         let (store, _dir) = create_test_store();
 
-        store.save_rate_limit("client_1", &make_snapshot(5.0)).unwrap();
-        store.save_rate_limit("client_2", &make_snapshot(3.0)).unwrap();
+        store
+            .save_rate_limit("client_1", &make_snapshot(5.0))
+            .unwrap();
+        store
+            .save_rate_limit("client_2", &make_snapshot(3.0))
+            .unwrap();
 
         assert_eq!(store.load_all_rate_limits().unwrap().len(), 2);
 
@@ -242,8 +250,12 @@ mod tests {
     fn test_overwrite_rate_limit() {
         let (store, _dir) = create_test_store();
 
-        store.save_rate_limit("client_1", &make_snapshot(10.0)).unwrap();
-        store.save_rate_limit("client_1", &make_snapshot(2.0)).unwrap();
+        store
+            .save_rate_limit("client_1", &make_snapshot(10.0))
+            .unwrap();
+        store
+            .save_rate_limit("client_1", &make_snapshot(2.0))
+            .unwrap();
 
         let loaded = store.load_rate_limit("client_1").unwrap().unwrap();
         assert!((loaded.tokens - 2.0).abs() < f64::EPSILON);
@@ -256,7 +268,9 @@ mod tests {
 
         {
             let store = NodeStore::open(&db_path).unwrap();
-            store.save_rate_limit("persistent", &make_snapshot(7.7)).unwrap();
+            store
+                .save_rate_limit("persistent", &make_snapshot(7.7))
+                .unwrap();
         }
 
         let store = NodeStore::open(&db_path).unwrap();

@@ -4,7 +4,7 @@
 
 use redb::ReadableTable;
 
-use super::{NodeStore, JOBS_TABLE, JOBS_ORDER_TABLE};
+use super::{NodeStore, JOBS_ORDER_TABLE, JOBS_TABLE};
 use crate::error::{Result, StorageError};
 
 impl NodeStore {
@@ -85,7 +85,10 @@ impl NodeStore {
             .collect();
 
         for job_id in entries.iter().rev().take(limit) {
-            if let Ok(Some(value)) = jobs_table.get(job_id.as_str()).map(|o| o.map(|v| v.value().to_vec())) {
+            if let Ok(Some(value)) = jobs_table
+                .get(job_id.as_str())
+                .map(|o| o.map(|v| v.value().to_vec()))
+            {
                 results.push(value);
             }
         }
@@ -201,7 +204,11 @@ impl NodeStore {
     /// Atomically claim the next queued job by setting its data to `new_data`.
     /// Returns the job ID and old data if a job was claimed, None otherwise.
     /// The caller provides a predicate function to identify queued jobs.
-    pub fn claim_next_job<F>(&self, is_queued: F, new_data: &[u8]) -> Result<Option<(String, Vec<u8>)>>
+    pub fn claim_next_job<F>(
+        &self,
+        is_queued: F,
+        new_data: &[u8],
+    ) -> Result<Option<(String, Vec<u8>)>>
     where
         F: Fn(&[u8]) -> bool,
     {
@@ -458,7 +465,9 @@ mod tests {
 
         {
             let store = NodeStore::open(&db_path).unwrap();
-            store.insert_job("persistent_job", b"important_data").unwrap();
+            store
+                .insert_job("persistent_job", b"important_data")
+                .unwrap();
         }
 
         // Reopen the store and verify persistence

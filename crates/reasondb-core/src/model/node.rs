@@ -86,12 +86,7 @@ pub struct PageNode {
 
 impl PageNode {
     /// Create a new PageNode with a generated ID.
-    pub fn new(
-        document_id: DocumentId,
-        title: String,
-        summary: Option<String>,
-        depth: u8,
-    ) -> Self {
+    pub fn new(document_id: DocumentId, title: String, summary: Option<String>, depth: u8) -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4().to_string(),

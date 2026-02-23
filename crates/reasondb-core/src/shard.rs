@@ -208,7 +208,10 @@ pub struct ScatterGatherResult<T> {
 impl<T> ScatterGatherResult<T> {
     /// Merge all results into a flat list.
     pub fn flatten(self) -> Vec<T> {
-        self.results.into_iter().flat_map(|(_, items)| items).collect()
+        self.results
+            .into_iter()
+            .flat_map(|(_, items)| items)
+            .collect()
     }
 
     /// Total count across all shards.

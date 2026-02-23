@@ -67,9 +67,9 @@ pub use metrics::{init_metrics, metrics_handler, metrics_middleware};
 pub use metrics::{init_tracing, shutdown_tracing};
 pub use openapi::ApiDoc;
 pub use ratelimit::{rate_limit_middleware, RateLimitError};
+pub use reasondb_core::ratelimit::RateLimitConfig;
 pub use routes::create_routes;
 pub use state::{AppState, AuthConfig, ClusterNodeConfig, RealAppState, ServerConfig};
-pub use reasondb_core::ratelimit::RateLimitConfig;
 
 use axum::Router;
 use reasondb_core::{
@@ -110,7 +110,8 @@ pub fn create_server<R: ReasoningEngine + Clone + Send + Sync + 'static>(
 
     // Add rate limiting middleware
     if state.config.rate_limit.enabled {
-        info!("Rate limiting enabled: {} req/min, {} req/hour, burst: {}",
+        info!(
+            "Rate limiting enabled: {} req/min, {} req/hour, burst: {}",
             state.config.rate_limit.requests_per_minute,
             state.config.rate_limit.requests_per_hour,
             state.config.rate_limit.burst_size
@@ -173,14 +174,17 @@ pub async fn run_server() -> anyhow::Result<()> {
         .ok()
         .and_then(|p| p.parse().ok())
         .unwrap_or(4444);
-    let database = std::env::var("REASONDB_PATH").unwrap_or_else(|_| "data/reasondb.redb".to_string());
+    let database =
+        std::env::var("REASONDB_PATH").unwrap_or_else(|_| "data/reasondb.redb".to_string());
 
     init_logging(false, false);
 
     info!("Starting ReasonDB server v{}", env!("CARGO_PKG_VERSION"));
 
     // Create data directory if it doesn't exist
-    let data_dir = std::path::Path::new(&database).parent().unwrap_or(std::path::Path::new("."));
+    let data_dir = std::path::Path::new(&database)
+        .parent()
+        .unwrap_or(std::path::Path::new("."));
     if !data_dir.exists() && data_dir != std::path::Path::new(".") {
         std::fs::create_dir_all(data_dir)?;
     }
@@ -313,7 +317,10 @@ pub async fn run_server() -> anyhow::Result<()> {
     // Restore rate limit state from previous run
     match state.store.load_all_rate_limits() {
         Ok(snapshots) if !snapshots.is_empty() => {
-            info!("Restoring {} rate limit entries from database", snapshots.len());
+            info!(
+                "Restoring {} rate limit entries from database",
+                snapshots.len()
+            );
             state.rate_limit_store.import_snapshots(&snapshots);
         }
         _ => {}
@@ -328,7 +335,10 @@ pub async fn run_server() -> anyhow::Result<()> {
             interval.tick().await;
             let snapshots = snapshot_rl.export_snapshots();
             if !snapshots.is_empty() {
-                let refs: Vec<(&str, _)> = snapshots.iter().map(|(k, v)| (k.as_str(), v.clone())).collect();
+                let refs: Vec<(&str, _)> = snapshots
+                    .iter()
+                    .map(|(k, v)| (k.as_str(), v.clone()))
+                    .collect();
                 if let Err(e) = snapshot_store.save_rate_limits(&refs) {
                     tracing::warn!("Failed to persist rate limit snapshots: {}", e);
                 }
@@ -366,7 +376,15 @@ fn llm_settings_from_env() -> anyhow::Result<LlmSettings> {
         anyhow::bail!("REASONDB_LLM_PROVIDER not set");
     }
 
-    let supported = ["openai", "anthropic", "gemini", "cohere", "glm", "kimi", "ollama"];
+    let supported = [
+        "openai",
+        "anthropic",
+        "gemini",
+        "cohere",
+        "glm",
+        "kimi",
+        "ollama",
+    ];
     if !supported.contains(&provider_name.as_str()) {
         anyhow::bail!(
             "Unknown LLM provider '{}'. Supported: {}",
@@ -386,7 +404,9 @@ fn llm_settings_from_env() -> anyhow::Result<LlmSettings> {
         provider: provider_name,
         api_key,
         model,
-        base_url: std::env::var("REASONDB_LLM_BASE_URL").ok().filter(|u| !u.is_empty()),
+        base_url: std::env::var("REASONDB_LLM_BASE_URL")
+            .ok()
+            .filter(|u| !u.is_empty()),
         options: LlmOptions::default(),
     };
 

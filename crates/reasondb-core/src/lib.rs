@@ -61,24 +61,30 @@ pub mod tree_grep;
 
 // Re-export main types
 pub use auth::{ApiKey, ApiKeyId, ApiKeyMetadata, ApiKeyStore, KeyPrefix, Permission, Permissions};
-pub use cache::{CachedDocSummary, CachedMatch, CachedMatchedNode, CachedQueryResult, QueryCache, QueryCacheStats, SummaryCache};
-pub use engine::{SearchConfig, SearchEngine, SearchResult};
-pub use error::{ReasonDBError, ReasonError, Result};
-pub use llm::{DynamicReasoner, LLMProvider, LlmModelConfig, LlmOptions, LlmSettings, MockReasoner, Reasoner, ReasoningEngine};
-pub use model::{
-    Document, DocumentId, DocumentRelation, NodeId, NodeMetadata, PageNode, RelationBuilder,
-    RelationType, SearchFilter, Table, TableId,
+pub use backup::{
+    BackupInfo, BackupManager, BackupOptions, BackupType, ExportFormat, ExportOptions, ExportScope,
+    Exporter, ImportOptions, ImportResult, Importer, RestoreOptions, Snapshot, SnapshotMetadata,
+};
+pub use cache::{
+    CachedDocSummary, CachedMatch, CachedMatchedNode, CachedQueryResult, QueryCache,
+    QueryCacheStats, SummaryCache,
 };
 pub use cluster::{
     ClusterConfig, ClusterNode, ClusterState, ClusterStateMachine, LogEntry, LogEntryType,
-    NetworkClient, NetworkMessage, NodeConfig, NodeId as ClusterNodeId, NodeRole, NodeStatus, RaftNode,
+    NetworkClient, NetworkMessage, NodeConfig, NodeId as ClusterNodeId, NodeRole, NodeStatus,
+    RaftNode,
+};
+pub use engine::{SearchConfig, SearchEngine, SearchResult};
+pub use error::{ReasonDBError, ReasonError, Result};
+pub use llm::{
+    DynamicReasoner, LLMProvider, LlmModelConfig, LlmOptions, LlmSettings, MockReasoner, Reasoner,
+    ReasoningEngine,
+};
+pub use model::{
+    Document, DocumentId, DocumentRelation, NodeId, NodeMetadata, PageNode, RelationBuilder,
+    RelationType, SearchFilter, Table, TableId,
 };
 pub use ratelimit::{RateLimitConfig, RateLimitResult, RateLimitStore, RateLimitTier, RateLimiter};
 pub use shard::{ScatterGatherResult, ShardMap, ShardRouter};
 pub use store::{NodeStore, StoreStats};
 pub use text_index::{TextIndex, TextSearchResult};
-pub use backup::{
-    BackupInfo, BackupManager, BackupOptions, BackupType, ExportFormat, ExportOptions,
-    ExportScope, Exporter, ImportOptions, ImportResult, Importer, RestoreOptions, Snapshot,
-    SnapshotMetadata,
-};

@@ -2,11 +2,18 @@
 //!
 //! Execute SQL-like queries against documents.
 
-use axum::{extract::State, response::sse::{Event, Sse}, Json};
+use axum::{
+    extract::State,
+    response::sse::{Event, Sse},
+    Json,
+};
 use futures::stream::{Stream, StreamExt};
 use futures::FutureExt;
 use reasondb_core::llm::ReasoningEngine;
-use reasondb_core::rql::{AggregateValue, DocumentMatch, MatchedNode, MutationResult, Query, QueryResult, QueryStats, ReasonProgress, Statement};
+use reasondb_core::rql::{
+    AggregateValue, DocumentMatch, MatchedNode, MutationResult, Query, QueryResult, QueryStats,
+    ReasonProgress, Statement,
+};
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -119,11 +126,15 @@ impl From<MatchedNode> for MatchedNodeResponse {
             content: n.content,
             path: n.path,
             confidence: n.confidence,
-            reasoning_trace: n.reasoning_trace.into_iter().map(|s| ReasoningStepResponse {
-                node_title: s.node_title,
-                decision: s.decision,
-                confidence: s.confidence,
-            }).collect(),
+            reasoning_trace: n
+                .reasoning_trace
+                .into_iter()
+                .map(|s| ReasoningStepResponse {
+                    node_title: s.node_title,
+                    decision: s.decision,
+                    confidence: s.confidence,
+                })
+                .collect(),
         }
     }
 }
@@ -142,13 +153,13 @@ pub struct QueryDocumentMatch {
 
     /// Tags
     pub tags: Vec<String>,
-    
+
     /// Document metadata
     pub metadata: std::collections::HashMap<String, serde_json::Value>,
-    
+
     /// Total nodes in document
     pub total_nodes: usize,
-    
+
     /// Created timestamp
     pub created_at: String,
 
@@ -421,39 +432,49 @@ async fn execute_select_query<R: ReasoningEngine + Send + Sync + 'static>(
 
     if let Some(ref reason_clause) = query.reason {
         // Check cache first for REASON queries
-        if let Some(cached) = state.query_cache.get(&reason_clause.query, &query.from.table) {
+        if let Some(cached) = state
+            .query_cache
+            .get(&reason_clause.query, &query.from.table)
+        {
             tracing::info!(
                 "Cache HIT for query '{}' - saved {} LLM calls",
                 reason_clause.query,
                 cached.llm_calls_saved
             );
-            
-            let matches: Vec<DocumentMatch> = cached.matches.iter().map(|m| {
-                let matched_nodes = m.matched_nodes.iter().map(|n| {
-                    MatchedNode {
-                        node_id: n.node_id.clone(),
-                        title: n.title.clone(),
-                        content: n.content.clone(),
-                        path: n.path.clone(),
-                        confidence: n.confidence,
-                        reasoning_trace: vec![],
+
+            let matches: Vec<DocumentMatch> = cached
+                .matches
+                .iter()
+                .map(|m| {
+                    let matched_nodes = m
+                        .matched_nodes
+                        .iter()
+                        .map(|n| MatchedNode {
+                            node_id: n.node_id.clone(),
+                            title: n.title.clone(),
+                            content: n.content.clone(),
+                            path: n.path.clone(),
+                            confidence: n.confidence,
+                            reasoning_trace: vec![],
+                        })
+                        .collect();
+                    let mut doc =
+                        reasondb_core::Document::new(m.document_title.clone(), &m.table_id);
+                    doc.id = m.document_id.clone();
+                    doc.total_nodes = m.total_nodes;
+                    doc.tags = m.tags.clone();
+                    doc.metadata = m.metadata.clone();
+                    doc.created_at = m.created_at;
+                    DocumentMatch {
+                        document: doc,
+                        score: Some(m.score),
+                        matched_nodes,
+                        highlights: m.highlights.clone(),
+                        confidence: Some(m.confidence),
                     }
-                }).collect();
-                let mut doc = reasondb_core::Document::new(m.document_title.clone(), &m.table_id);
-                doc.id = m.document_id.clone();
-                doc.total_nodes = m.total_nodes;
-                doc.tags = m.tags.clone();
-                doc.metadata = m.metadata.clone();
-                doc.created_at = m.created_at;
-                DocumentMatch {
-                    document: doc,
-                    score: Some(m.score),
-                    matched_nodes,
-                    highlights: m.highlights.clone(),
-                    confidence: Some(m.confidence),
-                }
-            }).collect();
-            
+                })
+                .collect();
+
             Ok(QueryResult {
                 documents: matches,
                 total_count: cached.matches.len(),
@@ -472,12 +493,18 @@ async fn execute_select_query<R: ReasoningEngine + Send + Sync + 'static>(
         } else {
             let result = state
                 .store
-                .execute_rql_async(query, Some(state.text_index.as_ref()), state.reasoner.clone())
+                .execute_rql_async(
+                    query,
+                    Some(state.text_index.as_ref()),
+                    state.reasoner.clone(),
+                )
                 .await
                 .map_err(|e| ApiError::Internal(format!("Query execution failed: {}", e)))?;
-            
-            let cached_matches: Vec<CachedMatch> = result.documents.iter().map(|m| {
-                CachedMatch {
+
+            let cached_matches: Vec<CachedMatch> = result
+                .documents
+                .iter()
+                .map(|m| CachedMatch {
                     document_id: m.document.id.clone(),
                     document_title: m.document.title.clone(),
                     table_id: m.document.table_id.clone(),
@@ -488,18 +515,20 @@ async fn execute_select_query<R: ReasoningEngine + Send + Sync + 'static>(
                     score: m.score.unwrap_or(0.0),
                     confidence: m.confidence.unwrap_or(0.0),
                     highlights: m.highlights.clone(),
-                    matched_nodes: m.matched_nodes.iter().map(|n| {
-                        reasondb_core::cache::CachedMatchedNode {
+                    matched_nodes: m
+                        .matched_nodes
+                        .iter()
+                        .map(|n| reasondb_core::cache::CachedMatchedNode {
                             node_id: n.node_id.clone(),
                             title: n.title.clone(),
                             content: n.content.clone(),
                             path: n.path.clone(),
                             confidence: n.confidence,
-                        }
-                    }).collect(),
-                }
-            }).collect();
-            
+                        })
+                        .collect(),
+                })
+                .collect();
+
             let cache_entry = CachedQueryResult {
                 query: reason_clause.query.clone(),
                 table_id: query.from.table.clone(),
@@ -507,14 +536,16 @@ async fn execute_select_query<R: ReasoningEngine + Send + Sync + 'static>(
                 cached_at: Instant::now(),
                 llm_calls_saved: result.stats.llm_calls,
             };
-            
-            state.query_cache.insert(&reason_clause.query, &query.from.table, cache_entry);
+
+            state
+                .query_cache
+                .insert(&reason_clause.query, &query.from.table, cache_entry);
             tracing::info!(
                 "Cache MISS for query '{}' - cached {} results",
                 reason_clause.query,
                 result.documents.len()
             );
-            
+
             Ok(result)
         }
     } else {
@@ -599,37 +630,47 @@ pub async fn execute_query_stream<R: ReasoningEngine + Clone + Send + Sync + 'st
         let reason_clause = query.reason.as_ref().unwrap().clone();
 
         // Check cache first
-        if let Some(cached) = state.query_cache.get(&reason_clause.query, &query.from.table) {
+        if let Some(cached) = state
+            .query_cache
+            .get(&reason_clause.query, &query.from.table)
+        {
             tracing::info!(
                 "Cache HIT for streaming query '{}' - saved {} LLM calls",
                 reason_clause.query,
                 cached.llm_calls_saved
             );
-            let matches: Vec<DocumentMatch> = cached.matches.iter().map(|m| {
-                let matched_nodes = m.matched_nodes.iter().map(|n| {
-                    MatchedNode {
-                        node_id: n.node_id.clone(),
-                        title: n.title.clone(),
-                        content: n.content.clone(),
-                        path: n.path.clone(),
-                        confidence: n.confidence,
-                        reasoning_trace: vec![],
+            let matches: Vec<DocumentMatch> = cached
+                .matches
+                .iter()
+                .map(|m| {
+                    let matched_nodes = m
+                        .matched_nodes
+                        .iter()
+                        .map(|n| MatchedNode {
+                            node_id: n.node_id.clone(),
+                            title: n.title.clone(),
+                            content: n.content.clone(),
+                            path: n.path.clone(),
+                            confidence: n.confidence,
+                            reasoning_trace: vec![],
+                        })
+                        .collect();
+                    let mut doc =
+                        reasondb_core::Document::new(m.document_title.clone(), &m.table_id);
+                    doc.id = m.document_id.clone();
+                    doc.total_nodes = m.total_nodes;
+                    doc.tags = m.tags.clone();
+                    doc.metadata = m.metadata.clone();
+                    doc.created_at = m.created_at;
+                    DocumentMatch {
+                        document: doc,
+                        score: Some(m.score),
+                        matched_nodes,
+                        highlights: m.highlights.clone(),
+                        confidence: Some(m.confidence),
                     }
-                }).collect();
-                let mut doc = reasondb_core::Document::new(m.document_title.clone(), &m.table_id);
-                doc.id = m.document_id.clone();
-                doc.total_nodes = m.total_nodes;
-                doc.tags = m.tags.clone();
-                doc.metadata = m.metadata.clone();
-                doc.created_at = m.created_at;
-                DocumentMatch {
-                    document: doc,
-                    score: Some(m.score),
-                    matched_nodes,
-                    highlights: m.highlights.clone(),
-                    confidence: Some(m.confidence),
-                }
-            }).collect();
+                })
+                .collect();
             let result = QueryResult {
                 documents: matches,
                 total_count: cached.matches.len(),
@@ -680,14 +721,12 @@ pub async fn execute_query_stream<R: ReasoningEngine + Clone + Send + Sync + 'st
                     }
                 });
 
-                let result = std::panic::AssertUnwindSafe(
-                    store.execute_rql_async_with_progress(
-                        &query_clone,
-                        Some(text_index.as_ref()),
-                        reasoner,
-                        Some(progress_tx),
-                    )
-                )
+                let result = std::panic::AssertUnwindSafe(store.execute_rql_async_with_progress(
+                    &query_clone,
+                    Some(text_index.as_ref()),
+                    reasoner,
+                    Some(progress_tx),
+                ))
                 .catch_unwind()
                 .await;
 
@@ -697,8 +736,10 @@ pub async fn execute_query_stream<R: ReasoningEngine + Clone + Send + Sync + 'st
                 match result {
                     Ok(Ok(result)) => {
                         // Cache the result
-                        let cached_matches: Vec<CachedMatch> = result.documents.iter().map(|m| {
-                            CachedMatch {
+                        let cached_matches: Vec<CachedMatch> = result
+                            .documents
+                            .iter()
+                            .map(|m| CachedMatch {
                                 document_id: m.document.id.clone(),
                                 document_title: m.document.title.clone(),
                                 table_id: m.document.table_id.clone(),
@@ -709,17 +750,19 @@ pub async fn execute_query_stream<R: ReasoningEngine + Clone + Send + Sync + 'st
                                 score: m.score.unwrap_or(0.0),
                                 confidence: m.confidence.unwrap_or(0.0),
                                 highlights: m.highlights.clone(),
-                                matched_nodes: m.matched_nodes.iter().map(|n| {
-                                    reasondb_core::cache::CachedMatchedNode {
+                                matched_nodes: m
+                                    .matched_nodes
+                                    .iter()
+                                    .map(|n| reasondb_core::cache::CachedMatchedNode {
                                         node_id: n.node_id.clone(),
                                         title: n.title.clone(),
                                         content: n.content.clone(),
                                         path: n.path.clone(),
                                         confidence: n.confidence,
-                                    }
-                                }).collect(),
-                            }
-                        }).collect();
+                                    })
+                                    .collect(),
+                            })
+                            .collect();
                         let cache_entry = CachedQueryResult {
                             query: reason_query_str,
                             table_id: table_name,

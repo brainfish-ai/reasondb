@@ -95,16 +95,18 @@ pub async fn metrics_middleware(request: Request<Body>, next: Next) -> Response 
     let status = response.status().as_u16().to_string();
     let duration = start.elapsed().as_secs_f64();
 
-    counter!("reasondb_http_requests_total", 
-        "method" => method.clone(), 
-        "path" => path.clone(), 
+    counter!("reasondb_http_requests_total",
+        "method" => method.clone(),
+        "path" => path.clone(),
         "status" => status
-    ).increment(1);
+    )
+    .increment(1);
 
     histogram!("reasondb_http_request_duration_seconds",
         "method" => method,
         "path" => path
-    ).record(duration);
+    )
+    .record(duration);
 
     gauge!("reasondb_http_requests_in_flight").decrement(1.0);
 
@@ -144,7 +146,8 @@ pub fn record_search(duration_secs: f64, results_count: usize) {
 /// Record an LLM call
 pub fn record_llm_call(provider: &str, duration_secs: f64, input_tokens: u64, output_tokens: u64) {
     counter!("reasondb_llm_calls_total", "provider" => provider.to_string()).increment(1);
-    histogram!("reasondb_llm_call_duration_seconds", "provider" => provider.to_string()).record(duration_secs);
+    histogram!("reasondb_llm_call_duration_seconds", "provider" => provider.to_string())
+        .record(duration_secs);
     counter!("reasondb_llm_tokens_total", "type" => "input").increment(input_tokens);
     counter!("reasondb_llm_tokens_total", "type" => "output").increment(output_tokens);
 }
@@ -152,7 +155,8 @@ pub fn record_llm_call(provider: &str, duration_secs: f64, input_tokens: u64, ou
 /// Record ingestion metrics
 pub fn record_ingestion(doc_type: &str, duration_secs: f64, nodes_created: usize) {
     counter!("reasondb_ingestion_total", "type" => doc_type.to_string()).increment(1);
-    histogram!("reasondb_ingestion_duration_seconds", "type" => doc_type.to_string()).record(duration_secs);
+    histogram!("reasondb_ingestion_duration_seconds", "type" => doc_type.to_string())
+        .record(duration_secs);
     counter!("reasondb_nodes_created_total").increment(nodes_created as u64);
 }
 
@@ -228,13 +232,9 @@ mod otel {
         let subscriber = tracing_subscriber::registry().with(filter);
 
         let fmt_layer = if json_logs {
-            tracing_subscriber::fmt::layer()
-                .json()
-                .boxed()
+            tracing_subscriber::fmt::layer().json().boxed()
         } else {
-            tracing_subscriber::fmt::layer()
-                .pretty()
-                .boxed()
+            tracing_subscriber::fmt::layer().pretty().boxed()
         };
 
         if let Some(endpoint) = otlp_endpoint {
@@ -252,13 +252,10 @@ mod otel {
                 )
                 .install_batch(runtime::Tokio)?;
 
-            let otel_layer = tracing_opentelemetry::layer()
-                .with_tracer(tracer.tracer(service_name.to_string()));
+            let otel_layer =
+                tracing_opentelemetry::layer().with_tracer(tracer.tracer(service_name.to_string()));
 
-            subscriber
-                .with(fmt_layer)
-                .with(otel_layer)
-                .init();
+            subscriber.with(fmt_layer).with(otel_layer).init();
         } else {
             subscriber.with(fmt_layer).init();
         }

@@ -250,7 +250,10 @@ pub async fn get_related_documents<R: ReasoningEngine>(
     let document_ids = state.store.get_related_documents(&id, None)?;
     let total = document_ids.len();
 
-    Ok(Json(RelatedDocumentsResponse { document_ids, total }))
+    Ok(Json(RelatedDocumentsResponse {
+        document_ids,
+        total,
+    }))
 }
 
 /// Delete a relationship.

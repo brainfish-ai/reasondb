@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use reasondb_core::{
-    BackupInfo, BackupManager, BackupOptions, BackupType, ExportFormat, ExportOptions,
-    ExportScope, Exporter, ImportOptions, Importer, RestoreOptions,
+    BackupInfo, BackupManager, BackupOptions, BackupType, ExportFormat, ExportOptions, ExportScope,
+    Exporter, ImportOptions, Importer, RestoreOptions,
 };
 
 use reasondb_core::llm::ReasoningEngine;
@@ -180,27 +180,27 @@ async fn create_backup<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     Json(request): Json<CreateBackupRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     let backup_dir = params.backup_dir.unwrap_or_else(|| "backups".to_string());
-    
+
     let manager = BackupManager::new(&state.store, &backup_dir)
         .map_err(|e| ApiError::Internal(format!("Failed to initialize backup manager: {}", e)))?;
-    
+
     let backup_type = match request.backup_type.to_lowercase().as_str() {
         "full" => BackupType::Full,
         "incremental" | "incr" => BackupType::Incremental,
         _ => return Err(ApiError::BadRequest("Invalid backup type".to_string())),
     };
-    
+
     let options = BackupOptions {
         backup_type,
         description: request.description,
         compression_level: 6,
         verify: request.verify,
     };
-    
+
     let backup = manager
         .create_backup(&state.store, options)
         .map_err(|e| ApiError::Internal(format!("Failed to create backup: {}", e)))?;
-    
+
     Ok((StatusCode::CREATED, Json(BackupResponse::from(backup))))
 }
 
@@ -209,16 +209,16 @@ async fn list_backups<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     Query(params): Query<BackupQueryParams>,
 ) -> Result<impl IntoResponse, ApiError> {
     let backup_dir = params.backup_dir.unwrap_or_else(|| "backups".to_string());
-    
+
     let manager = BackupManager::new(&state.store, &backup_dir)
         .map_err(|e| ApiError::Internal(format!("Failed to initialize backup manager: {}", e)))?;
-    
+
     let backups = manager
         .list_backups()
         .map_err(|e| ApiError::Internal(format!("Failed to list backups: {}", e)))?;
-    
+
     let responses: Vec<BackupResponse> = backups.into_iter().map(BackupResponse::from).collect();
-    
+
     Ok(Json(responses))
 }
 
@@ -228,15 +228,15 @@ async fn get_backup<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     Query(params): Query<BackupQueryParams>,
 ) -> Result<impl IntoResponse, ApiError> {
     let backup_dir = params.backup_dir.unwrap_or_else(|| "backups".to_string());
-    
+
     let manager = BackupManager::new(&state.store, &backup_dir)
         .map_err(|e| ApiError::Internal(format!("Failed to initialize backup manager: {}", e)))?;
-    
+
     let backup = manager
         .get_backup(&id)
         .map_err(|e| ApiError::Internal(format!("Failed to get backup: {}", e)))?
         .ok_or_else(|| ApiError::NotFound(format!("Backup not found: {}", id)))?;
-    
+
     Ok(Json(BackupResponse::from(backup)))
 }
 
@@ -246,14 +246,14 @@ async fn delete_backup<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     Query(params): Query<BackupQueryParams>,
 ) -> Result<impl IntoResponse, ApiError> {
     let backup_dir = params.backup_dir.unwrap_or_else(|| "backups".to_string());
-    
+
     let manager = BackupManager::new(&state.store, &backup_dir)
         .map_err(|e| ApiError::Internal(format!("Failed to initialize backup manager: {}", e)))?;
-    
+
     manager
         .delete_backup(&id)
         .map_err(|e| ApiError::Internal(format!("Failed to delete backup: {}", e)))?;
-    
+
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -263,14 +263,14 @@ async fn verify_backup<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     Query(params): Query<BackupQueryParams>,
 ) -> Result<impl IntoResponse, ApiError> {
     let backup_dir = params.backup_dir.unwrap_or_else(|| "backups".to_string());
-    
+
     let manager = BackupManager::new(&state.store, &backup_dir)
         .map_err(|e| ApiError::Internal(format!("Failed to initialize backup manager: {}", e)))?;
-    
+
     let valid = manager
         .verify(&id)
         .map_err(|e| ApiError::Internal(format!("Failed to verify backup: {}", e)))?;
-    
+
     Ok(Json(serde_json::json!({ "backup_id": id, "valid": valid })))
 }
 
@@ -281,19 +281,19 @@ async fn restore_backup<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     Json(request): Json<RestoreRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     let backup_dir = params.backup_dir.unwrap_or_else(|| "backups".to_string());
-    
+
     let manager = BackupManager::new(&state.store, &backup_dir)
         .map_err(|e| ApiError::Internal(format!("Failed to initialize backup manager: {}", e)))?;
-    
+
     let options = RestoreOptions {
         overwrite: request.overwrite,
         verify_first: true,
     };
-    
+
     manager
         .restore(&id, &request.target_path, options)
         .map_err(|e| ApiError::Internal(format!("Failed to restore backup: {}", e)))?;
-    
+
     Ok(Json(serde_json::json!({
         "status": "restored",
         "backup_id": id,
@@ -307,16 +307,16 @@ async fn prune_backups<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     Json(request): Json<PruneRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     let backup_dir = params.backup_dir.unwrap_or_else(|| "backups".to_string());
-    
+
     let manager = BackupManager::new(&state.store, &backup_dir)
         .map_err(|e| ApiError::Internal(format!("Failed to initialize backup manager: {}", e)))?;
-    
+
     let deleted = manager
         .prune(request.keep_full, request.keep_incremental)
         .map_err(|e| ApiError::Internal(format!("Failed to prune backups: {}", e)))?;
-    
+
     let deleted_ids: Vec<String> = deleted.iter().map(|b| b.id.clone()).collect();
-    
+
     Ok(Json(PruneResponse {
         deleted_count: deleted_ids.len(),
         deleted: deleted_ids,
@@ -333,7 +333,7 @@ async fn export_data<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         "csv" => ExportFormat::Csv,
         _ => return Err(ApiError::BadRequest("Invalid format".to_string())),
     };
-    
+
     let options = ExportOptions {
         format,
         scope: if request.table_id.is_some() {
@@ -345,10 +345,10 @@ async fn export_data<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         include_nodes: request.include_nodes,
         pretty: true,
     };
-    
+
     let metadata = Exporter::export(&state.store, &request.output_path, options)
         .map_err(|e| ApiError::Internal(format!("Failed to export: {}", e)))?;
-    
+
     Ok(Json(ExportResponse {
         output_path: request.output_path,
         format: metadata.format,
@@ -368,7 +368,7 @@ async fn import_data<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         "csv" => ExportFormat::Csv,
         _ => return Err(ApiError::BadRequest("Invalid format".to_string())),
     };
-    
+
     // CSV and JSONL require a target table
     if (format == ExportFormat::Csv || format == ExportFormat::JsonLines)
         && request.target_table_id.is_none()
@@ -377,17 +377,17 @@ async fn import_data<R: ReasoningEngine + Clone + Send + Sync + 'static>(
             "CSV and JSONL imports require a target_table_id".to_string(),
         ));
     }
-    
+
     let options = ImportOptions {
         format,
         skip_existing: !request.update_existing,
         update_existing: request.update_existing,
         target_table_id: request.target_table_id,
     };
-    
+
     let result = Importer::import(&state.store, &request.input_path, options)
         .map_err(|e| ApiError::Internal(format!("Failed to import: {}", e)))?;
-    
+
     Ok(Json(ImportResponse {
         tables_imported: result.tables_imported,
         tables_skipped: result.tables_skipped,

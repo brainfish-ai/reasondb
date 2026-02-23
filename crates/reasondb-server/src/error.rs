@@ -82,7 +82,9 @@ impl IntoResponse for ApiError {
             ApiError::Unauthorized(_) => (StatusCode::UNAUTHORIZED, "UNAUTHORIZED"),
             ApiError::Forbidden(_) => (StatusCode::FORBIDDEN, "FORBIDDEN"),
             ApiError::RateLimited(_) => (StatusCode::TOO_MANY_REQUESTS, "RATE_LIMITED"),
-            ApiError::ServiceUnavailable(_) => (StatusCode::SERVICE_UNAVAILABLE, "SERVICE_UNAVAILABLE"),
+            ApiError::ServiceUnavailable(_) => {
+                (StatusCode::SERVICE_UNAVAILABLE, "SERVICE_UNAVAILABLE")
+            }
             ApiError::StorageError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "STORAGE_ERROR"),
             ApiError::IngestionError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "INGESTION_ERROR"),
             ApiError::SearchError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "SEARCH_ERROR"),
@@ -108,12 +110,18 @@ impl From<reasondb_core::error::ReasonError> for ApiError {
         use reasondb_core::error::ReasonError;
         match err {
             ReasonError::NodeNotFound(id) => ApiError::NotFound(format!("Node not found: {}", id)),
-            ReasonError::DocumentNotFound(id) => ApiError::NotFound(format!("Document not found: {}", id)),
-            ReasonError::TableNotFound(id) => ApiError::NotFound(format!("Table not found: {}", id)),
+            ReasonError::DocumentNotFound(id) => {
+                ApiError::NotFound(format!("Document not found: {}", id))
+            }
+            ReasonError::TableNotFound(id) => {
+                ApiError::NotFound(format!("Table not found: {}", id))
+            }
             ReasonError::NotFound(msg) => ApiError::NotFound(msg),
             ReasonError::InvalidOperation(msg) => ApiError::BadRequest(msg),
             ReasonError::Storage(e) => ApiError::StorageError(e.to_string()),
-            ReasonError::Serialization(msg) => ApiError::Internal(format!("Serialization: {}", msg)),
+            ReasonError::Serialization(msg) => {
+                ApiError::Internal(format!("Serialization: {}", msg))
+            }
             ReasonError::Reasoning(msg) => ApiError::LLMError(msg),
             ReasonError::Auth(msg) => ApiError::Unauthorized(msg),
             ReasonError::PermissionDenied(msg) => ApiError::Forbidden(msg),

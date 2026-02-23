@@ -5,5 +5,5 @@
 mod limiter;
 mod store;
 
-pub use limiter::{RateLimitConfig, RateLimitResult, RateLimiter, RateLimitTier, TokenBucket};
+pub use limiter::{RateLimitConfig, RateLimitResult, RateLimitTier, RateLimiter, TokenBucket};
 pub use store::{ClientId, RateLimitStore, SharedRateLimitStore};

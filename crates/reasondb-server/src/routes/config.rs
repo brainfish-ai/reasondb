@@ -111,21 +111,25 @@ async fn patch_llm_config(
     let reasoner = state.reasoner.as_ref();
 
     if let Some(ingestion) = patch.ingestion {
-        let new_r = build_reasoner(&ingestion).map_err(|e| {
-            ApiError::BadRequest(format!("Invalid ingestion config: {}", e))
-        })?;
+        let new_r = build_reasoner(&ingestion)
+            .map_err(|e| ApiError::BadRequest(format!("Invalid ingestion config: {}", e)))?;
         reasoner.swap_ingestion(new_r);
         current.ingestion = ingestion;
-        info!(provider = current.ingestion.provider, "Ingestion LLM updated");
+        info!(
+            provider = current.ingestion.provider,
+            "Ingestion LLM updated"
+        );
     }
 
     if let Some(retrieval) = patch.retrieval {
-        let new_r = build_reasoner(&retrieval).map_err(|e| {
-            ApiError::BadRequest(format!("Invalid retrieval config: {}", e))
-        })?;
+        let new_r = build_reasoner(&retrieval)
+            .map_err(|e| ApiError::BadRequest(format!("Invalid retrieval config: {}", e)))?;
         reasoner.swap_retrieval(new_r);
         current.retrieval = retrieval;
-        info!(provider = current.retrieval.provider, "Retrieval LLM updated");
+        info!(
+            provider = current.retrieval.provider,
+            "Retrieval LLM updated"
+        );
     }
 
     state.store.set_llm_settings(&current).map_err(|e| {
@@ -136,12 +140,14 @@ async fn patch_llm_config(
 }
 
 fn validate_settings(settings: &LlmSettings) -> ApiResult<()> {
-    settings.ingestion.to_provider().map_err(|e| {
-        ApiError::BadRequest(format!("Invalid ingestion provider config: {}", e))
-    })?;
-    settings.retrieval.to_provider().map_err(|e| {
-        ApiError::BadRequest(format!("Invalid retrieval provider config: {}", e))
-    })?;
+    settings
+        .ingestion
+        .to_provider()
+        .map_err(|e| ApiError::BadRequest(format!("Invalid ingestion provider config: {}", e)))?;
+    settings
+        .retrieval
+        .to_provider()
+        .map_err(|e| ApiError::BadRequest(format!("Invalid retrieval provider config: {}", e)))?;
     Ok(())
 }
 

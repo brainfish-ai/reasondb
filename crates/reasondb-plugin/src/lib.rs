@@ -23,15 +23,15 @@
 //! on stdin, write a JSON `PluginResponse` to stdout, then exit.
 
 pub mod error;
-pub mod manifest;
 pub mod manager;
+pub mod manifest;
 pub mod protocol;
 pub mod registry;
 pub mod runner;
 
 pub use error::{PluginError, Result};
-pub use manifest::{PluginCapabilities, PluginKind, PluginManifest, RunnerConfig};
 pub use manager::PluginManager;
+pub use manifest::{PluginCapabilities, PluginKind, PluginManifest, RunnerConfig};
 pub use protocol::*;
 pub use registry::PluginRegistry;
 pub use runner::PluginRunner;

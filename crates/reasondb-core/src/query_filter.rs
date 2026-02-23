@@ -24,7 +24,7 @@ pub fn extract_query_terms(query: &str) -> Vec<String> {
         .filter(|w| w.len() >= 2 && seen.insert(w.clone()))
         .collect();
 
-    terms.sort_by(|a, b| b.len().cmp(&a.len()));
+    terms.sort_by_key(|b| std::cmp::Reverse(b.len()));
     terms
 }
 
@@ -55,7 +55,9 @@ mod tests {
     #[test]
     fn test_extract_removes_stop_words() {
         let terms = extract_query_terms("What are the termination clauses?");
-        assert!(!terms.iter().any(|t| t == "what" || t == "are" || t == "the"));
+        assert!(!terms
+            .iter()
+            .any(|t| t == "what" || t == "are" || t == "the"));
         assert!(terms.iter().any(|t| t == "termin"));
         assert!(terms.iter().any(|t| t == "claus"));
     }

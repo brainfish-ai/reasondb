@@ -281,7 +281,10 @@ impl NodeStore {
             .map_err(StorageError::from)?;
 
         let mut tables = Vec::new();
-        for result in table.iter().map_err(|e| StorageError::TableError(e.to_string()))? {
+        for result in table
+            .iter()
+            .map_err(|e| StorageError::TableError(e.to_string()))?
+        {
             let (_, value) = result.map_err(|e| StorageError::TableError(e.to_string()))?;
             let t: Table = bincode::deserialize(value.value())?;
             tables.push(t);

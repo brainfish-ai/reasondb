@@ -342,27 +342,33 @@ pub async fn run_worker<R: ReasoningEngine + Clone + Send + Sync + 'static>(
                         None => break,
                     };
 
-                    info!("Worker {} processing job {}: {}", worker_id, job.id, job.request.title());
+                    info!(
+                        "Worker {} processing job {}: {}",
+                        worker_id,
+                        job.id,
+                        job.request.title()
+                    );
 
                     let result = process_job(&w_state, &job).await;
 
                     match result {
                         Ok(response) => {
-                            info!("Worker {} completed job {}: {} nodes", worker_id, job.id, response.total_nodes);
+                            info!(
+                                "Worker {} completed job {}: {} nodes",
+                                worker_id, job.id, response.total_nodes
+                            );
                             w_state
                                 .job_queue
                                 .update_status(&job.id, JobStatus::Completed { result: response });
                         }
                         Err(err) => {
                             error!("Worker {} failed job {}: {}", worker_id, job.id, err);
-                            w_state
-                                .job_queue
-                                .update_status(
-                                    &job.id,
-                                    JobStatus::Failed {
-                                        error: err.to_string(),
-                                    },
-                                );
+                            w_state.job_queue.update_status(
+                                &job.id,
+                                JobStatus::Failed {
+                                    error: err.to_string(),
+                                },
+                            );
                         }
                     }
                 }
@@ -383,8 +389,12 @@ async fn process_job<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     job: &Job,
 ) -> Result<IngestResponse, String> {
     let generate_summaries = match &job.request {
-        JobRequest::Text(r) => r.generate_summaries.unwrap_or(state.config.generate_summaries),
-        JobRequest::Url(r) => r.generate_summaries.unwrap_or(state.config.generate_summaries),
+        JobRequest::Text(r) => r
+            .generate_summaries
+            .unwrap_or(state.config.generate_summaries),
+        JobRequest::Url(r) => r
+            .generate_summaries
+            .unwrap_or(state.config.generate_summaries),
     };
 
     let config = PipelineConfig {
@@ -544,7 +554,9 @@ mod tests {
         let (queue, _rx, _dir) = create_test_queue();
 
         for i in 0..5 {
-            queue.enqueue(make_text_request(&format!("Doc {}", i), "tbl_1")).unwrap();
+            queue
+                .enqueue(make_text_request(&format!("Doc {}", i), "tbl_1"))
+                .unwrap();
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
 
@@ -557,10 +569,17 @@ mod tests {
         let (queue, _rx, _dir) = create_test_queue();
         let id = queue.enqueue(make_text_request("Test", "tbl_1")).unwrap();
 
-        queue.update_status(&id, JobStatus::Processing { progress: Some("50%".to_string()) });
+        queue.update_status(
+            &id,
+            JobStatus::Processing {
+                progress: Some("50%".to_string()),
+            },
+        );
 
         let status = queue.get_status(&id).unwrap();
-        assert!(matches!(status.status, JobStatus::Processing { progress } if progress == Some("50%".to_string())));
+        assert!(
+            matches!(status.status, JobStatus::Processing { progress } if progress == Some("50%".to_string()))
+        );
     }
 
     #[test]
@@ -614,7 +633,9 @@ mod tests {
         let (queue, _rx, _dir) = create_test_queue();
 
         // Enqueue and claim to simulate an interrupted job
-        let id = queue.enqueue(make_text_request("Interrupted", "tbl_1")).unwrap();
+        let id = queue
+            .enqueue(make_text_request("Interrupted", "tbl_1"))
+            .unwrap();
         queue.claim_next_queued(); // Now it's Processing
 
         // Resume should reset it to Queued
@@ -631,21 +652,24 @@ mod tests {
         let (queue, _rx, _dir) = create_test_queue();
 
         let id = queue.enqueue(make_text_request("Done", "tbl_1")).unwrap();
-        queue.update_status(&id, JobStatus::Completed {
-            result: crate::routes::ingest::IngestResponse {
-                document_id: "doc_1".to_string(),
-                title: "Done".to_string(),
-                total_nodes: 5,
-                max_depth: 2,
-                stats: crate::routes::ingest::IngestStats {
-                    chars_extracted: 100,
-                    chunks_created: 3,
-                    nodes_created: 5,
-                    summaries_generated: 2,
-                    total_time_ms: 65,
+        queue.update_status(
+            &id,
+            JobStatus::Completed {
+                result: crate::routes::ingest::IngestResponse {
+                    document_id: "doc_1".to_string(),
+                    title: "Done".to_string(),
+                    total_nodes: 5,
+                    max_depth: 2,
+                    stats: crate::routes::ingest::IngestStats {
+                        chars_extracted: 100,
+                        chunks_created: 3,
+                        nodes_created: 5,
+                        summaries_generated: 2,
+                        total_time_ms: 65,
+                    },
                 },
             },
-        });
+        );
 
         let recovered = queue.resume_incomplete_jobs();
         assert_eq!(recovered, 0);
@@ -655,8 +679,15 @@ mod tests {
     fn test_cleanup_expired_jobs_does_nothing_for_recent() {
         let (queue, _rx, _dir) = create_test_queue();
 
-        let id = queue.enqueue(make_text_request("Recent Fail", "tbl_1")).unwrap();
-        queue.update_status(&id, JobStatus::Failed { error: "oops".to_string() });
+        let id = queue
+            .enqueue(make_text_request("Recent Fail", "tbl_1"))
+            .unwrap();
+        queue.update_status(
+            &id,
+            JobStatus::Failed {
+                error: "oops".to_string(),
+            },
+        );
 
         let cleaned = queue.cleanup_expired_jobs();
         assert_eq!(cleaned, 0, "Recent jobs should not be cleaned up");
@@ -678,7 +709,9 @@ mod tests {
         assert!(!processing.is_queued());
         assert!(!processing.is_terminal());
 
-        let failed = JobStatus::Failed { error: "err".to_string() };
+        let failed = JobStatus::Failed {
+            error: "err".to_string(),
+        };
         assert!(!failed.is_queued());
         assert!(failed.is_terminal());
     }
@@ -711,7 +744,9 @@ mod tests {
         {
             let store = Arc::new(NodeStore::open(&db_path).unwrap());
             let (queue, _rx) = JobQueue::new(store);
-            job_id = queue.enqueue(make_text_request("Persistent", "tbl_1")).unwrap();
+            job_id = queue
+                .enqueue(make_text_request("Persistent", "tbl_1"))
+                .unwrap();
         }
 
         // Reopen and verify

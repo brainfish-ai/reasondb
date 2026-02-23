@@ -32,9 +32,8 @@ impl PluginRegistry {
         );
         self.plugins.push(manifest);
         // Keep sorted by priority descending so higher-priority plugins are tried first
-        self.plugins.sort_by(|a, b| {
-            b.capabilities.priority.cmp(&a.capabilities.priority)
-        });
+        self.plugins
+            .sort_by(|a, b| b.capabilities.priority.cmp(&a.capabilities.priority));
     }
 
     /// Scan a directory for plugin manifests and register them.
@@ -135,7 +134,12 @@ mod tests {
     use std::collections::HashMap;
     use tempfile::tempdir;
 
-    fn make_manifest(name: &str, kind: PluginKind, formats: &[&str], priority: u32) -> PluginManifest {
+    fn make_manifest(
+        name: &str,
+        kind: PluginKind,
+        formats: &[&str],
+        priority: u32,
+    ) -> PluginManifest {
         PluginManifest {
             name: name.to_string(),
             version: "1.0.0".to_string(),
@@ -162,8 +166,18 @@ mod tests {
     #[test]
     fn test_register_and_find() {
         let mut reg = PluginRegistry::new();
-        reg.register(make_manifest("pdf-plugin", PluginKind::Extractor, &["pdf"], 100));
-        reg.register(make_manifest("docx-plugin", PluginKind::Extractor, &["docx"], 100));
+        reg.register(make_manifest(
+            "pdf-plugin",
+            PluginKind::Extractor,
+            &["pdf"],
+            100,
+        ));
+        reg.register(make_manifest(
+            "docx-plugin",
+            PluginKind::Extractor,
+            &["docx"],
+            100,
+        ));
 
         assert_eq!(reg.len(), 2);
         assert!(reg.find_extractor_for_format("pdf").is_some());
@@ -199,7 +213,12 @@ mod tests {
     #[test]
     fn test_get_by_name() {
         let mut reg = PluginRegistry::new();
-        reg.register(make_manifest("my-plugin", PluginKind::Extractor, &["pdf"], 100));
+        reg.register(make_manifest(
+            "my-plugin",
+            PluginKind::Extractor,
+            &["pdf"],
+            100,
+        ));
 
         assert!(reg.get("my-plugin").is_some());
         assert!(reg.get("nonexistent").is_none());

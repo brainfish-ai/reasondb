@@ -232,36 +232,32 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     let result = match cli.command {
-        Commands::Serve { port, host, db_path } => {
-            commands::serve::run(port, host, db_path).await
-        }
+        Commands::Serve {
+            port,
+            host,
+            db_path,
+        } => commands::serve::run(port, host, db_path).await,
         Commands::Query { query, file } => {
             commands::query::run(&cli.url, query, file, cli.format).await
         }
-        Commands::Tables(cmd) => {
-            commands::tables::run(&cli.url, cmd, cli.format).await
-        }
-        Commands::Docs(cmd) => {
-            commands::docs::run(&cli.url, cmd, cli.format).await
-        }
+        Commands::Tables(cmd) => commands::tables::run(&cli.url, cmd, cli.format).await,
+        Commands::Docs(cmd) => commands::docs::run(&cli.url, cmd, cli.format).await,
         Commands::Import { file, table, title } => {
             commands::import::run(&cli.url, file, table, title).await
         }
-        Commands::Export { output, table, format } => {
-            commands::export::run(&cli.url, output, table, format).await
-        }
-        Commands::Search { query, table, top_k } => {
-            commands::search::run(&cli.url, query, table, top_k, cli.format).await
-        }
-        Commands::Health => {
-            commands::health::run(&cli.url).await
-        }
-        Commands::Config(cmd) => {
-            commands::config::run(cmd, &cli.url).await
-        }
-        Commands::Auth(cmd) => {
-            commands::auth::run(&cli.url, cmd).await
-        }
+        Commands::Export {
+            output,
+            table,
+            format,
+        } => commands::export::run(&cli.url, output, table, format).await,
+        Commands::Search {
+            query,
+            table,
+            top_k,
+        } => commands::search::run(&cli.url, query, table, top_k, cli.format).await,
+        Commands::Health => commands::health::run(&cli.url).await,
+        Commands::Config(cmd) => commands::config::run(cmd, &cli.url).await,
+        Commands::Auth(cmd) => commands::auth::run(&cli.url, cmd).await,
         Commands::Cluster(cmd) => {
             let output = output::Output::new(cli.format);
             commands::cluster::execute(cmd, output).await

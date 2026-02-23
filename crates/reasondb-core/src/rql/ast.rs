@@ -360,9 +360,7 @@ impl Value {
             Self::Bool(b) => serde_json::Value::Bool(*b),
             Self::Number(n) => serde_json::json!(*n),
             Self::String(s) => serde_json::Value::String(s.clone()),
-            Self::Array(arr) => {
-                serde_json::Value::Array(arr.iter().map(|v| v.to_json()).collect())
-            }
+            Self::Array(arr) => serde_json::Value::Array(arr.iter().map(|v| v.to_json()).collect()),
         }
     }
 }

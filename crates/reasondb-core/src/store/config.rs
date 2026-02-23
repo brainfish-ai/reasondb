@@ -19,14 +19,15 @@ impl NodeStore {
     /// Retrieve the persisted LLM settings, or `None` if never stored.
     pub fn get_llm_settings(&self) -> Result<Option<LlmSettings>> {
         let read_txn = self.db.begin_read().map_err(StorageError::from)?;
-        let table = read_txn.open_table(CONFIG_TABLE).map_err(StorageError::from)?;
+        let table = read_txn
+            .open_table(CONFIG_TABLE)
+            .map_err(StorageError::from)?;
 
         match table.get(LLM_SETTINGS_KEY) {
             Ok(Some(guard)) => {
                 let bytes = guard.value();
-                let settings: LlmSettings = serde_json::from_slice(bytes).map_err(|e| {
-                    StorageError::Deserialization(format!("LLM settings: {}", e))
-                })?;
+                let settings: LlmSettings = serde_json::from_slice(bytes)
+                    .map_err(|e| StorageError::Deserialization(format!("LLM settings: {}", e)))?;
                 Ok(Some(settings))
             }
             Ok(None) => Ok(None),
@@ -36,9 +37,8 @@ impl NodeStore {
 
     /// Persist LLM settings to the database.
     pub fn set_llm_settings(&self, settings: &LlmSettings) -> Result<()> {
-        let bytes = serde_json::to_vec(settings).map_err(|e| {
-            StorageError::Serialization(format!("LLM settings: {}", e))
-        })?;
+        let bytes = serde_json::to_vec(settings)
+            .map_err(|e| StorageError::Serialization(format!("LLM settings: {}", e)))?;
 
         let write_txn = self.db.begin_write().map_err(StorageError::from)?;
         {

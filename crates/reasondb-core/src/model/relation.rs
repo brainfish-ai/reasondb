@@ -114,7 +114,11 @@ pub struct DocumentRelation {
 
 impl DocumentRelation {
     /// Create a new document relationship.
-    pub fn new(from: impl Into<String>, to: impl Into<String>, relation_type: RelationType) -> Self {
+    pub fn new(
+        from: impl Into<String>,
+        to: impl Into<String>,
+        relation_type: RelationType,
+    ) -> Self {
         Self {
             id: generate_relation_id(),
             from_document_id: from.into(),
@@ -249,8 +253,14 @@ mod tests {
 
     #[test]
     fn test_relation_type_inverse() {
-        assert_eq!(RelationType::References.inverse(), RelationType::ReferencedBy);
-        assert_eq!(RelationType::Supersedes.inverse(), RelationType::SupersededBy);
+        assert_eq!(
+            RelationType::References.inverse(),
+            RelationType::ReferencedBy
+        );
+        assert_eq!(
+            RelationType::Supersedes.inverse(),
+            RelationType::SupersededBy
+        );
         assert_eq!(RelationType::RelatedTo.inverse(), RelationType::RelatedTo);
     }
 

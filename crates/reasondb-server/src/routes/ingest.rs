@@ -44,14 +44,7 @@ fn index_document_nodes(
         };
 
         text_index
-            .index_node(
-                document_id,
-                &node.id,
-                table_id,
-                &node.title,
-                content,
-                tags,
-            )
+            .index_node(document_id, &node.id, table_id, &node.title, content, tags)
             .map_err(|e| ApiError::Internal(format!("Failed to index node: {}", e)))?;
     }
 
@@ -217,15 +210,24 @@ pub async fn ingest_file<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         }
     }
 
-    let (filename, data) = file_data.ok_or_else(|| ApiError::BadRequest("No file provided".to_string()))?;
-    let table_id = table_id.ok_or_else(|| ApiError::BadRequest("table_id is required".to_string()))?;
+    let (filename, data) =
+        file_data.ok_or_else(|| ApiError::BadRequest("No file provided".to_string()))?;
+    let table_id =
+        table_id.ok_or_else(|| ApiError::BadRequest("table_id is required".to_string()))?;
 
     // Verify the table exists
-    state.store.get_table(&table_id)
+    state
+        .store
+        .get_table(&table_id)
         .map_err(ApiError::from)?
         .ok_or_else(|| ApiError::NotFound(format!("Table '{}' not found", table_id)))?;
 
-    info!("Ingesting file: {} ({} bytes) into table: {}", filename, data.len(), table_id);
+    info!(
+        "Ingesting file: {} ({} bytes) into table: {}",
+        filename,
+        data.len(),
+        table_id
+    );
 
     // Write to a temp directory preserving the original filename so the
     // extractor plugin can derive a meaningful title from it.
@@ -263,7 +265,10 @@ pub async fn ingest_file<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         &result.document.tags,
     )?;
 
-    debug!("Ingestion complete: {} nodes created", result.stats.nodes_created);
+    debug!(
+        "Ingestion complete: {} nodes created",
+        result.stats.nodes_created
+    );
 
     Ok(Json(IngestResponse {
         document_id: result.document.id.clone(),
@@ -302,7 +307,9 @@ pub async fn ingest_text<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     }
 
     if request.table_id.is_empty() {
-        return Err(ApiError::ValidationError("Table ID is required".to_string()));
+        return Err(ApiError::ValidationError(
+            "Table ID is required".to_string(),
+        ));
     }
 
     state
@@ -318,9 +325,13 @@ pub async fn ingest_text<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         request.table_id
     );
 
-    let job_id = state.job_queue.enqueue(JobRequest::Text(request))
+    let job_id = state
+        .job_queue
+        .enqueue(JobRequest::Text(request))
         .map_err(|e| ApiError::Internal(e))?;
-    let status = state.job_queue.get_status(&job_id)
+    let status = state
+        .job_queue
+        .get_status(&job_id)
         .ok_or_else(|| ApiError::Internal("Job not found after enqueue".to_string()))?;
 
     Ok(Json(status))
@@ -386,10 +397,14 @@ pub async fn ingest_batch<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     Json(request): Json<BatchIngestRequest>,
 ) -> ApiResult<Json<BatchIngestResponse>> {
     if request.table_id.is_empty() {
-        return Err(ApiError::ValidationError("Table ID is required".to_string()));
+        return Err(ApiError::ValidationError(
+            "Table ID is required".to_string(),
+        ));
     }
     if request.documents.is_empty() {
-        return Err(ApiError::ValidationError("At least one document is required".to_string()));
+        return Err(ApiError::ValidationError(
+            "At least one document is required".to_string(),
+        ));
     }
 
     state
@@ -460,7 +475,9 @@ pub async fn ingest_url<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     }
 
     if request.table_id.is_empty() {
-        return Err(ApiError::ValidationError("Table ID is required".to_string()));
+        return Err(ApiError::ValidationError(
+            "Table ID is required".to_string(),
+        ));
     }
 
     url::Url::parse(&request.url)
@@ -477,9 +494,13 @@ pub async fn ingest_url<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         request.url, request.table_id
     );
 
-    let job_id = state.job_queue.enqueue(JobRequest::Url(request))
+    let job_id = state
+        .job_queue
+        .enqueue(JobRequest::Url(request))
         .map_err(|e| ApiError::Internal(e))?;
-    let status = state.job_queue.get_status(&job_id)
+    let status = state
+        .job_queue
+        .get_status(&job_id)
         .ok_or_else(|| ApiError::Internal("Job not found after enqueue".to_string()))?;
 
     Ok(Json(status))

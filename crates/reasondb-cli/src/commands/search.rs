@@ -121,11 +121,7 @@ pub async fn run(
                 "Nodes visited:".dimmed(),
                 response.stats.nodes_visited
             );
-            println!(
-                "  {} {}",
-                "LLM calls:".dimmed(),
-                response.stats.llm_calls
-            );
+            println!("  {} {}", "LLM calls:".dimmed(), response.stats.llm_calls);
             println!(
                 "  {} {}",
                 "Time:".dimmed(),

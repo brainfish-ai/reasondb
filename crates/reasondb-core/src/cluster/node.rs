@@ -44,22 +44,17 @@ impl From<&str> for NodeId {
 }
 
 /// Role of a node in the cluster
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum NodeRole {
     /// Leader node - handles all writes
     Leader,
     /// Follower node - replicates from leader, can serve reads
+    #[default]
     Follower,
     /// Candidate - participating in leader election
     Candidate,
     /// Learner - non-voting member catching up
     Learner,
-}
-
-impl Default for NodeRole {
-    fn default() -> Self {
-        NodeRole::Follower
-    }
 }
 
 impl fmt::Display for NodeRole {
@@ -74,9 +69,10 @@ impl fmt::Display for NodeRole {
 }
 
 /// Status of a cluster node
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum NodeStatus {
     /// Node is healthy and responding
+    #[default]
     Healthy,
     /// Node is suspected to be down
     Suspect,
@@ -86,12 +82,6 @@ pub enum NodeStatus {
     Joining,
     /// Node is leaving the cluster
     Leaving,
-}
-
-impl Default for NodeStatus {
-    fn default() -> Self {
-        NodeStatus::Healthy
-    }
 }
 
 impl fmt::Display for NodeStatus {
@@ -135,12 +125,7 @@ pub struct ClusterNode {
 
 impl ClusterNode {
     /// Create a new cluster node
-    pub fn new(
-        id: NodeId,
-        name: String,
-        api_addr: SocketAddr,
-        raft_addr: SocketAddr,
-    ) -> Self {
+    pub fn new(id: NodeId, name: String, api_addr: SocketAddr, raft_addr: SocketAddr) -> Self {
         let now = chrono::Utc::now().timestamp();
         Self {
             id,

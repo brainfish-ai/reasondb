@@ -15,15 +15,27 @@ pub async fn run(url: &str) -> Result<()> {
                 // Try to parse as JSON, fall back to text
                 let body = response.text().await?;
                 println!();
-                println!("  {} Server is {}", "✓".green().bold(), "healthy".green().bold());
-                
+                println!(
+                    "  {} Server is {}",
+                    "✓".green().bold(),
+                    "healthy".green().bold()
+                );
+
                 // Try to parse as JSON for additional info
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
                     if let Some(status) = json.get("status") {
-                        println!("  {} {}", "Status:".dimmed(), status.as_str().unwrap_or("ok"));
+                        println!(
+                            "  {} {}",
+                            "Status:".dimmed(),
+                            status.as_str().unwrap_or("ok")
+                        );
                     }
                     if let Some(version) = json.get("version") {
-                        println!("  {} {}", "Version:".dimmed(), version.as_str().unwrap_or("unknown"));
+                        println!(
+                            "  {} {}",
+                            "Version:".dimmed(),
+                            version.as_str().unwrap_or("unknown")
+                        );
                     }
                 } else {
                     println!("  {} {}", "Response:".dimmed(), body.trim());

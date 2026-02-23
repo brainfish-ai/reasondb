@@ -16,14 +16,14 @@ use crate::error::Result;
 use crate::llm::{DocumentSummary, ReasoningEngine};
 use crate::model::Document;
 use crate::query_filter::extract_query_terms;
+use crate::rql::ast::Query;
 use crate::store::NodeStore;
 use crate::text_index::TextIndex;
 use crate::tree_grep;
-use crate::rql::ast::Query;
 
 use super::types::{
-    DocumentMatch, MatchedNode, QueryResult, QueryStats,
-    ReasonPhase, ReasonPhaseStatus, ReasonProgress,
+    DocumentMatch, MatchedNode, QueryResult, QueryStats, ReasonPhase, ReasonPhaseStatus,
+    ReasonProgress,
 };
 
 /// Configuration constants
@@ -35,6 +35,7 @@ const MAX_CONCURRENT: usize = 5;
 
 /// A BM25 node-level hit preserved through the pipeline.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct NodeHit {
     pub node_id: String,
     pub title: String,
@@ -104,7 +105,7 @@ pub async fn execute_reason_query_with_progress<R: ReasoningEngine + Send + Sync
 
     // LIMIT controls how many results to return; reason over more to find the best ones
     let result_limit = query.limit.as_ref().map(|l| l.count).unwrap_or(10);
-    let target_docs = (result_limit * 2).max(6).min(20);
+    let target_docs = (result_limit * 2).clamp(6, 20);
 
     let config = SearchConfig {
         min_confidence: min_confidence.unwrap_or(0.3),
@@ -116,12 +117,16 @@ pub async fn execute_reason_query_with_progress<R: ReasoningEngine + Send + Sync
     let engine = SearchEngine::with_config(store.clone(), reasoner.clone(), config);
 
     // PHASE 1: BM25 Candidate Selection (preserving node-level hits)
-    send_progress(&progress_tx, ReasonProgress {
-        phase: ReasonPhase::Candidates,
-        status: ReasonPhaseStatus::Started,
-        message: "Searching for candidates...".to_string(),
-        detail: None,
-    }).await;
+    send_progress(
+        &progress_tx,
+        ReasonProgress {
+            phase: ReasonPhase::Candidates,
+            status: ReasonPhaseStatus::Started,
+            message: "Searching for candidates...".to_string(),
+            detail: None,
+        },
+    )
+    .await;
 
     let mut candidates = get_candidates(store, query, reason_query, text_index, &table_id)?;
     tracing::info!(
@@ -130,20 +135,28 @@ pub async fn execute_reason_query_with_progress<R: ReasoningEngine + Send + Sync
         "REASON Phase 1 (BM25): candidates retrieved"
     );
 
-    send_progress(&progress_tx, ReasonProgress {
-        phase: ReasonPhase::Candidates,
-        status: ReasonPhaseStatus::Completed,
-        message: format!("Found {} candidates", candidates.len()),
-        detail: Some(serde_json::json!({ "count": candidates.len() })),
-    }).await;
+    send_progress(
+        &progress_tx,
+        ReasonProgress {
+            phase: ReasonPhase::Candidates,
+            status: ReasonPhaseStatus::Completed,
+            message: format!("Found {} candidates", candidates.len()),
+            detail: Some(serde_json::json!({ "count": candidates.len() })),
+        },
+    )
+    .await;
 
     // PHASE 2: Structural Filtering via recursive tree-grep (zero LLM calls)
-    send_progress(&progress_tx, ReasonProgress {
-        phase: ReasonPhase::Filtering,
-        status: ReasonPhaseStatus::Started,
-        message: "Analyzing document structure...".to_string(),
-        detail: None,
-    }).await;
+    send_progress(
+        &progress_tx,
+        ReasonProgress {
+            phase: ReasonPhase::Filtering,
+            status: ReasonPhaseStatus::Started,
+            message: "Analyzing document structure...".to_string(),
+            detail: None,
+        },
+    )
+    .await;
 
     let terms = extract_query_terms(reason_query);
     if !terms.is_empty() {
@@ -156,47 +169,58 @@ pub async fn execute_reason_query_with_progress<R: ReasoningEngine + Send + Sync
         "REASON Phase 2 (tree-grep): structural filter applied"
     );
 
-    send_progress(&progress_tx, ReasonProgress {
-        phase: ReasonPhase::Filtering,
-        status: ReasonPhaseStatus::Completed,
-        message: format!("Structural analysis complete ({} terms)", terms.len()),
-        detail: Some(serde_json::json!({ "terms": terms, "count": candidates.len() })),
-    }).await;
+    send_progress(
+        &progress_tx,
+        ReasonProgress {
+            phase: ReasonPhase::Filtering,
+            status: ReasonPhaseStatus::Completed,
+            message: format!("Structural analysis complete ({} terms)", terms.len()),
+            detail: Some(serde_json::json!({ "terms": terms, "count": candidates.len() })),
+        },
+    )
+    .await;
 
     // PHASE 3: LLM Summary Ranking
-    send_progress(&progress_tx, ReasonProgress {
-        phase: ReasonPhase::Ranking,
-        status: ReasonPhaseStatus::Started,
-        message: "Ranking documents by relevance...".to_string(),
-        detail: None,
-    }).await;
+    send_progress(
+        &progress_tx,
+        ReasonProgress {
+            phase: ReasonPhase::Ranking,
+            status: ReasonPhaseStatus::Started,
+            message: "Ranking documents by relevance...".to_string(),
+            detail: None,
+        },
+    )
+    .await;
 
-    let documents = rank_documents_by_summary(
-        store,
-        candidates,
-        reason_query,
-        target_docs,
-        &reasoner,
-    ).await;
+    let documents =
+        rank_documents_by_summary(store, candidates, reason_query, target_docs, &reasoner).await;
     tracing::info!(
         ranked_count = documents.len(),
         "REASON Phase 3 (LLM ranking): documents ranked"
     );
 
-    send_progress(&progress_tx, ReasonProgress {
-        phase: ReasonPhase::Ranking,
-        status: ReasonPhaseStatus::Completed,
-        message: format!("Selected top {} documents", documents.len()),
-        detail: Some(serde_json::json!({ "count": documents.len() })),
-    }).await;
+    send_progress(
+        &progress_tx,
+        ReasonProgress {
+            phase: ReasonPhase::Ranking,
+            status: ReasonPhaseStatus::Completed,
+            message: format!("Selected top {} documents", documents.len()),
+            detail: Some(serde_json::json!({ "count": documents.len() })),
+        },
+    )
+    .await;
 
     // PHASE 4: Deep LLM reasoning (parallel)
-    send_progress(&progress_tx, ReasonProgress {
-        phase: ReasonPhase::Reasoning,
-        status: ReasonPhaseStatus::Started,
-        message: format!("Deep reasoning on {} documents...", documents.len()),
-        detail: Some(serde_json::json!({ "total": documents.len() })),
-    }).await;
+    send_progress(
+        &progress_tx,
+        ReasonProgress {
+            phase: ReasonPhase::Reasoning,
+            status: ReasonPhaseStatus::Started,
+            message: format!("Deep reasoning on {} documents...", documents.len()),
+            detail: Some(serde_json::json!({ "total": documents.len() })),
+        },
+    )
+    .await;
 
     let (all_matches, total_llm_calls, docs_processed) = execute_parallel_reasoning(
         &engine,
@@ -205,14 +229,19 @@ pub async fn execute_reason_query_with_progress<R: ReasoningEngine + Send + Sync
         min_confidence,
         query,
         &progress_tx,
-    ).await;
+    )
+    .await;
 
-    send_progress(&progress_tx, ReasonProgress {
-        phase: ReasonPhase::Reasoning,
-        status: ReasonPhaseStatus::Completed,
-        message: "Reasoning complete".to_string(),
-        detail: Some(serde_json::json!({ "matches": all_matches.len() })),
-    }).await;
+    send_progress(
+        &progress_tx,
+        ReasonProgress {
+            phase: ReasonPhase::Reasoning,
+            status: ReasonPhaseStatus::Completed,
+            message: "Reasoning complete".to_string(),
+            detail: Some(serde_json::json!({ "matches": all_matches.len() })),
+        },
+    )
+    .await;
 
     // Sort by confidence
     let mut sorted_matches = all_matches;
@@ -303,15 +332,17 @@ fn search_with_bm25(
     let mut candidates: Vec<CandidateDocument> = doc_hits
         .into_iter()
         .filter_map(|(doc_id, (best_score, nodes))| {
-            store.get_document(&doc_id).ok().flatten().map(|doc| {
-                CandidateDocument {
+            store
+                .get_document(&doc_id)
+                .ok()
+                .flatten()
+                .map(|doc| CandidateDocument {
                     document: doc,
                     bm25_score: best_score,
                     matched_nodes: nodes,
                     matched_sections: Vec::new(),
                     best_snippet: None,
-                }
-            })
+                })
         })
         .collect();
 
@@ -363,8 +394,8 @@ fn apply_tree_grep_filter(
     let mut scored: Vec<(CandidateDocument, f32)> = candidates
         .into_iter()
         .map(|mut c| {
-            let grep_result = tree_grep::tree_grep(store, &c.document.id, terms)
-                .unwrap_or_default();
+            let grep_result =
+                tree_grep::tree_grep(store, &c.document.id, terms).unwrap_or_default();
 
             c.matched_sections = grep_result
                 .matched_nodes
@@ -385,17 +416,13 @@ fn apply_tree_grep_filter(
 
             let bm25_weight = 0.4;
             let grep_weight = 0.6;
-            let combined = c.bm25_score * bm25_weight
-                + grep_result.structural_score * grep_weight;
+            let combined = c.bm25_score * bm25_weight + grep_result.structural_score * grep_weight;
 
             (c, combined)
         })
         .collect();
 
-    scored.sort_by(|a, b| {
-        b.1.partial_cmp(&a.1)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
     // Drop candidates with zero combined score (no BM25 or structural match)
     scored.retain(|(_, score)| *score > 0.0);
@@ -405,7 +432,7 @@ fn apply_tree_grep_filter(
     }
 
     // Keep at most target_docs * 3 candidates for the Phase 3 LLM prompt.
-    let cap = (target_docs * 3).max(10).min(MAX_CANDIDATES);
+    let cap = (target_docs * 3).clamp(10, MAX_CANDIDATES);
     scored.truncate(cap);
 
     scored.into_iter().map(|(c, _)| c).collect()
@@ -526,19 +553,23 @@ async fn execute_parallel_reasoning<R: ReasoningEngine + Send + Sync + 'static>(
         for (doc, search_result) in results {
             docs_completed += 1;
 
-            send_progress(progress_tx, ReasonProgress {
-                phase: ReasonPhase::Reasoning,
-                status: ReasonPhaseStatus::Progress,
-                message: format!(
-                    "Analyzing document {}/{}: '{}'",
-                    docs_completed, total_docs, doc.title
-                ),
-                detail: Some(serde_json::json!({
-                    "current": docs_completed,
-                    "total": total_docs,
-                    "doc_title": doc.title,
-                })),
-            }).await;
+            send_progress(
+                progress_tx,
+                ReasonProgress {
+                    phase: ReasonPhase::Reasoning,
+                    status: ReasonPhaseStatus::Progress,
+                    message: format!(
+                        "Analyzing document {}/{}: '{}'",
+                        docs_completed, total_docs, doc.title
+                    ),
+                    detail: Some(serde_json::json!({
+                        "current": docs_completed,
+                        "total": total_docs,
+                        "doc_title": doc.title,
+                    })),
+                },
+            )
+            .await;
 
             match search_result {
                 Ok(response) => {

@@ -58,8 +58,9 @@ impl DocumentType {
             Some("csv") => Self::Csv,
             Some("json") => Self::Json,
             Some("xml") => Self::Xml,
-            Some("jpg") | Some("jpeg") | Some("png") | Some("gif") | Some("bmp")
-            | Some("webp") => Self::Image,
+            Some("jpg") | Some("jpeg") | Some("png") | Some("gif") | Some("bmp") | Some("webp") => {
+                Self::Image
+            }
             Some("wav") | Some("mp3") | Some("m4a") | Some("ogg") | Some("flac") => Self::Audio,
             Some("epub") => Self::Epub,
             Some("zip") => Self::Zip,
@@ -132,10 +133,7 @@ impl SmartExtractor {
         let path = path.as_ref();
         let doc_type = DocumentType::from_path(path);
         let path_str = path.to_string_lossy().to_string();
-        let ext = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("");
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
         if let Some(ref pm) = self.plugin_manager {
             if pm.has_extractor_for_format(ext) {
@@ -144,7 +142,9 @@ impl SmartExtractor {
                         let char_count = result.markdown.len();
                         info!(
                             "Plugin extracted {} chars from {} ({})",
-                            char_count, path_str, doc_type.name()
+                            char_count,
+                            path_str,
+                            doc_type.name()
                         );
                         return Ok(ExtractionResult {
                             title: result.title,
@@ -178,12 +178,11 @@ impl SmartExtractor {
             if pm.has_extractor_for_url(url) {
                 match pm.extract_url(url) {
                     Ok(result) => {
-                        let doc_type =
-                            if url.contains("youtube.com") || url.contains("youtu.be") {
-                                DocumentType::YouTube
-                            } else {
-                                DocumentType::Html
-                            };
+                        let doc_type = if url.contains("youtube.com") || url.contains("youtu.be") {
+                            DocumentType::YouTube
+                        } else {
+                            DocumentType::Html
+                        };
                         let char_count = result.markdown.len();
                         info!("Plugin extracted {} chars from URL: {}", char_count, url);
                         return Ok(ExtractionResult {
@@ -221,7 +220,10 @@ mod tests {
     fn test_document_type_detection() {
         assert_eq!(DocumentType::from_path("doc.pdf"), DocumentType::Pdf);
         assert_eq!(DocumentType::from_path("doc.docx"), DocumentType::Word);
-        assert_eq!(DocumentType::from_path("doc.pptx"), DocumentType::PowerPoint);
+        assert_eq!(
+            DocumentType::from_path("doc.pptx"),
+            DocumentType::PowerPoint
+        );
         assert_eq!(DocumentType::from_path("doc.xlsx"), DocumentType::Excel);
         assert_eq!(DocumentType::from_path("doc.html"), DocumentType::Html);
         assert_eq!(DocumentType::from_path("doc.jpg"), DocumentType::Image);

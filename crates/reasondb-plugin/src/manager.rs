@@ -122,7 +122,11 @@ impl PluginManager {
 
     /// Check if any post-processor plugins are registered.
     pub fn has_post_processors(&self) -> bool {
-        self.enabled && !self.registry.plugins_by_kind(PluginKind::PostProcessor).is_empty()
+        self.enabled
+            && !self
+                .registry
+                .plugins_by_kind(PluginKind::PostProcessor)
+                .is_empty()
     }
 
     /// Run all registered post-processor plugins in priority order (chained).
@@ -176,7 +180,11 @@ impl PluginManager {
 
     /// Check if a chunker plugin is registered.
     pub fn has_chunker(&self) -> bool {
-        self.enabled && !self.registry.plugins_by_kind(PluginKind::Chunker).is_empty()
+        self.enabled
+            && !self
+                .registry
+                .plugins_by_kind(PluginKind::Chunker)
+                .is_empty()
     }
 
     /// Chunk markdown using the highest-priority chunker plugin.
@@ -207,7 +215,11 @@ impl PluginManager {
 
     /// Check if a summarizer plugin is registered.
     pub fn has_summarizer(&self) -> bool {
-        self.enabled && !self.registry.plugins_by_kind(PluginKind::Summarizer).is_empty()
+        self.enabled
+            && !self
+                .registry
+                .plugins_by_kind(PluginKind::Summarizer)
+                .is_empty()
     }
 
     /// Summarize content using the highest-priority summarizer plugin.
@@ -242,11 +254,19 @@ impl PluginManager {
 
     /// Check if a formatter plugin is registered.
     pub fn has_formatter(&self) -> bool {
-        self.enabled && !self.registry.plugins_by_kind(PluginKind::Formatter).is_empty()
+        self.enabled
+            && !self
+                .registry
+                .plugins_by_kind(PluginKind::Formatter)
+                .is_empty()
     }
 
     /// Format nodes using the highest-priority formatter plugin.
-    pub fn format(&self, nodes: Vec<FormatNode>, config: &std::collections::HashMap<String, serde_json::Value>) -> Result<FormatResult> {
+    pub fn format(
+        &self,
+        nodes: Vec<FormatNode>,
+        config: &std::collections::HashMap<String, serde_json::Value>,
+    ) -> Result<FormatResult> {
         if !self.enabled {
             return Err(PluginError::NoHandler("Plugins disabled".to_string()));
         }

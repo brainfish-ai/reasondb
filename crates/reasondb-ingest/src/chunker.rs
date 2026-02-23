@@ -304,7 +304,11 @@ mod tests {
 
         assert!(chunks.len() > 1, "Expected multiple chunks");
 
-        let reconstructed: String = chunks.iter().map(|c| c.content.as_str()).collect::<Vec<_>>().join("\n\n");
+        let reconstructed: String = chunks
+            .iter()
+            .map(|c| c.content.as_str())
+            .collect::<Vec<_>>()
+            .join("\n\n");
         for word in text.split_whitespace() {
             assert!(
                 reconstructed.contains(word),
@@ -339,7 +343,11 @@ Some trailing text after the code block."#;
         let chunks = chunker.chunk_text(text).unwrap();
         assert!(!chunks.is_empty(), "Should produce at least one chunk");
 
-        let all_content: String = chunks.iter().map(|c| c.content.as_str()).collect::<Vec<_>>().join("\n\n");
+        let all_content: String = chunks
+            .iter()
+            .map(|c| c.content.as_str())
+            .collect::<Vec<_>>()
+            .join("\n\n");
         assert!(
             all_content.contains("```bash"),
             "Code fence opener should be preserved"
@@ -376,10 +384,7 @@ Final thoughts on the matter."#;
 
         let chunks = chunker.chunk_text(text).unwrap();
 
-        let headings: Vec<_> = chunks
-            .iter()
-            .filter_map(|c| c.heading.as_ref())
-            .collect();
+        let headings: Vec<_> = chunks.iter().filter_map(|c| c.heading.as_ref()).collect();
 
         assert!(
             headings.iter().any(|h| h.text.contains("Chapter One")),
@@ -395,7 +400,11 @@ Final thoughts on the matter."#;
         let text = "Short document with only a few words.";
         let chunks = chunker.chunk_text(text).unwrap();
 
-        assert_eq!(chunks.len(), 1, "Small documents must produce exactly one chunk");
+        assert_eq!(
+            chunks.len(),
+            1,
+            "Small documents must produce exactly one chunk"
+        );
         assert_eq!(chunks[0].content, text);
     }
 
@@ -412,7 +421,11 @@ Final thoughts on the matter."#;
         let text = "Visit https://example.com/path/to/page.html for more info. Also see http://docs.rs/text-splitter/latest/text_splitter/ for the API docs.";
 
         let chunks = chunker.chunk_text(text).unwrap();
-        let all_content: String = chunks.iter().map(|c| c.content.as_str()).collect::<Vec<_>>().join(" ");
+        let all_content: String = chunks
+            .iter()
+            .map(|c| c.content.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
 
         assert!(
             all_content.contains("https://example.com/path/to/page.html"),

@@ -20,9 +20,9 @@ pub struct RateLimitConfig {
 impl Default for RateLimitConfig {
     fn default() -> Self {
         Self {
-            requests_per_minute: 60,    // 1 req/sec average
-            requests_per_hour: 1000,    // ~16 req/min average
-            burst_size: 10,             // Allow bursts of 10
+            requests_per_minute: 60, // 1 req/sec average
+            requests_per_hour: 1000, // ~16 req/min average
+            burst_size: 10,          // Allow bursts of 10
             enabled: true,
         }
     }
@@ -88,11 +88,12 @@ impl RateLimitConfig {
 }
 
 /// Rate limit tiers for different use cases
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum RateLimitTier {
     /// Free tier - most restrictive
     Free,
     /// Standard tier - default limits
+    #[default]
     Standard,
     /// Premium tier - higher limits
     Premium,
@@ -119,12 +120,6 @@ impl RateLimitTier {
             },
             RateLimitTier::Unlimited => RateLimitConfig::disabled(),
         }
-    }
-}
-
-impl Default for RateLimitTier {
-    fn default() -> Self {
-        RateLimitTier::Standard
     }
 }
 

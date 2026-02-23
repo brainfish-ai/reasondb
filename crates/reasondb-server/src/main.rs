@@ -12,7 +12,10 @@ use reasondb_core::{
     store::NodeStore,
     text_index::TextIndex,
 };
-use reasondb_server::{create_server, init_metrics, jobs, routes, AppState, AuthConfig, ClusterNodeConfig, RateLimitConfig, ServerConfig};
+use reasondb_server::{
+    create_server, init_metrics, jobs, routes, AppState, AuthConfig, ClusterNodeConfig,
+    RateLimitConfig, ServerConfig,
+};
 use redb::Database;
 use std::sync::Arc;
 use tracing::{info, warn, Level};
@@ -32,7 +35,12 @@ struct Args {
     port: u16,
 
     /// Database file path
-    #[arg(short, long, default_value = "data/reasondb.redb", env = "REASONDB_PATH")]
+    #[arg(
+        short,
+        long,
+        default_value = "data/reasondb.redb",
+        env = "REASONDB_PATH"
+    )]
     database: String,
 
     /// LLM provider: openai, anthropic, gemini, cohere, glm, kimi, or ollama
@@ -48,7 +56,11 @@ struct Args {
     model: Option<String>,
 
     /// Base URL for Ollama (only used when provider is "ollama")
-    #[arg(long, env = "REASONDB_OLLAMA_BASE_URL", default_value = "http://localhost:11434/v1")]
+    #[arg(
+        long,
+        env = "REASONDB_OLLAMA_BASE_URL",
+        default_value = "http://localhost:11434/v1"
+    )]
     ollama_base_url: String,
 
     /// Disable summary generation during ingestion
@@ -92,7 +104,11 @@ struct Args {
     node_id: Option<String>,
 
     /// Cluster name
-    #[arg(long, env = "REASONDB_CLUSTER_NAME", default_value = "reasondb-cluster")]
+    #[arg(
+        long,
+        env = "REASONDB_CLUSTER_NAME",
+        default_value = "reasondb-cluster"
+    )]
     cluster_name: String,
 
     /// Raft address for cluster communication
@@ -192,10 +208,13 @@ async fn main() -> anyhow::Result<()> {
     // Cluster configuration
     let cluster_config = ClusterNodeConfig {
         enabled: args.cluster_enabled,
-        node_id: args.node_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+        node_id: args
+            .node_id
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
         cluster_name: args.cluster_name.clone(),
         raft_addr: args.raft_addr.clone(),
-        initial_members: args.cluster_members
+        initial_members: args
+            .cluster_members
             .map(|s| s.split(',').map(|s| s.trim().to_string()).collect())
             .unwrap_or_default(),
         min_quorum: 2,
@@ -242,7 +261,8 @@ async fn main() -> anyhow::Result<()> {
         );
         Some(s)
     } else {
-        let provider_name = args.llm_provider
+        let provider_name = args
+            .llm_provider
             .filter(|s| !s.is_empty())
             .map(|s| s.to_lowercase());
         let api_key = args.llm_api_key.filter(|k| !k.is_empty());
@@ -250,12 +270,22 @@ async fn main() -> anyhow::Result<()> {
         let base_url = if provider_name.as_deref() == Some("ollama") {
             Some(args.ollama_base_url.clone())
         } else {
-            std::env::var("REASONDB_LLM_BASE_URL").ok().filter(|u| !u.is_empty())
+            std::env::var("REASONDB_LLM_BASE_URL")
+                .ok()
+                .filter(|u| !u.is_empty())
         };
 
         match provider_name {
             Some(pn) => {
-                let supported = ["openai", "anthropic", "gemini", "cohere", "glm", "kimi", "ollama"];
+                let supported = [
+                    "openai",
+                    "anthropic",
+                    "gemini",
+                    "cohere",
+                    "glm",
+                    "kimi",
+                    "ollama",
+                ];
                 if !supported.contains(&pn.as_str()) {
                     anyhow::bail!(
                         "Unknown LLM provider '{}'. Supported: {}",
@@ -327,7 +357,10 @@ async fn main() -> anyhow::Result<()> {
     // Restore rate limit state from previous run
     match state.store.load_all_rate_limits() {
         Ok(snapshots) if !snapshots.is_empty() => {
-            info!("Restoring {} rate limit entries from database", snapshots.len());
+            info!(
+                "Restoring {} rate limit entries from database",
+                snapshots.len()
+            );
             state.rate_limit_store.import_snapshots(&snapshots);
         }
         _ => {}
@@ -342,7 +375,10 @@ async fn main() -> anyhow::Result<()> {
             interval.tick().await;
             let snapshots = snapshot_rl.export_snapshots();
             if !snapshots.is_empty() {
-                let refs: Vec<(&str, _)> = snapshots.iter().map(|(k, v)| (k.as_str(), v.clone())).collect();
+                let refs: Vec<(&str, _)> = snapshots
+                    .iter()
+                    .map(|(k, v)| (k.as_str(), v.clone()))
+                    .collect();
                 if let Err(e) = snapshot_store.save_rate_limits(&refs) {
                     tracing::warn!("Failed to persist rate limit snapshots: {}", e);
                 }

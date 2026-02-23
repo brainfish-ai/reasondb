@@ -122,12 +122,19 @@ impl IntoResponse for AuthError {
         let (status, message) = match &self {
             AuthError::MissingKey => (
                 StatusCode::UNAUTHORIZED,
-                "API key required. Use 'Authorization: Bearer <key>' or 'X-API-Key: <key>' header".to_string(),
+                "API key required. Use 'Authorization: Bearer <key>' or 'X-API-Key: <key>' header"
+                    .to_string(),
             ),
-            AuthError::InvalidKeyFormat => (StatusCode::UNAUTHORIZED, "Invalid API key format".to_string()),
+            AuthError::InvalidKeyFormat => (
+                StatusCode::UNAUTHORIZED,
+                "Invalid API key format".to_string(),
+            ),
             AuthError::InvalidKey => (StatusCode::UNAUTHORIZED, "Invalid API key".to_string()),
             AuthError::ExpiredKey => (StatusCode::UNAUTHORIZED, "API key has expired".to_string()),
-            AuthError::RevokedKey => (StatusCode::UNAUTHORIZED, "API key has been revoked".to_string()),
+            AuthError::RevokedKey => (
+                StatusCode::UNAUTHORIZED,
+                "API key has been revoked".to_string(),
+            ),
             AuthError::PermissionDenied(msg) => (StatusCode::FORBIDDEN, msg.clone()),
             AuthError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
         };

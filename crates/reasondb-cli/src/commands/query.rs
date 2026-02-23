@@ -49,7 +49,7 @@ pub async fn run(
 
 async fn execute_query(url: &str, query: &str, format: OutputFormat) -> Result<()> {
     let client = reqwest::Client::new();
-    
+
     let request = QueryRequest {
         query: query.to_string(),
     };
@@ -82,7 +82,7 @@ async fn execute_query(url: &str, query: &str, format: OutputFormat) -> Result<(
                     if let Some(obj) = first.as_object() {
                         let headers: Vec<&str> = obj.keys().map(|s| s.as_str()).collect();
                         println!("{}", headers.join(","));
-                        
+
                         for doc in &result.documents {
                             if let Some(obj) = doc.as_object() {
                                 let values: Vec<String> = headers
@@ -171,30 +171,29 @@ fn print_document(doc: &serde_json::Value) {
 
 async fn start_repl(url: &str, format: OutputFormat) -> Result<()> {
     println!();
+    println!("{}", "ReasonDB Query REPL".cyan().bold());
     println!(
         "{}",
-        "ReasonDB Query REPL".cyan().bold()
+        "Type RQL queries, or 'help' for commands, 'exit' to quit.".dimmed()
     );
-    println!("{}", "Type RQL queries, or 'help' for commands, 'exit' to quit.".dimmed());
     println!();
 
     let mut rl = DefaultEditor::new()?;
-    
+
     // Try to load history
-    let history_path = dirs::data_dir()
-        .map(|d| d.join("reasondb").join("history.txt"));
-    
+    let history_path = dirs::data_dir().map(|d| d.join("reasondb").join("history.txt"));
+
     if let Some(ref path) = history_path {
         let _ = rl.load_history(path);
     }
 
     loop {
         let prompt = format!("{} ", "rql>".green().bold());
-        
+
         match rl.readline(&prompt) {
             Ok(line) => {
                 let line = line.trim();
-                
+
                 if line.is_empty() {
                     continue;
                 }

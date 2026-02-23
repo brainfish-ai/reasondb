@@ -489,7 +489,12 @@ pub struct MetadataSchemaResponse {
 }
 
 /// Extract all field paths from a JSON value recursively
-fn extract_field_paths(value: &Value, prefix: &str, paths: &mut HashMap<String, (String, usize)>, max_depth: usize) {
+fn extract_field_paths(
+    value: &Value,
+    prefix: &str,
+    paths: &mut HashMap<String, (String, usize)>,
+    max_depth: usize,
+) {
     if max_depth == 0 {
         return;
     }
@@ -566,7 +571,7 @@ pub async fn get_table_metadata_schema<R: ReasoningEngine + Clone + Send + Sync 
         .map_err(|e| ApiError::StorageError(e.to_string()))?;
 
     let total_documents = documents.len();
-    
+
     // Sample documents for schema detection (limit to 100 for performance)
     const SAMPLE_SIZE: usize = 100;
     let sample_count = std::cmp::min(documents.len(), SAMPLE_SIZE);
@@ -577,8 +582,8 @@ pub async fn get_table_metadata_schema<R: ReasoningEngine + Clone + Send + Sync 
     const MAX_DEPTH: usize = 5;
 
     for doc in sampled_docs {
-        let metadata_value = serde_json::to_value(&doc.metadata)
-            .unwrap_or(Value::Object(serde_json::Map::new()));
+        let metadata_value =
+            serde_json::to_value(&doc.metadata).unwrap_or(Value::Object(serde_json::Map::new()));
         extract_field_paths(&metadata_value, "", &mut field_paths, MAX_DEPTH);
     }
 
@@ -591,7 +596,7 @@ pub async fn get_table_metadata_schema<R: ReasoningEngine + Clone + Send + Sync 
             occurrence_count: count,
         })
         .collect();
-    
+
     fields.sort_by(|a, b| a.path.cmp(&b.path));
 
     debug!(
@@ -694,9 +699,9 @@ pub async fn get_column_values<R: ReasoningEngine + Clone + Send + Sync + 'stati
         .into_iter()
         .map(|(value, count)| ColumnValue { value, count })
         .collect();
-    
+
     values.sort_by(|a, b| b.count.cmp(&a.count));
-    
+
     // Limit to top 50 values
     values.truncate(50);
 

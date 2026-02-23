@@ -121,7 +121,10 @@ impl ApiKeyStore {
             self.update(&key)?;
             Ok(())
         } else {
-            Err(ReasonDBError::NotFound(format!("API key not found: {}", id)))
+            Err(ReasonDBError::NotFound(format!(
+                "API key not found: {}",
+                id
+            )))
         }
     }
 
@@ -136,7 +139,10 @@ impl ApiKeyStore {
                 let key: ApiKey = bincode::deserialize(data.value())?;
                 key.key_hash
             } else {
-                return Err(ReasonDBError::NotFound(format!("API key not found: {}", id)));
+                return Err(ReasonDBError::NotFound(format!(
+                    "API key not found: {}",
+                    id
+                )));
             }
         };
 
@@ -226,7 +232,9 @@ mod tests {
         assert!(result.is_some());
 
         // Invalid key should not authenticate
-        let result = store.authenticate("rdb_live_invalidinvalidinvalidinval123").unwrap();
+        let result = store
+            .authenticate("rdb_live_invalidinvalidinvalidinval123")
+            .unwrap();
         assert!(result.is_none());
     }
 

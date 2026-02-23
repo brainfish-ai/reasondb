@@ -216,7 +216,11 @@ mod tests {
 
         assert_eq!(decoded.timestamp, entry.timestamp);
         match decoded.entry_type {
-            LogEntryType::UpsertTable { table_id, name, description } => {
+            LogEntryType::UpsertTable {
+                table_id,
+                name,
+                description,
+            } => {
                 assert_eq!(table_id, "tbl_123");
                 assert_eq!(name, "Test Table");
                 assert_eq!(description, Some("A test table".to_string()));

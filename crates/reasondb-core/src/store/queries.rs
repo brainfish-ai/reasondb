@@ -76,7 +76,11 @@ impl NodeStore {
         // If no filters, get all documents
         let doc_ids: Vec<String> = match candidate_ids {
             Some(ids) => ids.into_iter().collect(),
-            None => self.list_documents()?.iter().map(|d| d.id.clone()).collect(),
+            None => self
+                .list_documents()?
+                .iter()
+                .map(|d| d.id.clone())
+                .collect(),
         };
 
         // Load documents and apply date filters

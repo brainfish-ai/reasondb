@@ -101,3 +101,36 @@ jobs:
           files: |
             artifacts/reasondb-*
             artifacts/checksums-sha256.txt
+
+  update-homebrew:
+    name: Update Homebrew Tap
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Clone tap repo
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/reasondb/homebrew-tap.git" tap
+
+      - name: Generate formula
+        run: |
+          cd tap
+          bash "${{ github.workspace }}/scripts/update-homebrew.sh" "${{ github.ref_name }}" "${{ github.workspace }}/artifacts"
+
+      - name: Push to tap
+        run: |
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/reasondb.rb
+          git commit -m "reasondb ${{ github.ref_name }}"
+          git push
