@@ -10,6 +10,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  RUSTC_WRAPPER: ""
 
 jobs:
   build:
