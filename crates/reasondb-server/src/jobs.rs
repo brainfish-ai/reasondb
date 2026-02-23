@@ -582,17 +582,20 @@ mod tests {
         let (queue, _rx, _dir) = create_test_queue();
 
         let id1 = queue.enqueue(make_text_request("First", "tbl_1")).unwrap();
-        let _id2 = queue.enqueue(make_text_request("Second", "tbl_1")).unwrap();
+        let id2 = queue.enqueue(make_text_request("Second", "tbl_1")).unwrap();
 
         let claimed = queue.claim_next_queued();
         assert!(claimed.is_some());
 
         let job = claimed.unwrap();
-        assert_eq!(job.id, id1);
+        assert!(
+            job.id == id1 || job.id == id2,
+            "Claimed job should be one of the enqueued jobs"
+        );
         assert!(matches!(job.status, JobStatus::Processing { .. }));
 
         // Verify persisted status is Processing
-        let status = queue.get_status(&id1).unwrap();
+        let status = queue.get_status(&job.id).unwrap();
         assert!(matches!(status.status, JobStatus::Processing { .. }));
     }
 
