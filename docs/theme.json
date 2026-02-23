@@ -1,11 +1,11 @@
 {
   "$schema": "https://devdoc.sh/theme.json",
   "logo": {
-    "light": "/assets/reason-db-logo.svg",
-    "dark": "/assets/reason-db-logo.svg",
+    "light": "/assets/logo-light.svg",
+    "dark": "/assets/logo-dark.svg",
     "alt": "ReasonDB",
-    "width": 140,
-    "height": 28
+    "width": 32,
+    "height": 32
   },
   "header": {
     "showAskAI": true,
@@ -22,56 +22,56 @@
     ]
   },
   "colors": {
-    "primary": "#cba6f7",
-    "primaryLight": "#cba6f7",
-    "primaryDark": "#cba6f7",
+    "primary": "#F56565",
+    "primaryLight": "#FC8181",
+    "primaryDark": "#F56565",
     "background": {
-      "light": "#eff1f5",
-      "dark": "#1e1e2e"
+      "light": "#fafafa",
+      "dark": "#0f0f0f"
     },
     "backgroundSecondary": {
-      "light": "#e6e9ef",
-      "dark": "#181825"
+      "light": "#f5f5f5",
+      "dark": "#171717"
     },
     "card": {
-      "light": "#dce0e8",
-      "dark": "#313244"
+      "light": "#ffffff",
+      "dark": "#1c1c1c"
     },
     "border": {
-      "light": "#bcc0cc",
-      "dark": "#45475a"
+      "light": "#e5e5e5",
+      "dark": "#2a2a2a"
     },
     "text": {
-      "light": "#4c4f69",
-      "dark": "#cdd6f4"
+      "light": "#171717",
+      "dark": "#ededed"
     },
     "textMuted": {
-      "light": "#6c6f85",
-      "dark": "#a6adc8"
+      "light": "#737373",
+      "dark": "#a3a3a3"
     },
     "accent": {
-      "light": "#8839ef",
-      "dark": "#cba6f7"
+      "light": "#E53E3E",
+      "dark": "#FC8181"
     },
     "accentSecondary": {
-      "light": "#1e66f5",
-      "dark": "#89b4fa"
+      "light": "#DD6B20",
+      "dark": "#FBD38D"
     },
     "success": {
-      "light": "#40a02b",
-      "dark": "#a6e3a1"
+      "light": "#38A169",
+      "dark": "#68D391"
     },
     "warning": {
-      "light": "#df8e1d",
-      "dark": "#f9e2af"
+      "light": "#D69E2E",
+      "dark": "#F6E05E"
     },
     "error": {
-      "light": "#d20f39",
-      "dark": "#f38ba8"
+      "light": "#E53E3E",
+      "dark": "#FC8181"
     },
     "info": {
-      "light": "#04a5e5",
-      "dark": "#89dceb"
+      "light": "#3182CE",
+      "dark": "#63B3ED"
     }
   },
   "defaultTheme": "dark",
