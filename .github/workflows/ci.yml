@@ -3,8 +3,20 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "assets/**"
+      - "LICENSE"
+      - ".gitignore"
   pull_request:
     branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "assets/**"
+      - "LICENSE"
+      - ".gitignore"
 
 env:
   CARGO_TERM_COLOR: always
@@ -23,37 +35,38 @@ jobs:
           components: rustfmt
       - run: cargo fmt --all -- --check
 
-  clippy:
-    name: Clippy
+  check:
+    name: Check & Test
     runs-on: ubuntu-latest
+    needs: fmt
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
       - uses: swatinem/rust-cache@v2
-      - run: cargo clippy --workspace --exclude reasondb --all-targets -- -D warnings
+        with:
+          shared-key: ci-cargo
+      - name: Clippy
+        run: cargo clippy --workspace --exclude reasondb --all-targets -- -D warnings
         env:
           RUSTC_WRAPPER: ""
-
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: swatinem/rust-cache@v2
-      - run: cargo test --workspace --exclude reasondb
+      - name: Test
+        run: cargo test --workspace --exclude reasondb
         env:
           RUSTC_WRAPPER: ""
 
   build:
     name: Build
     runs-on: ubuntu-latest
+    needs: fmt
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: swatinem/rust-cache@v2
-      - run: cargo build --workspace --exclude reasondb --release
+        with:
+          shared-key: ci-cargo-release
+      - name: Build release
+        run: cargo build --workspace --exclude reasondb --release
         env:
           RUSTC_WRAPPER: ""
