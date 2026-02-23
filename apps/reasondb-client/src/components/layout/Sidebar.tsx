@@ -6,7 +6,9 @@ import {
   CaretLeft,
   Gear,
   WarningCircle,
+  GithubLogo,
 } from '@phosphor-icons/react'
+import { open } from '@tauri-apps/plugin-shell'
 import { cn } from '@/lib/utils'
 import { useConnectionStore, type Connection } from '@/stores/connectionStore'
 import { useUiStore } from '@/stores/uiStore'
@@ -143,6 +145,18 @@ export function Sidebar() {
 
       {/* Quick actions */}
       <div className="border-t border-border p-3 space-y-1">
+        {!activeConnectionId && (
+          <button
+            onClick={() => open('https://github.com/reasondb/reasondb')}
+            className={cn(
+              'w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md',
+              'text-subtext-1 hover:text-text hover:bg-surface-0 transition-colors'
+            )}
+          >
+            <GithubLogo size={16} weight="duotone" aria-hidden="true" />
+            <span className="flex-1 text-left">GitHub</span>
+          </button>
+        )}
         {activeConnectionId && (
           <>
             <button

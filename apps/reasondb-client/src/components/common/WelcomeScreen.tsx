@@ -6,6 +6,7 @@ import {
   Brain,
   MagnifyingGlass,
 } from '@phosphor-icons/react'
+import { open } from '@tauri-apps/plugin-shell'
 import { cn } from '@/lib/utils'
 import { useConnectionStore } from '@/stores/connectionStore'
 
@@ -81,10 +82,8 @@ export function WelcomeScreen({ onNewConnection }: WelcomeScreenProps) {
               </div>
             </button>
 
-            <a
-              href="https://docs.reasondb.dev"
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              onClick={() => open('https://docs.reasondb.dev')}
               className={cn(
                 'flex items-center gap-3 p-4 rounded-lg',
                 'bg-surface-0 hover:bg-surface-1 border border-border',
@@ -98,7 +97,7 @@ export function WelcomeScreen({ onNewConnection }: WelcomeScreenProps) {
                 <div className="text-sm font-medium text-text">Documentation</div>
                 <div className="text-xs text-subtext-0">Learn RQL syntax</div>
               </div>
-            </a>
+            </button>
           </div>
         </section>
 
