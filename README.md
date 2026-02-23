@@ -26,7 +26,7 @@
 </p>
 
 <p align="center">
-    <a href="https://hub.docker.com/r/reasondb/reasondb"><img src="https://img.shields.io/docker/pulls/reasondb/reasondb?label=docker%20pulls&style=flat-square" alt="Docker Pulls"></a>
+    <a href="https://hub.docker.com/r/ajainvivek/reasondb"><img src="https://img.shields.io/docker/pulls/ajainvivek/reasondb?label=docker%20pulls&style=flat-square" alt="Docker Pulls"></a>
     &nbsp;
     <a href="https://github.com/reasondb/reasondb"><img src="https://img.shields.io/github/stars/reasondb/reasondb?color=FFD700&style=flat-square&label=stars" alt="GitHub Stars"></a>
     &nbsp;
@@ -34,11 +34,11 @@
 </p>
 
 <p align="center">
-    <a href="https://docs.reasondb.dev">Docs</a>
+    <a href="https://reason-db.devdoc.sh">Docs</a>
     &nbsp;&bull;&nbsp;
-    <a href="https://docs.reasondb.dev/quickstart">Quick Start</a>
+    <a href="https://reason-db.devdoc.sh/quickstart">Quick Start</a>
     &nbsp;&bull;&nbsp;
-    <a href="https://docs.reasondb.dev/api-reference/introduction">API Reference</a>
+    <a href="https://reason-db.devdoc.sh/api-reference/introduction">API Reference</a>
     &nbsp;&bull;&nbsp;
     <a href="https://discord.gg/reasondb">Discord</a>
 </p>
@@ -168,7 +168,7 @@ Server starts at **http://localhost:4444** with Swagger UI at **http://localhost
 docker run --rm --pull always --name reasondb -p 4444:4444 \
   -e REASONDB_LLM_PROVIDER=openai \
   -e REASONDB_LLM_API_KEY=sk-... \
-  reasondb/reasondb:latest serve
+  ajainvivek/reasondb:latest serve
 ```
 
 Or use the Makefile for local development:
@@ -253,7 +253,7 @@ curl -X POST http://localhost:4444/v1/plugins/markitdown/test \
   -d '{"operation":"extract","params":{"source_type":"file","path":"/tmp/doc.pdf"}}'
 ```
 
-Community plugins can be installed by dropping a directory into `$REASONDB_PLUGINS_DIR` (default: `./plugins`). See the [Plugin Guide](https://docs.reasondb.dev/guides/plugins) for details.
+Community plugins can be installed by dropping a directory into `$REASONDB_PLUGINS_DIR` (default: `./plugins`). See the [Plugin Guide](https://reason-db.devdoc.sh/guides/plugins) for details.
 
 <h2>Use Cases</h2>
 
@@ -280,11 +280,11 @@ Community plugins can be installed by dropping a directory into `$REASONDB_PLUGI
 
 | Resource | Link |
 |----------|------|
-| Full Documentation | [docs.reasondb.dev](https://docs.reasondb.dev) |
-| Quick Start Guide | [docs.reasondb.dev/quickstart](https://docs.reasondb.dev/quickstart) |
-| Core Concepts | [docs.reasondb.dev/concepts](https://docs.reasondb.dev/concepts) |
-| Plugin Guide | [docs.reasondb.dev/guides/plugins](https://docs.reasondb.dev/guides/plugins) |
-| API Reference | [docs.reasondb.dev/api-reference](https://docs.reasondb.dev/api-reference/introduction) |
+| Full Documentation | [reason-db.devdoc.sh](https://reason-db.devdoc.sh) |
+| Quick Start Guide | [reason-db.devdoc.sh/quickstart](https://reason-db.devdoc.sh/quickstart) |
+| Core Concepts | [reason-db.devdoc.sh/concepts](https://reason-db.devdoc.sh/concepts) |
+| Plugin Guide | [reason-db.devdoc.sh/guides/plugins](https://reason-db.devdoc.sh/guides/plugins) |
+| API Reference | [reason-db.devdoc.sh/api-reference](https://reason-db.devdoc.sh/api-reference/introduction) |
 | Swagger UI | [localhost:4444/swagger-ui](http://localhost:4444/swagger-ui/) *(when server is running)* |
 
 <h2>Community</h2>
@@ -293,7 +293,7 @@ Join our growing community for help, ideas, and discussions regarding ReasonDB.
 
 - Chat live with us on [Discord](https://discord.gg/reasondb)
 - Follow us on [X](https://x.com/reasondb)
-- View our [Blog](https://docs.reasondb.dev/blog)
+- View our [Blog](https://reason-db.devdoc.sh/blog)
 - Star us on [GitHub](https://github.com/reasondb/reasondb)
 
 <h2>Contributing</h2>

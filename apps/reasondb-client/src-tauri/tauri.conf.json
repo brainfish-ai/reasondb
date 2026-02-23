@@ -41,7 +41,7 @@
     "macOS": {
       "minimumSystemVersion": "10.15",
       "signing": {
-        "identity": ""
+        "identity": "-"
       }
     },
     "windows": {
