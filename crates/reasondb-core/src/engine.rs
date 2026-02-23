@@ -330,8 +330,8 @@ impl<R: ReasoningEngine + 'static> SearchEngine<R> {
             if let Some(child) = children.iter().find(|c| c.id == decision.node_id) {
                 let mut trace = reasoning_trace.clone();
                 trace.push(ReasoningStep {
-                    node_title: node.title.clone(),
-                    decision: format!("Selected: {}", child.title),
+                    node_title: child.title.clone(),
+                    decision: decision.reasoning.clone(),
                     confidence: decision.confidence,
                 });
                 traces.push((child.clone(), trace));

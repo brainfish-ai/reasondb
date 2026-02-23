@@ -4,14 +4,15 @@ import {
   ArrowsOut,
   ArrowsIn,
   CaretDown,
-  CaretRight,
   TreeStructure,
   Path,
   CircleNotch,
   WarningCircle,
-  Brain,
   Target,
+  Code,
+  Eye,
 } from '@phosphor-icons/react'
+import Markdown from 'react-markdown'
 import { cn } from '@/lib/utils'
 import { NodeSplitViewer, type TreeNode } from '@/components/shared/NodeSplitViewer'
 import { createClient } from '@/lib/api'
@@ -68,87 +69,157 @@ function Breadcrumb({ path }: { path: string[] }) {
   )
 }
 
-function ReasoningTrace({ steps }: { steps: ReasoningStepResponse[] }) {
-  const [isOpen, setIsOpen] = useState(false)
-
+function ReasoningSteps({ steps }: { steps: ReasoningStepResponse[] }) {
   if (steps.length === 0) return null
 
   return (
-    <div className="mt-2">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-1.5 text-[11px] text-overlay-0 hover:text-text transition-colors"
-      >
-        {isOpen ? <CaretDown size={10} /> : <CaretRight size={10} />}
-        <Brain size={12} />
-        <span>Reasoning trace ({steps.length} steps)</span>
-      </button>
-      {isOpen && (
-        <div className="mt-2 ml-1 border-l-2 border-surface-2 pl-3 flex flex-col gap-1.5">
-          {steps.map((step, i) => {
-            const pct = Math.round(step.confidence * 100)
-            const dotColor = pct >= 70 ? 'bg-green' : pct >= 40 ? 'bg-yellow' : 'bg-overlay-0'
-            return (
-              <div key={i} className="flex items-start gap-2 text-[11px]">
-                <div className={cn('w-1.5 h-1.5 rounded-full mt-1.5 shrink-0', dotColor)} />
-                <div className="min-w-0">
-                  <span className="font-medium text-text">{step.node_title}</span>
-                  <span className="text-overlay-0 mx-1.5">—</span>
-                  <span className="text-subtext-0">{step.decision}</span>
-                  <span className="text-overlay-0/60 ml-1.5 font-mono">{pct}%</span>
-                </div>
+    <div className="mt-3 rounded-lg bg-surface-0/60 border border-border/40 p-3">
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-overlay-0/70">
+        Reasoning
+      </span>
+      <div className="mt-2 flex flex-col gap-3">
+        {steps.map((step, i) => {
+          const pct = Math.round(step.confidence * 100)
+          const isLast = i === steps.length - 1
+          return (
+            <div key={i} className={cn(
+              'rounded-md px-2.5 py-2',
+              isLast ? 'bg-mauve/8 border border-mauve/15' : 'bg-surface-1/40'
+            )}>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-[11px] text-overlay-0/40 font-mono shrink-0">{i + 1}.</span>
+                <span className={cn('text-xs font-medium truncate', isLast ? 'text-mauve' : 'text-text')}>
+                  {step.node_title}
+                </span>
+                <span className="text-[10px] font-mono text-overlay-0/50 shrink-0 ml-auto">{pct}%</span>
               </div>
-            )
-          })}
+              {step.decision && (
+                <p className="text-[11px] text-subtext-0 leading-relaxed mt-1 ml-[18px]">
+                  {step.decision}
+                </p>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function ContentBlock({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const [raw, setRaw] = useState(false)
+  const isLong = content.length > 300
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-overlay-0/70">
+          Content
+        </span>
+        <div className="flex items-center gap-0.5 rounded-md bg-surface-1/60 p-0.5">
+          <button
+            onClick={() => setRaw(false)}
+            className={cn(
+              'flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors',
+              !raw ? 'bg-surface-0 text-text shadow-sm' : 'text-overlay-0 hover:text-text'
+            )}
+          >
+            <Eye size={10} />
+            Preview
+          </button>
+          <button
+            onClick={() => setRaw(true)}
+            className={cn(
+              'flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors',
+              raw ? 'bg-surface-0 text-text shadow-sm' : 'text-overlay-0 hover:text-text'
+            )}
+          >
+            <Code size={10} />
+            Raw
+          </button>
         </div>
+      </div>
+      <div className="rounded-md bg-base/40 border border-border/30 p-3 relative">
+        {raw ? (
+          <pre
+            className={cn(
+              'text-xs text-subtext-0 font-mono leading-relaxed whitespace-pre-wrap',
+              !expanded && isLong && 'max-h-[140px] overflow-hidden'
+            )}
+          >
+            {content}
+          </pre>
+        ) : (
+          <div
+            className={cn(
+              'prose-sm prose-invert max-w-none',
+              'prose-headings:text-text prose-headings:font-semibold prose-headings:mt-3 prose-headings:mb-1.5',
+              'prose-p:text-subtext-0 prose-p:text-xs prose-p:leading-relaxed prose-p:my-1.5',
+              'prose-strong:text-text prose-em:text-subtext-1',
+              'prose-code:text-[11px] prose-code:bg-surface-1 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-mauve',
+              'prose-pre:bg-base prose-pre:border prose-pre:border-border/50 prose-pre:rounded-md prose-pre:text-[11px] prose-pre:p-3',
+              'prose-li:text-xs prose-li:text-subtext-0',
+              'prose-a:text-mauve prose-a:no-underline hover:prose-a:underline',
+              !expanded && isLong && 'max-h-[140px] overflow-hidden'
+            )}
+          >
+            <Markdown>{content}</Markdown>
+          </div>
+        )}
+        {!expanded && isLong && (
+          <div className="absolute inset-x-0 bottom-0 h-12 bg-linear-to-t from-base/80 to-transparent rounded-b-md" />
+        )}
+      </div>
+      {isLong && (
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="mt-1.5 text-[11px] text-mauve hover:text-lavender transition-colors"
+        >
+          {expanded ? 'Show less' : 'Show more'}
+        </button>
       )}
     </div>
   )
 }
 
 function MatchedNodeCard({ node, index }: { node: MatchedNodeResponse; index: number }) {
-  const [contentExpanded, setContentExpanded] = useState(index === 0)
-  const isLongContent = node.content.length > 300
+  const [open, setOpen] = useState(index === 0)
 
   return (
-    <div className="rounded-lg border border-border bg-surface-0/40 overflow-hidden">
-      {/* Card header */}
-      <div className="px-4 py-3 flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 mb-1.5">
-            <Target size={14} className="text-mauve shrink-0" />
-            <span className="font-medium text-sm text-text truncate">{node.title}</span>
-            <ConfidenceBadge value={node.confidence} size="sm" />
+    <div className="rounded-xl border border-border bg-surface-0/50 shadow-sm overflow-hidden">
+      {/* Collapsible header */}
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full px-4 py-3 flex items-center gap-2 text-left hover:bg-surface-0/80 transition-colors"
+      >
+        <CaretDown
+          size={12}
+          className={cn('shrink-0 text-overlay-0 transition-transform', !open && '-rotate-90')}
+        />
+        <span className="font-semibold text-sm text-text truncate">{node.title}</span>
+        <ConfidenceBadge value={node.confidence} size="sm" />
+      </button>
+
+      {/* Collapsible body */}
+      {open && (
+        <div className="border-t border-border/40">
+          {/* Breadcrumb */}
+          <div className="px-4 pt-2 pb-1">
+            <Breadcrumb path={node.path} />
           </div>
-          <Breadcrumb path={node.path} />
-        </div>
-      </div>
 
-      {/* Content */}
-      <div className="px-4 pb-3">
-        <div
-          className={cn(
-            'rounded-md bg-base/60 border border-border/50 p-3',
-            'text-xs text-subtext-0 font-mono leading-relaxed whitespace-pre-wrap',
-            !contentExpanded && isLongContent && 'max-h-[120px] overflow-hidden relative'
-          )}
-        >
-          {node.content}
-          {!contentExpanded && isLongContent && (
-            <div className="absolute inset-x-0 bottom-0 h-10 bg-linear-to-t from-base/90 to-transparent" />
-          )}
-        </div>
-        {isLongContent && (
-          <button
-            onClick={() => setContentExpanded(!contentExpanded)}
-            className="mt-1.5 text-[11px] text-mauve hover:text-lavender transition-colors"
-          >
-            {contentExpanded ? 'Show less' : 'Show more'}
-          </button>
-        )}
+          {/* Content */}
+          <div className="px-4 py-3">
+            <ContentBlock content={node.content} />
+          </div>
 
-        <ReasoningTrace steps={node.reasoning_trace} />
-      </div>
+          {/* Reasoning */}
+          <div className="px-4 pb-4">
+            <ReasoningSteps steps={node.reasoning_trace} />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -369,7 +440,7 @@ export function ReasonDetailSidebar({
         {/* Content */}
         <div className="flex-1 min-h-0 overflow-auto">
           {activeTab === 'matched' && (
-            <div className="p-4 flex flex-col gap-3">
+            <div className="p-4 flex flex-col gap-4">
               {matchedNodes.length === 0 ? (
                 <div className="flex items-center justify-center h-32 text-overlay-0 text-sm">
                   No matched nodes
