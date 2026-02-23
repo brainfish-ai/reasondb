@@ -16,11 +16,11 @@
 <br>
 
 <p align="center">
-    <a href="https://github.com/reasondb/reasondb"><img src="https://img.shields.io/github/v/release/reasondb/reasondb?color=6C5CE7&include_prereleases&label=version&sort=semver&style=flat-square" alt="Version"></a>
+    <a href="https://github.com/reasondb/reasondb/releases"><img src="https://img.shields.io/github/v/release/reasondb/reasondb?color=6C5CE7&include_prereleases&label=version&sort=semver&style=flat-square" alt="Version"></a>
     &nbsp;
     <a href="https://github.com/reasondb/reasondb"><img src="https://img.shields.io/badge/built_with-Rust-dca282.svg?style=flat-square" alt="Built with Rust"></a>
     &nbsp;
-    <a href="https://github.com/reasondb/reasondb/actions"><img src="https://img.shields.io/github/actions/workflow/status/reasondb/reasondb/ci.yml?style=flat-square&branch=main" alt="CI"></a>
+    <a href="https://github.com/reasondb/reasondb/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/reasondb/reasondb/ci.yml?style=flat-square&branch=main&label=CI" alt="CI"></a>
     &nbsp;
     <a href="https://github.com/reasondb/reasondb/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-ReasonDB_v1.0-00bfff.svg?style=flat-square" alt="License"></a>
 </p>
