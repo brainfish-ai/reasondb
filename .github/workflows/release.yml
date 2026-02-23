@@ -58,7 +58,7 @@ jobs:
         env:
           RUSTC_WRAPPER: ""
           CROSS_CONTAINER_OPTS: "--env RUSTC_WRAPPER="
-        run: ${{ matrix.cross && 'cross' || 'cargo' }} build --release --target ${{ matrix.target }} -p reasondb-cli
+        run: ${{ matrix.cross && 'cross' || 'cargo' }} build --release --target ${{ matrix.target }} -p reasondb-cli ${{ matrix.cross && '--features vendored-openssl' || '' }}
 
       - name: Package (unix)
         if: matrix.archive == 'tar.gz'
