@@ -405,12 +405,12 @@ export async function getCompletions(
         const matches = !prefix || nameLC.startsWith(prefixLC) || snakeCase.startsWith(prefixLC)
 
         if (matches) {
-          const needsQuote = !BARE_IDENT_RE.test(table.name)
+          const sqlName = BARE_IDENT_RE.test(table.name) ? table.name : snakeCase
           items.push({
             label: table.name,
             kind: monaco.languages.CompletionItemKind.Class,
-            insertText: needsQuote ? `"${table.name}"` : table.name,
-            filterText: needsQuote ? `${table.name} ${snakeCase}` : table.name,
+            insertText: sqlName,
+            filterText: `${table.name} ${snakeCase}`,
             detail: `Table (${table.columns.length} columns)`,
             documentation: `Columns: ${table.columns.map(c => c.name).join(', ')}`,
             range,
@@ -489,11 +489,15 @@ export async function getCompletions(
         
         // Then, add table.column format
         schema.tables.forEach((table) => {
+          const sqlTableName = BARE_IDENT_RE.test(table.name)
+            ? table.name
+            : table.name.toLowerCase().replace(/\s+/g, '_')
           table.columns.forEach((col, idx) => {
-            const fullName = `${table.name}.${col.name}`
-            if (!prefix || fullName.toLowerCase().startsWith(prefix.toLowerCase())) {
+            const fullName = `${sqlTableName}.${col.name}`
+            const displayName = `${table.name}.${col.name}`
+            if (!prefix || fullName.toLowerCase().startsWith(prefix.toLowerCase()) || displayName.toLowerCase().startsWith(prefix.toLowerCase())) {
               items.push({
-                label: fullName,
+                label: displayName,
                 kind: monaco.languages.CompletionItemKind.Field,
                 insertText: fullName,
                 detail: `${col.type} from ${table.name}`,

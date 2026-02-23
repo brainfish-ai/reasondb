@@ -42,9 +42,9 @@ AI agents today are crippled by their databases:
 
 ReasonDB introduces **Hierarchical Reasoning Retrieval (HRR)**—a fundamentally new architecture where the LLM doesn't just consume retrieved content, it actively navigates your document structure to find exactly what it needs.
 
-- **🌳 Structure-Aware**: Documents become navigable trees, preserving the hierarchy that makes complex documents understandable.
-- **🧠 LLM-Guided Traversal**: AI reasons through summaries at each level, choosing which branches to explore—like an expert scanning a document.
-- **⚡ Parallel Beam Search**: Explore multiple promising paths simultaneously. Find answers even when they're buried in unexpected places.
+- **Structure-Aware**: Documents become navigable trees, preserving the hierarchy that makes complex documents understandable.
+- **LLM-Guided Traversal**: AI reasons through summaries at each level, choosing which branches to explore—like an expert scanning a document.
+- **Parallel Beam Search**: Explore multiple promising paths simultaneously. Find answers even when they're buried in unexpected places.
 
 ## See the Difference
 
@@ -103,25 +103,25 @@ Server starts at **http://localhost:4444** with Swagger UI at **http://localhost
 
 ```bash
 # Build the image and start the container
-docker compose up --build
+make docker-up
 
 # Run in detached (background) mode
-docker compose up --build -d
+make docker-up-d
 
 # View logs when running detached
-docker compose logs -f
+make docker-logs
 
 # Stop the running containers
-docker compose down
+make docker-down
 
 # Stop and remove the persisted data volume
-docker compose down -v
+make docker-down-v
 
 # Rebuild from scratch (no cache)
-docker compose build --no-cache
+make docker-build
 
 # Check container health status
-docker compose ps
+make docker-ps
 ```
 
 Configure the LLM provider via environment variables or a `.env` file in the project root:
@@ -134,14 +134,14 @@ Configure the LLM provider via environment variables or a `.env` file in the pro
 
 ```bash
 # Option 1: export before running
-REASONDB_LLM_PROVIDER=openai REASONDB_LLM_API_KEY=sk-... docker compose up --build
+REASONDB_LLM_PROVIDER=openai REASONDB_LLM_API_KEY=sk-... make docker-up
 
 # Option 2: create a .env file (git-ignored)
 cat > .env <<'EOF'
 REASONDB_LLM_PROVIDER=anthropic
 REASONDB_LLM_API_KEY=sk-ant-...
 EOF
-docker compose up --build
+make docker-up
 ```
 
 ### Query with RQL
@@ -231,10 +231,10 @@ Community plugins can be installed by dropping a directory into `$REASONDB_PLUGI
 
 ## Use Cases
 
-- **📜 Legal Document Analysis**: Navigate complex contracts, find specific clauses, compare terms across agreements
-- **🎓 Research & Knowledge Management**: Build searchable knowledge bases from papers, reports, and documentation
-- **🎧 Customer Support Intelligence**: Transform support docs into an AI agent that finds precise answers
-- **🛡️ Compliance & Policy**: Query policy documents in natural language with section references
+- **Legal Document Analysis**: Navigate complex contracts, find specific clauses, compare terms across agreements
+- **Research & Knowledge Management**: Build searchable knowledge bases from papers, reports, and documentation
+- **Customer Support Intelligence**: Transform support docs into an AI agent that finds precise answers
+- **Compliance & Policy**: Query policy documents in natural language with section references
 
 ## Tech Stack
 
@@ -261,19 +261,19 @@ Community plugins can be installed by dropping a directory into `$REASONDB_PLUGI
 ReasonDB is source-available under the [ReasonDB License v1.0](./LICENSE).
 
 **You can:**
-- ✅ Use ReasonDB for any purpose (commercial or non-commercial)
-- ✅ Modify the source code
-- ✅ Distribute copies and derivative works
-- ✅ Use in your own products and services
+- Use ReasonDB for any purpose (commercial or non-commercial)
+- Modify the source code
+- Distribute copies and derivative works
+- Use in your own products and services
 
 **You cannot:**
-- ❌ Offer ReasonDB as a hosted/managed database service (DBaaS)
-- ❌ Provide ReasonDB's functionality as a service to third parties
+- Offer ReasonDB as a hosted/managed database service (DBaaS)
+- Provide ReasonDB's functionality as a service to third parties
 
 For commercial licensing to offer ReasonDB as a service, please contact us.
 
 ---
 
 <p align="center">
-  <strong>Star us on GitHub</strong> if ReasonDB helps your AI agents think better! ⭐
+  <strong>Star us on GitHub</strong> if ReasonDB helps your AI agents think better!
 </p>
