@@ -57,7 +57,7 @@ export const editorColors: Record<string, string> = {
   'editorIndentGuide.background': palette.surface1,
   'editorIndentGuide.activeBackground': palette.surface2,
   'editorBracketMatch.background': palette.surface2 + '40',
-  'editorBracketMatch.border': palette.mauve,
+  'editorBracketMatch.border': '#FA5053',
   'editor.foldBackground': palette.surface0 + '40',
   'scrollbar.shadow': palette.crust,
   'scrollbarSlider.background': palette.surface2 + '80',

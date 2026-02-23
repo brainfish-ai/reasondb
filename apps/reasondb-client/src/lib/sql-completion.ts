@@ -31,6 +31,17 @@ export type CompletionContext =
 // Parser instance (reused)
 const parser = new Parser()
 
+// Valid unquoted SQL identifier: starts with letter/underscore, rest is word chars
+const BARE_IDENT_RE = /^[a-zA-Z_]\w*$/
+
+function quoteIdentifier(name: string): string {
+  return BARE_IDENT_RE.test(name) ? name : `"${name}"`
+}
+
+function unquoteIdentifier(name: string): string {
+  return name.startsWith('"') && name.endsWith('"') ? name.slice(1, -1) : name
+}
+
 // Table aliases in current query
 let tableAliases: Map<string, string> = new Map()
 
@@ -217,14 +228,25 @@ function extractAliases(sql: string): Map<string, string> {
     }
   } catch {
     // Fallback: regex-based alias extraction for incomplete queries
-    const aliasRegex = /\bFROM\s+(\w+)\s+(?:AS\s+)?(\w+)/gi
     let match
-    while ((match = aliasRegex.exec(sql)) !== null) {
+
+    // Quoted table aliases: FROM "Table Name" AS alias
+    const quotedFromRegex = /\bFROM\s+"([^"]+)"\s+(?:AS\s+)?(\w+)/gi
+    while ((match = quotedFromRegex.exec(sql)) !== null) {
       aliases.set(match[2], match[1])
     }
-    
-    const joinAliasRegex = /\bJOIN\s+(\w+)\s+(?:AS\s+)?(\w+)/gi
-    while ((match = joinAliasRegex.exec(sql)) !== null) {
+    // Unquoted table aliases: FROM table AS alias
+    const fromRegex = /\bFROM\s+(\w+)\s+(?:AS\s+)?(\w+)/gi
+    while ((match = fromRegex.exec(sql)) !== null) {
+      aliases.set(match[2], match[1])
+    }
+
+    const quotedJoinRegex = /\bJOIN\s+"([^"]+)"\s+(?:AS\s+)?(\w+)/gi
+    while ((match = quotedJoinRegex.exec(sql)) !== null) {
+      aliases.set(match[2], match[1])
+    }
+    const joinRegex = /\bJOIN\s+(\w+)\s+(?:AS\s+)?(\w+)/gi
+    while ((match = joinRegex.exec(sql)) !== null) {
       aliases.set(match[2], match[1])
     }
   }
@@ -233,11 +255,13 @@ function extractAliases(sql: string): Map<string, string> {
 }
 
 /**
- * Extract table name from FROM clause
+ * Extract table name from FROM clause (handles both quoted and unquoted identifiers)
  */
 function extractFromTable(sql: string): string | undefined {
-  const match = sql.match(/\bFROM\s+(\w+)/i)
-  return match ? match[1] : undefined
+  const quoted = sql.match(/\bFROM\s+"([^"]+)"/i)
+  if (quoted) return quoted[1]
+  const unquoted = sql.match(/\bFROM\s+(\w+)/i)
+  return unquoted ? unquoted[1] : undefined
 }
 
 /**
@@ -349,7 +373,8 @@ export function detectContext(sql: string, cursorOffset: number): {
   }
   
   // After FROM table - expect keyword (WHERE, ORDER BY, etc)
-  if (/\bFROM\s+\w+(\s+\w+)?\s*$/i.test(upperText)) {
+  // Handles both quoted ("Table Name") and unquoted identifiers
+  if (/\bFROM\s+(?:"[^"]*"|\w+)(?:\s+(?:AS\s+)?\w+)?\s*$/i.test(upperText)) {
     return { context: 'keyword', prefix }
   }
   
@@ -373,13 +398,19 @@ export async function getCompletions(
   
   switch (context) {
     case 'table': {
-      // Show table names
       schema.tables.forEach((table, idx) => {
-        if (!prefix || table.name.toLowerCase().startsWith(prefix.toLowerCase())) {
+        const nameLC = table.name.toLowerCase()
+        const snakeCase = nameLC.replace(/\s+/g, '_')
+        const prefixLC = prefix.toLowerCase()
+        const matches = !prefix || nameLC.startsWith(prefixLC) || snakeCase.startsWith(prefixLC)
+
+        if (matches) {
+          const needsQuote = !BARE_IDENT_RE.test(table.name)
           items.push({
             label: table.name,
             kind: monaco.languages.CompletionItemKind.Class,
-            insertText: table.name,
+            insertText: needsQuote ? `"${table.name}"` : table.name,
+            filterText: needsQuote ? `${table.name} ${snakeCase}` : table.name,
             detail: `Table (${table.columns.length} columns)`,
             documentation: `Columns: ${table.columns.map(c => c.name).join(', ')}`,
             range,

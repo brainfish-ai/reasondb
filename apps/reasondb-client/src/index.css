@@ -34,7 +34,7 @@
   --color-lavender: #c4b5fd;
 
   /* Semantic colors */
-  --color-primary: var(--color-mauve);
+  --color-primary: #FA5053;
   --color-secondary: var(--color-blue);
   --color-accent: var(--color-sapphire);
   --color-muted: var(--color-overlay-0);
@@ -47,7 +47,7 @@
   --color-popover-foreground: var(--color-text);
   --color-border: var(--color-surface-1);
   --color-input: var(--color-surface-1);
-  --color-ring: var(--color-mauve);
+  --color-ring: #FA5053;
   --color-destructive: var(--color-red);
   --color-success: var(--color-green);
   --color-warning: var(--color-yellow);
@@ -99,6 +99,8 @@
   --color-rosewater: #9f1239;
   --color-flamingo: #be123c;
   --color-maroon: #b91c1c;
+  --color-primary: #DC3545;
+  --color-ring: #DC3545;
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
@@ -173,7 +175,7 @@ body {
 
 /* Selection */
 ::selection {
-  background: var(--color-mauve);
+  background: var(--color-primary);
   color: var(--color-crust);
 }
 

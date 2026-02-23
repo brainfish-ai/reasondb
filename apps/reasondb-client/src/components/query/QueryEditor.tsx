@@ -385,6 +385,7 @@ export default function QueryEditor({ onExecute, tabId, initialQuery = '', onQue
         <div className="flex items-center gap-3">
           <Button
             size="sm"
+            variant="secondary"
             onClick={handleExecute}
             disabled={isExecuting || !activeConnectionId || !query.trim()}
             className="gap-2 pr-3"

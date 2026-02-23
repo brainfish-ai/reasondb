@@ -158,8 +158,12 @@ export const useSchemaStore = create<SchemaState>((set, get) => ({
   },
   
   getTableByName: (tableName) => {
+    const lower = tableName.toLowerCase()
     return get().tables.find(
-      t => t.name.toLowerCase() === tableName.toLowerCase()
+      t => {
+        const nameLC = t.name.toLowerCase()
+        return nameLC === lower || nameLC.replace(/\s+/g, '_') === lower
+      }
     )
   },
   
