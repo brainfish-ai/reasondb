@@ -316,6 +316,12 @@ impl Default for ReasoningConfig {
     }
 }
 
+// Re-export for convenience
+pub use config::{LlmModelConfig, LlmOptions, LlmSettings};
+pub use dynamic::DynamicReasoner;
+pub use mock::MockReasoner;
+pub use provider::{LLMProvider, Reasoner};
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -343,9 +349,3 @@ mod tests {
         assert_eq!(config.min_confidence, 0.3);
     }
 }
-
-// Re-export for convenience
-pub use config::{LlmModelConfig, LlmOptions, LlmSettings};
-pub use dynamic::DynamicReasoner;
-pub use mock::MockReasoner;
-pub use provider::{LLMProvider, Reasoner};

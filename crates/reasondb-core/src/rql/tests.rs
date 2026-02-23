@@ -785,7 +785,7 @@ fn test_execute_search_with_bm25() {
     assert!(result.stats.search_executed);
     assert_eq!(result.stats.index_used, Some("bm25_full_text".to_string()));
     assert!(
-        result.documents.len() >= 1,
+        !result.documents.is_empty(),
         "Expected at least 1 match, got {}",
         result.documents.len()
     );

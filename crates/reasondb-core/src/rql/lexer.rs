@@ -500,7 +500,7 @@ mod tests {
 
     #[test]
     fn test_numbers() {
-        let mut lexer = Lexer::new("WHERE x > 100 AND y < 3.14");
+        let mut lexer = Lexer::new("WHERE x > 100 AND y < 3.15");
         let tokens = lexer.tokenize().unwrap();
         assert_eq!(
             tokens,
@@ -512,7 +512,7 @@ mod tests {
                 Token::And,
                 Token::Identifier("y".to_string()),
                 Token::Lt,
-                Token::Number(3.14),
+                Token::Number(3.15),
                 Token::Eof
             ]
         );

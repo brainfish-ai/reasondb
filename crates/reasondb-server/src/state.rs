@@ -138,21 +138,12 @@ impl<R: ReasoningEngine> AppState<R> {
 }
 
 /// Authentication configuration
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct AuthConfig {
-    /// Enable authentication (if false, all requests are allowed)
+    /// Enable authentication (if false, all requests are allowed - disabled by default for backward compatibility)
     pub enabled: bool,
     /// Master key that bypasses all checks (for admin/setup)
     pub master_key: Option<String>,
-}
-
-impl Default for AuthConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false, // Disabled by default for backward compatibility
-            master_key: None,
-        }
-    }
 }
 
 impl AuthConfig {

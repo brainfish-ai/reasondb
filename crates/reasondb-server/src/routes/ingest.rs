@@ -328,7 +328,7 @@ pub async fn ingest_text<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     let job_id = state
         .job_queue
         .enqueue(JobRequest::Text(request))
-        .map_err(|e| ApiError::Internal(e))?;
+        .map_err(ApiError::Internal)?;
     let status = state
         .job_queue
         .get_status(&job_id)
@@ -438,7 +438,7 @@ pub async fn ingest_batch<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         let job_id = state
             .job_queue
             .enqueue(JobRequest::Text(text_req))
-            .map_err(|e| ApiError::Internal(e))?;
+            .map_err(ApiError::Internal)?;
 
         job_ids.push(job_id);
     }
@@ -497,7 +497,7 @@ pub async fn ingest_url<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     let job_id = state
         .job_queue
         .enqueue(JobRequest::Url(request))
-        .map_err(|e| ApiError::Internal(e))?;
+        .map_err(ApiError::Internal)?;
     let status = state
         .job_queue
         .get_status(&job_id)

@@ -336,12 +336,7 @@ pub async fn run_worker<R: ReasoningEngine + Clone + Send + Sync + 'static>(
                 }
 
                 // Drain all available jobs (atomic claim prevents conflicts)
-                loop {
-                    let job = match w_state.job_queue.claim_next_queued() {
-                        Some(j) => j,
-                        None => break,
-                    };
-
+                while let Some(job) = w_state.job_queue.claim_next_queued() {
                     info!(
                         "Worker {} processing job {}: {}",
                         worker_id,

@@ -274,8 +274,6 @@ pub use otel::{init_tracing, shutdown_tracing};
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_metrics_initialization() {
         // This would require a separate test binary to avoid conflicts
