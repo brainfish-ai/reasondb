@@ -133,6 +133,20 @@ flowchart TD
 
 Get from zero to intelligent document search in under 5 minutes.
 
+#### Download pre-built binaries
+
+Grab the [latest release](https://github.com/reasondb/reasondb/releases/latest) for your platform:
+
+| Platform | Architecture | Download |
+|----------|-------------|----------|
+| **macOS** | Apple Silicon (M1/M2/M3/M4) | [aarch64-apple-darwin](https://github.com/reasondb/reasondb/releases/latest) |
+| **macOS** | Intel | [x86_64-apple-darwin](https://github.com/reasondb/reasondb/releases/latest) |
+| **Linux** | x86_64 | [x86_64-unknown-linux-gnu](https://github.com/reasondb/reasondb/releases/latest) |
+| **Linux** | ARM64 | [aarch64-unknown-linux-gnu](https://github.com/reasondb/reasondb/releases/latest) |
+| **Windows** | x86_64 | [x86_64-pc-windows-msvc](https://github.com/reasondb/reasondb/releases/latest) |
+
+> **ReasonDB Client:** A desktop app is also available for [macOS (.dmg) and Windows (.msi)](https://github.com/reasondb/reasondb/releases/latest).
+
 #### Install with Homebrew (macOS / Linux)
 
 ```bash
@@ -185,6 +199,15 @@ make docker-logs      # View logs
 make docker-down      # Stop containers
 make docker-down-v    # Stop and remove data volume
 make docker-ps        # Check health status
+```
+
+#### ReasonDB Client (Desktop App)
+
+```bash
+make client-install      # Install frontend dependencies
+make client-dev          # Start web dev server
+make client-app          # Run desktop app in dev mode (Tauri)
+make client-app-build    # Build desktop app for production
 ```
 
 <h2>Query with RQL</h2>
@@ -258,7 +281,7 @@ curl -X POST http://localhost:4444/v1/plugins/markitdown/test \
   -d '{"operation":"extract","params":{"source_type":"file","path":"/tmp/doc.pdf"}}'
 ```
 
-Community plugins can be installed by dropping a directory into `$REASONDB_PLUGINS_DIR` (default: `./plugins`). See the [Plugin Guide](https://reason-db.devdoc.sh/guides/plugins) for details.
+Community plugins can be installed by dropping a directory into `$REASONDB_PLUGINS_DIR` (default: `./plugins`). See the [Plugin Guide](https://reason-db.devdoc.sh/documentation/page/guides/plugins) for details.
 
 <h2>Use Cases</h2>
 
@@ -288,7 +311,7 @@ Community plugins can be installed by dropping a directory into `$REASONDB_PLUGI
 | Full Documentation | [reason-db.devdoc.sh](https://reason-db.devdoc.sh) |
 | Quick Start Guide | [reason-db.devdoc.sh/documentation/page/quickstart](https://reason-db.devdoc.sh/documentation/page/quickstart) |
 | Core Concepts | [reason-db.devdoc.sh/documentation/page/concepts](https://reason-db.devdoc.sh/documentation/page/concepts) |
-| Plugin Guide | [reason-db.devdoc.sh/guides/plugins](https://reason-db.devdoc.sh/guides/plugins) |
+| Plugin Guide | [reason-db.devdoc.sh/documentation/page/guides/plugins](https://reason-db.devdoc.sh/documentation/page/guides/plugins) |
 | API Reference | [reason-db.devdoc.sh/api-reference](https://reason-db.devdoc.sh/api-reference/introduction) |
 | Swagger UI | [localhost:4444/swagger-ui](http://localhost:4444/swagger-ui/) *(when server is running)* |
 
@@ -296,7 +319,7 @@ Community plugins can be installed by dropping a directory into `$REASONDB_PLUGI
 
 Join our growing community for help, ideas, and discussions regarding ReasonDB.
 
-- View our [Blog](https://reason-db.devdoc.sh/blog)
+- View our [Blog](https://dev.to/ajainvivek/why-dont-databases-understand-documents-1hk3)
 - Star us on [GitHub](https://github.com/reasondb/reasondb)
 
 <h2>Contributing</h2>
@@ -317,4 +340,4 @@ ReasonDB is source-available under the [ReasonDB License v1.0](./LICENSE).
 - Offer ReasonDB as a hosted/managed database service (DBaaS)
 - Provide ReasonDB's functionality as a service to third parties
 
-For commercial licensing to offer ReasonDB as a service, please [contact us](mailto:hello@reasondb.dev).
+For commercial licensing to offer ReasonDB as a service, please [contact us](mailto:ajainvivek16@gmail.com).

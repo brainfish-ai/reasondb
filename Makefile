@@ -42,10 +42,10 @@ client-dev:
 client-build:
 	cd $(CLIENT_DIR) && npm run build
 
-client-tauri:
+client-app:
 	cd $(CLIENT_DIR) && npm run tauri dev
 
-client-tauri-build:
+client-app-build:
 	cd $(CLIENT_DIR) && npm run tauri build
 
 # ── Seed & Test ──────────────────────────────────────────
