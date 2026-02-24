@@ -36,11 +36,9 @@
 <p align="center">
     <a href="https://reason-db.devdoc.sh">Docs</a>
     &nbsp;&bull;&nbsp;
-    <a href="https://reason-db.devdoc.sh/quickstart">Quick Start</a>
+    <a href="https://reason-db.devdoc.sh/documentation/page/quickstart">Quick Start</a>
     &nbsp;&bull;&nbsp;
     <a href="https://reason-db.devdoc.sh/api-reference/introduction">API Reference</a>
-    &nbsp;&bull;&nbsp;
-    <a href="https://discord.gg/reasondb">Discord</a>
 </p>
 
 <br>
@@ -288,8 +286,8 @@ Community plugins can be installed by dropping a directory into `$REASONDB_PLUGI
 | Resource | Link |
 |----------|------|
 | Full Documentation | [reason-db.devdoc.sh](https://reason-db.devdoc.sh) |
-| Quick Start Guide | [reason-db.devdoc.sh/quickstart](https://reason-db.devdoc.sh/quickstart) |
-| Core Concepts | [reason-db.devdoc.sh/concepts](https://reason-db.devdoc.sh/concepts) |
+| Quick Start Guide | [reason-db.devdoc.sh/documentation/page/quickstart](https://reason-db.devdoc.sh/documentation/page/quickstart) |
+| Core Concepts | [reason-db.devdoc.sh/documentation/page/concepts](https://reason-db.devdoc.sh/documentation/page/concepts) |
 | Plugin Guide | [reason-db.devdoc.sh/guides/plugins](https://reason-db.devdoc.sh/guides/plugins) |
 | API Reference | [reason-db.devdoc.sh/api-reference](https://reason-db.devdoc.sh/api-reference/introduction) |
 | Swagger UI | [localhost:4444/swagger-ui](http://localhost:4444/swagger-ui/) *(when server is running)* |
@@ -298,8 +296,6 @@ Community plugins can be installed by dropping a directory into `$REASONDB_PLUGI
 
 Join our growing community for help, ideas, and discussions regarding ReasonDB.
 
-- Chat live with us on [Discord](https://discord.gg/reasondb)
-- Follow us on [X](https://x.com/reasondb)
 - View our [Blog](https://reason-db.devdoc.sh/blog)
 - Star us on [GitHub](https://github.com/reasondb/reasondb)
 
