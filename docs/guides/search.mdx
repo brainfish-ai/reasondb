@@ -15,20 +15,20 @@ SELECT * FROM contracts REASON 'What are the late payment penalties?'
 
 ```json
 {
-  "results": [{
-    "node_id": "node_payment_3",
-    "document_id": "doc_contract",
-    "path": ["Service Agreement", "Payment Terms", "Late Penalties"],
-    "content": "Late payments will incur interest at 1.5% per month...",
-    "answer": "Late payments incur 1.5% monthly interest, compounded. After 60 days, service may be suspended.",
-    "confidence": 0.94
+  "documents": [{
+    "id": "doc_contract",
+    "title": "Service Agreement",
+    "confidence": 0.94,
+    "matched_nodes": [{
+      "node_id": "node_payment_3",
+      "title": "Late Payment Penalties",
+      "content": "Late payments will incur interest at 1.5% per month, compounded. After 60 days of non-payment, Provider reserves the right to suspend services.",
+      "path": ["Service Agreement", "Payment Terms", "Late Payment Penalties"],
+      "confidence": 0.94
+    }]
   }],
-  "stats": {
-    "nodes_visited": 5,
-    "nodes_pruned": 8,
-    "llm_calls": 4,
-    "total_time_ms": 1850
-  }
+  "total_count": 1,
+  "execution_time_ms": 1850
 }
 ```
 
@@ -165,18 +165,23 @@ Each path entry includes the node ID, title, and the LLM's reasoning for choosin
 | **0.3-0.5** | Low—tangentially related |
 | **< 0.3** | Pruned—not returned |
 
-### The Answer vs The Content
+### The Content: What ReasonDB Returns
+
+Each matched node contains the raw extracted text from the document:
 
 ```json
 {
+  "node_id": "node_5_2",
+  "title": "5.2 Late Payment Penalties",
   "content": "Section 5.2: Late payments shall incur interest at a rate of 1.5% per calendar month, calculated from the due date. Interest shall compound monthly. After 60 days of non-payment, Provider reserves the right to suspend services...",
-  
-  "answer": "Late payments incur 1.5% monthly interest (compounding). After 60 days, services may be suspended."
+  "path": ["Service Agreement", "Section 5: Payment Terms", "5.2 Late Payment Penalties"],
+  "confidence": 0.94
 }
 ```
 
-- **content**: The raw text from the document
-- **answer**: LLM-synthesized response to your specific question
+- **content**: The raw text of the most relevant node — precisely where the answer lives
+- **path**: The navigation trail the LLM followed to reach this node
+- **confidence**: How confident the LLM is that this node answers the question
 
 ## SEARCH vs REASON in RQL
 

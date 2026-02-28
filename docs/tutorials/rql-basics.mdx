@@ -21,8 +21,12 @@ In this tutorial, you'll master RQL (ReasonDB Query Language) by building querie
 <Steps>
   <Step title="Start ReasonDB">
     ```bash
-    REASONDB_LLM_PROVIDER=anthropic REASONDB_LLM_API_KEY=your-key cargo run -p reasondb-server
+    REASONDB_LLM_PROVIDER=anthropic REASONDB_LLM_API_KEY=your-key reasondb serve
     ```
+
+    <Note>
+    If you're building from source, you can also use `cargo run -p reasondb-server` instead of `reasondb serve`. See the [Quickstart](/quickstart) for Docker-based setup.
+    </Note>
   </Step>
 
   <Step title="Create a sample table">
@@ -31,46 +35,61 @@ In this tutorial, you'll master RQL (ReasonDB Query Language) by building querie
       -H "Content-Type: application/json" \
       -d '{"name": "books", "description": "Book collection for tutorial"}'
     ```
-
-    Save the returned `id` (e.g., `tbl_abc123`).
   </Step>
 
   <Step title="Ingest sample documents">
-    Let's add some books to query. Replace `TABLE_ID` with your table ID:
-
     ```bash
     # Book 1: Science Fiction
-    curl -X POST http://localhost:4444/v1/ingest/text \
+    curl -X POST http://localhost:4444/v1/tables/books/ingest/text \
       -H "Content-Type: application/json" \
       -d '{
         "title": "The Quantum Garden",
-        "table_id": "TABLE_ID",
         "content": "# The Quantum Garden\n\nA science fiction novel about quantum computing and artificial intelligence.\n\n## Plot Summary\n\nIn 2150, Dr. Sarah Chen discovers a way to grow quantum computers organically. Her \"quantum gardens\" revolutionize computing but attract dangerous attention.\n\n## Themes\n\n### Technology and Nature\nThe book explores the boundary between organic and artificial systems.\n\n### Ethics of AI\nChen must decide whether to give her quantum AI consciousness.",
         "tags": ["science-fiction", "ai", "quantum"],
         "metadata": {"author": "James Morrison", "year": 2023, "pages": 342, "rating": 4.5}
       }'
 
     # Book 2: Mystery
-    curl -X POST http://localhost:4444/v1/ingest/text \
+    curl -X POST http://localhost:4444/v1/tables/books/ingest/text \
       -H "Content-Type: application/json" \
       -d '{
         "title": "The Silent Witness",
-        "table_id": "TABLE_ID",
         "content": "# The Silent Witness\n\nA gripping mystery thriller set in Victorian London.\n\n## Plot Summary\n\nDetective Inspector Mills investigates a murder where the only witness is a parrot. The bird holds the key to solving the case.\n\n## Themes\n\n### Justice and Truth\nMills struggles with evidence that cannot speak for itself.\n\n### Victorian Society\nThe class divide affects how the investigation unfolds.",
         "tags": ["mystery", "thriller", "historical"],
         "metadata": {"author": "Elizabeth Shaw", "year": 2022, "pages": 298, "rating": 4.2}
       }'
 
     # Book 3: Science Fiction
-    curl -X POST http://localhost:4444/v1/ingest/text \
+    curl -X POST http://localhost:4444/v1/tables/books/ingest/text \
       -H "Content-Type: application/json" \
       -d '{
         "title": "Mars Colony One",
-        "table_id": "TABLE_ID",
         "content": "# Mars Colony One\n\nThe story of humanity first permanent settlement on Mars.\n\n## Plot Summary\n\nCommander Yuki Tanaka leads 200 colonists to Mars. When Earth goes silent, they must survive alone.\n\n## Themes\n\n### Human Resilience\nThe colonists face impossible odds but find strength in community.\n\n### Isolation\nCut off from Earth, they must redefine what home means.",
         "tags": ["science-fiction", "space", "survival"],
         "metadata": {"author": "James Morrison", "year": 2024, "pages": 410, "rating": 4.8}
       }'
+    ```
+
+    Each ingest call returns a job ID immediately (HTTP 202). Poll each job until it completes:
+
+    ```bash
+    # Check job status — replace JOB_ID with the returned job_id
+    curl http://localhost:4444/v1/jobs/JOB_ID
+    ```
+
+    When complete, the response looks like:
+
+    ```json
+    {
+      "job_id": "job_abc123",
+      "status": "completed",
+      "result": {
+        "document_id": "doc_xyz789",
+        "title": "The Quantum Garden",
+        "total_nodes": 6,
+        "stats": { "nodes_created": 6, "summaries_generated": 6 }
+      }
+    }
     ```
   </Step>
 </Steps>
@@ -139,6 +158,10 @@ SELECT * FROM books WHERE tags CONTAINS ANY ('science-fiction')
 ```
 
 **Result:** Returns the two sci-fi books
+
+<Note>
+`CONTAINS ANY` and `CONTAINS ALL` operate on the document `tags` array. They are not supported on metadata fields.
+</Note>
 
 ### Combining Conditions
 
@@ -209,8 +232,14 @@ SELECT * FROM books REASON 'What book deals with artificial consciousness?'
   "documents": [{
     "id": "doc_1",
     "title": "The Quantum Garden",
-    "answer": "The Quantum Garden deals with artificial consciousness. Dr. Sarah Chen must decide whether to give her quantum AI consciousness, exploring the ethics of creating sentient machines.",
-    "confidence": 0.91
+    "confidence": 0.91,
+    "matched_nodes": [{
+      "node_id": "node_abc",
+      "title": "Ethics of AI",
+      "content": "The Quantum Garden deals with artificial consciousness. Dr. Sarah Chen must decide whether to give her quantum AI consciousness, exploring the ethics of creating sentient machines.",
+      "path": ["The Quantum Garden", "Themes", "Ethics of AI"],
+      "confidence": 0.91
+    }]
   }],
   "total_count": 1,
   "execution_time_ms": 2340

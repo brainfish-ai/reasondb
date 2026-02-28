@@ -3,7 +3,7 @@
 //! Handle document ingestion from files, text, and URLs.
 
 use axum::{
-    extract::{Multipart, State},
+    extract::{Multipart, Path, State},
     Json,
 };
 use reasondb_core::llm::ReasoningEngine;
@@ -112,18 +112,32 @@ impl From<reasondb_ingest::IngestStats> for IngestStats {
     }
 }
 
-/// Request for text ingestion
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+/// Internal job-queue payload for text ingestion.
+///
+/// Not exposed as an API request body — use `IngestTextBody` instead.
+/// The `table_id` field holds the resolved UUID written by the handler before enqueue.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IngestTextRequest {
+    pub title: String,
+    pub content: String,
+    pub table_id: String,
+    #[serde(default)]
+    pub generate_summaries: Option<bool>,
+    #[serde(default)]
+    pub tags: Option<Vec<String>>,
+    #[serde(default)]
+    pub metadata: Option<std::collections::HashMap<String, serde_json::Value>>,
+}
+
+/// Body for table-scoped text ingestion (table name comes from the URL path)
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct IngestTextBody {
     /// Document title
     #[schema(example = "My Research Notes")]
     pub title: String,
     /// Document content (plain text or Markdown)
     #[schema(example = "# Introduction\n\nThis document covers...")]
     pub content: String,
-    /// Table ID to assign the document to (REQUIRED - table must exist)
-    #[schema(example = "tbl_legal")]
-    pub table_id: String,
     /// Whether to generate LLM summaries (default: true)
     #[serde(default)]
     pub generate_summaries: Option<bool>,
@@ -137,90 +151,44 @@ pub struct IngestTextRequest {
     pub metadata: Option<std::collections::HashMap<String, serde_json::Value>>,
 }
 
-/// Request for URL ingestion
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+/// Internal job-queue payload for URL ingestion.
+///
+/// Not exposed as an API request body — use `IngestUrlBody` instead.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IngestUrlRequest {
+    pub url: String,
+    pub table_id: String,
+    #[serde(default)]
+    pub generate_summaries: Option<bool>,
+}
+
+/// Body for table-scoped URL ingestion (table name comes from the URL path)
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct IngestUrlBody {
     /// URL to ingest (web page, YouTube video, etc.)
     #[schema(example = "https://en.wikipedia.org/wiki/Machine_learning")]
     pub url: String,
-    /// Table ID to assign the document to (REQUIRED - table must exist)
-    #[schema(example = "tbl_research")]
-    pub table_id: String,
     /// Whether to generate LLM summaries (default: true)
     #[serde(default)]
     pub generate_summaries: Option<bool>,
 }
 
-/// Ingest a file (multipart upload)
-///
-/// Upload a document file for ingestion. Supported formats depend on the
-/// registered extractor plugins (e.g. the built-in `markitdown` plugin
-/// covers PDF, Word, Excel, PowerPoint, images, audio, HTML, and more).
-#[utoipa::path(
-    post,
-    path = "/v1/ingest/file",
-    tag = "ingestion",
-    request_body(content_type = "multipart/form-data", description = "File to ingest"),
-    responses(
-        (status = 200, description = "File ingested successfully", body = IngestResponse),
-        (status = 400, description = "Invalid request", body = ErrorResponse),
-        (status = 500, description = "Ingestion failed", body = ErrorResponse),
-    )
-)]
-pub async fn ingest_file<R: ReasoningEngine + Clone + Send + Sync + 'static>(
-    State(state): State<Arc<AppState<R>>>,
-    mut multipart: Multipart,
+/// Core file ingestion logic — called after the table name/ID has been resolved.
+async fn ingest_file_inner<R: ReasoningEngine + Clone + Send + Sync + 'static>(
+    state: Arc<AppState<R>>,
+    filename: String,
+    data: Vec<u8>,
+    raw_table_id: String,
 ) -> ApiResult<Json<IngestResponse>> {
-    // Get the file and table_id from multipart
-    let mut file_data: Option<(String, Vec<u8>)> = None;
-    let mut table_id: Option<String> = None;
-
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|e| ApiError::BadRequest(format!("Failed to read multipart: {}", e)))?
-    {
-        let name = field.name().unwrap_or("").to_string();
-
-        if name == "file" {
-            let filename = field
-                .file_name()
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "unknown".to_string());
-
-            let data = field
-                .bytes()
-                .await
-                .map_err(|e| ApiError::BadRequest(format!("Failed to read file: {}", e)))?;
-
-            if data.len() > state.config.max_upload_size {
-                return Err(ApiError::BadRequest(format!(
-                    "File too large. Max size: {} bytes",
-                    state.config.max_upload_size
-                )));
-            }
-
-            file_data = Some((filename, data.to_vec()));
-        } else if name == "table_id" {
-            let text = field
-                .text()
-                .await
-                .map_err(|e| ApiError::BadRequest(format!("Failed to read table_id: {}", e)))?;
-            table_id = Some(text);
-        }
-    }
-
-    let (filename, data) =
-        file_data.ok_or_else(|| ApiError::BadRequest("No file provided".to_string()))?;
-    let table_id =
-        table_id.ok_or_else(|| ApiError::BadRequest("table_id is required".to_string()))?;
-
-    // Verify the table exists
+    let table_id = state
+        .store
+        .resolve_table_id(&raw_table_id)
+        .map_err(ApiError::from)?;
     state
         .store
         .get_table(&table_id)
         .map_err(ApiError::from)?
-        .ok_or_else(|| ApiError::NotFound(format!("Table '{}' not found", table_id)))?;
+        .ok_or_else(|| ApiError::NotFound(format!("Table '{}' not found", raw_table_id)))?;
 
     info!(
         "Ingesting file: {} ({} bytes) into table: {}",
@@ -229,16 +197,12 @@ pub async fn ingest_file<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         table_id
     );
 
-    // Write to a temp directory preserving the original filename so the
-    // extractor plugin can derive a meaningful title from it.
     let temp_dir = tempfile::tempdir()
         .map_err(|e| ApiError::Internal(format!("Failed to create temp dir: {}", e)))?;
-
     let temp_path = temp_dir.path().join(&filename);
     std::fs::write(&temp_path, &data)
         .map_err(|e| ApiError::Internal(format!("Failed to write temp file: {}", e)))?;
 
-    // Create pipeline and ingest
     let config = PipelineConfig {
         generate_summaries: state.config.generate_summaries,
         store_in_db: true,
@@ -254,9 +218,6 @@ pub async fn ingest_file<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         .await
         .map_err(ApiError::from)?;
 
-    // temp_dir is cleaned up automatically when dropped
-
-    // Index document content for BM25 search
     index_document_nodes(
         &state.text_index,
         &state.store,
@@ -279,44 +240,100 @@ pub async fn ingest_file<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     }))
 }
 
-/// Ingest raw text or markdown (async — returns a job ID immediately)
+/// Extract file bytes from a multipart request, enforcing the max upload size.
+async fn extract_file_from_multipart<R: ReasoningEngine + Clone + Send + Sync + 'static>(
+    state: &AppState<R>,
+    mut multipart: Multipart,
+) -> ApiResult<(String, Vec<u8>)> {
+    let mut file_data: Option<(String, Vec<u8>)> = None;
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("Failed to read multipart: {}", e)))?
+    {
+        if field.name().unwrap_or("") == "file" {
+            let filename = field
+                .file_name()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+
+            let data = field
+                .bytes()
+                .await
+                .map_err(|e| ApiError::BadRequest(format!("Failed to read file: {}", e)))?;
+
+            if data.len() > state.config.max_upload_size {
+                return Err(ApiError::BadRequest(format!(
+                    "File too large. Max size: {} bytes",
+                    state.config.max_upload_size
+                )));
+            }
+
+            file_data = Some((filename, data.to_vec()));
+        }
+    }
+
+    file_data.ok_or_else(|| ApiError::BadRequest("No file provided".to_string()))
+}
+
+/// Ingest a file into a specific table (multipart upload)
 ///
-/// Enqueues text for background ingestion. The content will be chunked,
-/// organized into a tree structure, and optionally summarized. Poll
-/// `GET /v1/jobs/{job_id}` for progress and results.
+/// Upload a document file for ingestion. The target table is identified by
+/// its name or slug in the URL path. Supported formats depend on the
+/// registered extractor plugins (e.g. the built-in `markitdown` plugin
+/// covers PDF, Word, Excel, PowerPoint, images, audio, HTML, and more).
+///
+/// The multipart body only needs the `file` field.
 #[utoipa::path(
     post,
-    path = "/v1/ingest/text",
+    path = "/v1/tables/{table_name}/ingest/file",
     tag = "ingestion",
-    request_body = IngestTextRequest,
+    params(("table_name" = String, Path, description = "Table name or slug")),
+    request_body(content_type = "multipart/form-data", description = "File to ingest"),
     responses(
-        (status = 202, description = "Ingestion job queued", body = JobStatusResponse),
-        (status = 422, description = "Validation failed", body = ErrorResponse),
+        (status = 200, description = "File ingested successfully", body = IngestResponse),
+        (status = 400, description = "Invalid request", body = ErrorResponse),
+        (status = 404, description = "Table not found", body = ErrorResponse),
+        (status = 500, description = "Ingestion failed", body = ErrorResponse),
     )
 )]
-pub async fn ingest_text<R: ReasoningEngine + Clone + Send + Sync + 'static>(
+pub async fn ingest_file_for_table<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     State(state): State<Arc<AppState<R>>>,
-    Json(request): Json<IngestTextRequest>,
+    Path(table_name): Path<String>,
+    multipart: Multipart,
+) -> ApiResult<Json<IngestResponse>> {
+    let (filename, data) = extract_file_from_multipart(&state, multipart).await?;
+    ingest_file_inner(state, filename, data, table_name).await
+}
+
+/// Core text ingestion logic — resolves the table and enqueues a job.
+async fn ingest_text_inner<R: ReasoningEngine + Clone + Send + Sync + 'static>(
+    state: Arc<AppState<R>>,
+    mut request: IngestTextRequest,
 ) -> ApiResult<Json<JobStatusResponse>> {
     if request.title.is_empty() {
         return Err(ApiError::ValidationError("Title is required".to_string()));
     }
-
     if request.content.is_empty() {
         return Err(ApiError::ValidationError("Content is required".to_string()));
     }
-
     if request.table_id.is_empty() {
         return Err(ApiError::ValidationError(
             "Table ID is required".to_string(),
         ));
     }
 
+    let raw_table_id = request.table_id.clone();
+    request.table_id = state
+        .store
+        .resolve_table_id(&raw_table_id)
+        .map_err(ApiError::from)?;
     state
         .store
         .get_table(&request.table_id)
         .map_err(ApiError::from)?
-        .ok_or_else(|| ApiError::NotFound(format!("Table '{}' not found", request.table_id)))?;
+        .ok_or_else(|| ApiError::NotFound(format!("Table '{}' not found", raw_table_id)))?;
 
     info!(
         "Queuing text ingestion: {} ({} chars) into table: {}",
@@ -335,6 +352,42 @@ pub async fn ingest_text<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         .ok_or_else(|| ApiError::Internal("Job not found after enqueue".to_string()))?;
 
     Ok(Json(status))
+}
+
+/// Ingest raw text or Markdown into a specific table (async — returns a job ID)
+///
+/// Enqueues text for background ingestion. The content will be chunked,
+/// organized into a tree structure, and optionally summarized by the LLM.
+/// Poll `GET /v1/jobs/{job_id}` for progress and the resulting document ID.
+#[utoipa::path(
+    post,
+    path = "/v1/tables/{table_name}/ingest/text",
+    tag = "ingestion",
+    params(("table_name" = String, Path, description = "Table name or slug")),
+    request_body = IngestTextBody,
+    responses(
+        (status = 202, description = "Ingestion job queued", body = JobStatusResponse),
+        (status = 404, description = "Table not found", body = ErrorResponse),
+        (status = 422, description = "Validation failed", body = ErrorResponse),
+    )
+)]
+pub async fn ingest_text_for_table<R: ReasoningEngine + Clone + Send + Sync + 'static>(
+    State(state): State<Arc<AppState<R>>>,
+    Path(table_name): Path<String>,
+    Json(body): Json<IngestTextBody>,
+) -> ApiResult<Json<JobStatusResponse>> {
+    ingest_text_inner(
+        state,
+        IngestTextRequest {
+            title: body.title,
+            content: body.content,
+            table_id: table_name,
+            generate_summaries: body.generate_summaries,
+            tags: body.tags,
+            metadata: body.metadata,
+        },
+    )
+    .await
 }
 
 /// A single item in a batch ingestion request
@@ -358,12 +411,9 @@ pub struct BatchIngestItem {
     pub metadata: Option<std::collections::HashMap<String, serde_json::Value>>,
 }
 
-/// Request for batch text ingestion
+/// Body for table-scoped batch ingestion (table name comes from the URL path)
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct BatchIngestRequest {
-    /// Table ID to assign all documents to (REQUIRED)
-    #[schema(example = "tbl_legal")]
-    pub table_id: String,
+pub struct BatchIngestBody {
     /// Array of documents to ingest
     pub documents: Vec<BatchIngestItem>,
 }
@@ -377,51 +427,42 @@ pub struct BatchIngestResponse {
     pub job_ids: Vec<String>,
 }
 
-/// Ingest multiple documents in a single request (async — returns job IDs)
-///
-/// Enqueues multiple documents for background ingestion into the same table.
-/// Each document becomes a separate job that can be polled individually via
-/// `GET /v1/jobs/{job_id}`.
-#[utoipa::path(
-    post,
-    path = "/v1/ingest/batch",
-    tag = "ingestion",
-    request_body = BatchIngestRequest,
-    responses(
-        (status = 202, description = "Batch ingestion jobs queued", body = BatchIngestResponse),
-        (status = 422, description = "Validation failed", body = ErrorResponse),
-    )
-)]
-pub async fn ingest_batch<R: ReasoningEngine + Clone + Send + Sync + 'static>(
-    State(state): State<Arc<AppState<R>>>,
-    Json(request): Json<BatchIngestRequest>,
+/// Core batch ingestion logic — resolves the table and enqueues one job per document.
+async fn ingest_batch_inner<R: ReasoningEngine + Clone + Send + Sync + 'static>(
+    state: Arc<AppState<R>>,
+    raw_table_id: String,
+    documents: Vec<BatchIngestItem>,
 ) -> ApiResult<Json<BatchIngestResponse>> {
-    if request.table_id.is_empty() {
+    if raw_table_id.is_empty() {
         return Err(ApiError::ValidationError(
             "Table ID is required".to_string(),
         ));
     }
-    if request.documents.is_empty() {
+    if documents.is_empty() {
         return Err(ApiError::ValidationError(
             "At least one document is required".to_string(),
         ));
     }
 
+    let resolved_table_id = state
+        .store
+        .resolve_table_id(&raw_table_id)
+        .map_err(ApiError::from)?;
     state
         .store
-        .get_table(&request.table_id)
+        .get_table(&resolved_table_id)
         .map_err(ApiError::from)?
-        .ok_or_else(|| ApiError::NotFound(format!("Table '{}' not found", request.table_id)))?;
+        .ok_or_else(|| ApiError::NotFound(format!("Table '{}' not found", raw_table_id)))?;
 
     info!(
         "Queuing batch ingestion: {} documents into table: {}",
-        request.documents.len(),
-        request.table_id
+        documents.len(),
+        resolved_table_id
     );
 
-    let mut job_ids = Vec::with_capacity(request.documents.len());
+    let mut job_ids = Vec::with_capacity(documents.len());
 
-    for item in request.documents {
+    for item in documents {
         if item.title.is_empty() || item.content.is_empty() {
             continue;
         }
@@ -429,7 +470,7 @@ pub async fn ingest_batch<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         let text_req = IngestTextRequest {
             title: item.title,
             content: item.content,
-            table_id: request.table_id.clone(),
+            table_id: resolved_table_id.clone(),
             generate_summaries: item.generate_summaries,
             tags: item.tags,
             metadata: item.metadata,
@@ -451,29 +492,39 @@ pub async fn ingest_batch<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     }))
 }
 
-/// Ingest from URL (async — returns a job ID immediately)
+/// Ingest multiple documents into a specific table (async — returns job IDs)
 ///
-/// Enqueues a URL for background ingestion. Supports web pages, YouTube
-/// videos (with transcription), and other online resources. Poll
-/// `GET /v1/jobs/{job_id}` for progress and results.
+/// Enqueues multiple documents for background ingestion into the same table.
+/// Each document becomes a separate job that can be polled individually via
+/// `GET /v1/jobs/{job_id}`.
 #[utoipa::path(
     post,
-    path = "/v1/ingest/url",
+    path = "/v1/tables/{table_name}/ingest/batch",
     tag = "ingestion",
-    request_body = IngestUrlRequest,
+    params(("table_name" = String, Path, description = "Table name or slug")),
+    request_body = BatchIngestBody,
     responses(
-        (status = 202, description = "Ingestion job queued", body = JobStatusResponse),
-        (status = 422, description = "Validation failed (invalid URL)", body = ErrorResponse),
+        (status = 202, description = "Batch ingestion jobs queued", body = BatchIngestResponse),
+        (status = 404, description = "Table not found", body = ErrorResponse),
+        (status = 422, description = "Validation failed", body = ErrorResponse),
     )
 )]
-pub async fn ingest_url<R: ReasoningEngine + Clone + Send + Sync + 'static>(
+pub async fn ingest_batch_for_table<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     State(state): State<Arc<AppState<R>>>,
-    Json(request): Json<IngestUrlRequest>,
+    Path(table_name): Path<String>,
+    Json(body): Json<BatchIngestBody>,
+) -> ApiResult<Json<BatchIngestResponse>> {
+    ingest_batch_inner(state, table_name, body.documents).await
+}
+
+/// Core URL ingestion logic — resolves the table and enqueues a job.
+async fn ingest_url_inner<R: ReasoningEngine + Clone + Send + Sync + 'static>(
+    state: Arc<AppState<R>>,
+    mut request: IngestUrlRequest,
 ) -> ApiResult<Json<JobStatusResponse>> {
     if request.url.is_empty() {
         return Err(ApiError::ValidationError("URL is required".to_string()));
     }
-
     if request.table_id.is_empty() {
         return Err(ApiError::ValidationError(
             "Table ID is required".to_string(),
@@ -483,11 +534,16 @@ pub async fn ingest_url<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     url::Url::parse(&request.url)
         .map_err(|e| ApiError::ValidationError(format!("Invalid URL: {}", e)))?;
 
+    let raw_table_id = request.table_id.clone();
+    request.table_id = state
+        .store
+        .resolve_table_id(&raw_table_id)
+        .map_err(ApiError::from)?;
     state
         .store
         .get_table(&request.table_id)
         .map_err(ApiError::from)?
-        .ok_or_else(|| ApiError::NotFound(format!("Table '{}' not found", request.table_id)))?;
+        .ok_or_else(|| ApiError::NotFound(format!("Table '{}' not found", raw_table_id)))?;
 
     info!(
         "Queuing URL ingestion: {} into table: {}",
@@ -504,4 +560,37 @@ pub async fn ingest_url<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         .ok_or_else(|| ApiError::Internal("Job not found after enqueue".to_string()))?;
 
     Ok(Json(status))
+}
+
+/// Ingest from a URL into a specific table (async — returns a job ID)
+///
+/// Enqueues a URL for background ingestion. Supports web pages, YouTube
+/// videos (with transcription), and other online resources. Poll
+/// `GET /v1/jobs/{job_id}` for progress and the resulting document ID.
+#[utoipa::path(
+    post,
+    path = "/v1/tables/{table_name}/ingest/url",
+    tag = "ingestion",
+    params(("table_name" = String, Path, description = "Table name or slug")),
+    request_body = IngestUrlBody,
+    responses(
+        (status = 202, description = "Ingestion job queued", body = JobStatusResponse),
+        (status = 404, description = "Table not found", body = ErrorResponse),
+        (status = 422, description = "Validation failed (invalid URL)", body = ErrorResponse),
+    )
+)]
+pub async fn ingest_url_for_table<R: ReasoningEngine + Clone + Send + Sync + 'static>(
+    State(state): State<Arc<AppState<R>>>,
+    Path(table_name): Path<String>,
+    Json(body): Json<IngestUrlBody>,
+) -> ApiResult<Json<JobStatusResponse>> {
+    ingest_url_inner(
+        state,
+        IngestUrlRequest {
+            url: body.url,
+            table_id: table_name,
+            generate_summaries: body.generate_summaries,
+        },
+    )
+    .await
 }

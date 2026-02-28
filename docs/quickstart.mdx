@@ -203,7 +203,7 @@ Tables organize your documents into searchable collections:
 curl -X POST http://localhost:4444/v1/tables \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Knowledge Base",
+    "name": "knowledge_base",
     "description": "Technical documentation and guides"
   }'
 ```
@@ -211,14 +211,10 @@ curl -X POST http://localhost:4444/v1/tables \
 ```json
 {
   "id": "tbl_abc123",
-  "name": "Knowledge Base",
+  "name": "knowledge_base",
   "document_count": 0
 }
 ```
-
-<Warning>
-Save the `id`—you'll need it for ingestion.
-</Warning>
 
 ### Step 2: Ingest a Document
 
@@ -227,12 +223,13 @@ Let's ingest a structured document. ReasonDB will automatically:
 2. Build a hierarchical tree from headings
 3. Generate LLM summaries for intelligent navigation
 
+The table name goes in the URL path — no ID needed in the body:
+
 ```bash
-curl -X POST http://localhost:4444/v1/ingest/text \
+curl -X POST http://localhost:4444/v1/tables/knowledge_base/ingest/text \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Machine Learning Guide",
-    "table_id": "tbl_abc123",
     "content": "# Machine Learning Guide\n\nA comprehensive introduction to machine learning concepts and techniques.\n\n## Supervised Learning\n\nSupervised learning uses labeled data to train models. The algorithm learns to map inputs to known outputs.\n\n### Classification\n\nClassification predicts discrete categories. Examples include spam detection, image recognition, and medical diagnosis. Common algorithms: logistic regression, decision trees, random forests, and neural networks.\n\n### Regression\n\nRegression predicts continuous values. Examples include price prediction, demand forecasting, and risk assessment. Common algorithms: linear regression, polynomial regression, and gradient boosting.\n\n## Unsupervised Learning\n\nUnsupervised learning finds patterns in unlabeled data without predefined outputs.\n\n### Clustering\n\nClustering groups similar data points together. Applications include customer segmentation, anomaly detection, and document organization. Popular algorithms: K-means, DBSCAN, and hierarchical clustering.\n\n### Dimensionality Reduction\n\nDimensionality reduction compresses data while preserving important information. Used for visualization, noise reduction, and feature extraction. Common techniques: PCA, t-SNE, and autoencoders."
   }'
 ```
@@ -304,14 +301,14 @@ REASON 'What algorithms are used for classification?'
   "documents": [{
     "id": "doc_xyz789",
     "title": "Machine Learning Guide",
-    "table_id": "tbl_abc123",
-    "tags": [],
-    "metadata": {},
-    "total_nodes": 7,
-    "score": 0.94,
-    "highlights": ["Classification predicts discrete categories..."],
-    "answer": "Common classification algorithms include logistic regression, decision trees, random forests, and neural networks. These are used for tasks like spam detection, image recognition, and medical diagnosis.",
-    "confidence": 0.94
+    "confidence": 0.94,
+    "matched_nodes": [{
+      "node_id": "node_classification",
+      "title": "Classification",
+      "content": "Classification predicts discrete categories. Examples include spam detection, image recognition, and medical diagnosis. Common algorithms: logistic regression, decision trees, random forests, and neural networks.",
+      "path": ["Machine Learning Guide", "Supervised Learning", "Classification"],
+      "confidence": 0.94
+    }]
   }],
   "total_count": 1,
   "execution_time_ms": 1650
@@ -320,8 +317,9 @@ REASON 'What algorithms are used for classification?'
 
 **Notice the difference from vector search:**
 - ReasonDB navigated the document tree to find the exact relevant section
-- You get a synthesized `answer` with a `confidence` score
-- `highlights` show the matched content within the document
+- `matched_nodes[].content` contains the precise text that answers your question
+- `matched_nodes[].path` shows exactly which section the LLM traversed to find it
+- `confidence` tells you how certain the LLM is about the match
 
 ### Try More Queries
 
@@ -351,7 +349,7 @@ reasondb search "What is the difference between classification and regression?"
 reasondb query
 
 # Execute RQL directly
-reasondb query -q "SELECT * FROM 'Knowledge Base' SEARCH 'clustering' LIMIT 5"
+reasondb query -q "SELECT * FROM knowledge_base SEARCH 'clustering' LIMIT 5"
 
 # Manage tables
 reasondb tables list

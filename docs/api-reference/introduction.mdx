@@ -27,7 +27,7 @@ Configure with `REASONDB_HOST` and `REASONDB_PORT`. Default: `localhost:4444`
 |----------|---------|
 | `POST /v1/search` | **LLM-guided search** — Ask questions, get answers with reasoning |
 | `POST /v1/query` | **RQL queries** — SQL-like queries with SEARCH and REASON clauses |
-| `POST /v1/ingest/text` | **Ingest documents** — Transform text into navigable knowledge trees |
+| `POST /v1/tables/{name}/ingest/text` | **Ingest documents** — Transform text into navigable knowledge trees |
 | `POST /v1/tables` | **Create collections** — Organize documents into searchable groups |
 
 ## Authentication
@@ -74,9 +74,10 @@ Authentication is optional in development. Enable for production with `--auth-en
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/v1/ingest/text` | Ingest text or Markdown |
-| `POST` | `/v1/ingest/file` | Upload and process file (PDF, HTML, etc.) |
-| `POST` | `/v1/ingest/url` | Fetch and ingest from URL |
+| `POST` | `/v1/tables/{name}/ingest/text` | Ingest text or Markdown into a table |
+| `POST` | `/v1/tables/{name}/ingest/file` | Upload and process file (PDF, HTML, etc.) |
+| `POST` | `/v1/tables/{name}/ingest/url` | Fetch and ingest from URL |
+| `POST` | `/v1/tables/{name}/ingest/batch` | Ingest multiple documents in one request |
 
 ### Search & Query — Find, Update, Delete
 
@@ -110,19 +111,21 @@ Authentication is optional in development. Enable for production with `--auth-en
 ### Workflow 1: Ingest and Search
 
 ```bash
-# Step 1: Create a table
-TABLE_ID=$(curl -s -X POST http://localhost:4444/v1/tables \
+# Step 1: Create a table (lowercase snake_case name)
+curl -s -X POST http://localhost:4444/v1/tables \
   -H "Content-Type: application/json" \
-  -d '{"name": "Contracts"}' | jq -r '.id')
+  -d '{"name": "contracts"}'
 
-# Step 2: Ingest a document
-DOC_ID=$(curl -s -X POST http://localhost:4444/v1/ingest/text \
+# Step 2: Ingest a document — table name in URL, no table_id in body
+JOB_ID=$(curl -s -X POST http://localhost:4444/v1/tables/contracts/ingest/text \
   -H "Content-Type: application/json" \
-  -d "{
-    \"title\": \"Service Agreement\",
-    \"table_id\": \"$TABLE_ID\",
-    \"content\": \"# Service Agreement\\n\\n## Payment Terms\\n\\nPayment is due within 30 days...\"
-  }" | jq -r '.document_id')
+  -d '{
+    "title": "Service Agreement",
+    "content": "# Service Agreement\n\n## Payment Terms\n\nPayment is due within 30 days..."
+  }' | jq -r '.job_id')
+
+# Step 2b: Poll until ingestion completes (HTTP 202 → background job)
+curl http://localhost:4444/v1/jobs/$JOB_ID
 
 # Step 3: Ask questions
 curl -X POST http://localhost:4444/v1/search \
@@ -137,7 +140,7 @@ curl -X POST http://localhost:4444/v1/search \
 curl -X POST http://localhost:4444/v1/query \
   -H "Content-Type: application/json" \
   -d '{
-    "query": "SELECT * FROM Contracts WHERE metadata.status = '\''active'\'' REASON '\''What are the termination conditions?'\'' LIMIT 5"
+    "query": "SELECT * FROM contracts WHERE metadata.status = '\''active'\'' REASON '\''What are the termination conditions?'\'' LIMIT 5"
   }'
 ```
 
@@ -148,14 +151,14 @@ curl -X POST http://localhost:4444/v1/query \
 curl -X POST http://localhost:4444/v1/query \
   -H "Content-Type: application/json" \
   -d '{
-    "query": "UPDATE Contracts SET metadata.status = '\''archived'\'' WHERE metadata.status = '\''expired'\''"
+    "query": "UPDATE contracts SET metadata.status = '\''archived'\'' WHERE metadata.status = '\''expired'\''"
   }'
 
 # Delete documents matching a condition
 curl -X POST http://localhost:4444/v1/query \
   -H "Content-Type: application/json" \
   -d '{
-    "query": "DELETE FROM Contracts WHERE metadata.status = '\''abandoned'\''"
+    "query": "DELETE FROM contracts WHERE metadata.status = '\''abandoned'\''"
   }'
 ```
 
@@ -184,6 +187,8 @@ curl -X POST http://localhost:4444/v1/query \
 
 ### Query Response (`/v1/query`)
 
+For `SELECT` with `REASON`, each document includes a `matched_nodes` array with the relevant sections:
+
 ```json
 {
   "documents": [{
@@ -193,10 +198,14 @@ curl -X POST http://localhost:4444/v1/query \
     "tags": ["contract"],
     "metadata": {},
     "total_nodes": 15,
-    "score": 0.94,
-    "highlights": ["Payment is due within 30 days..."],
-    "answer": "Payment is due within 30 days of receiving the invoice.",
-    "confidence": 0.94
+    "confidence": 0.94,
+    "matched_nodes": [{
+      "node_id": "node_payment",
+      "title": "Payment Terms",
+      "content": "Payment is due within 30 days of invoice receipt.",
+      "path": ["Service Agreement", "Payment Terms"],
+      "confidence": 0.94
+    }]
   }],
   "total_count": 1,
   "execution_time_ms": 1250

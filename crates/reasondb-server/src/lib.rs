@@ -5,10 +5,10 @@
 //! # Endpoints
 //!
 //! ## Ingestion
-//! - `POST /v1/ingest/file` - Upload and ingest a file
-//! - `POST /v1/ingest/text` - Ingest raw text/markdown
-//! - `POST /v1/ingest/batch` - Ingest multiple documents in one request
-//! - `POST /v1/ingest/url` - Ingest from URL
+//! - `POST /v1/tables/:name/ingest/file` - Upload and ingest a file into a table
+//! - `POST /v1/tables/:name/ingest/text` - Ingest raw text/markdown into a table
+//! - `POST /v1/tables/:name/ingest/batch` - Ingest multiple documents into a table
+//! - `POST /v1/tables/:name/ingest/url` - Ingest from URL into a table
 //!
 //! ## Search
 //! - `POST /v1/search` - LLM-guided tree traversal search

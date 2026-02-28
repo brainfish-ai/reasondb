@@ -21,8 +21,11 @@ use crate::{
 /// Request to create a new table
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateTableRequest {
-    /// Human-readable name for the table
-    #[schema(example = "Legal Contracts")]
+    /// Table name — must be lowercase snake_case, start with a letter, and contain
+    /// only letters, digits, and underscores. Plural nouns are recommended.
+    ///
+    /// Valid examples: `legal_contracts`, `research_papers`, `knowledge_base`
+    #[schema(example = "legal_contracts")]
     pub name: String,
 
     /// Optional description
@@ -38,8 +41,8 @@ pub struct CreateTableRequest {
 /// Request to update a table
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateTableRequest {
-    /// Updated name (optional)
-    #[schema(example = "Legal Documents")]
+    /// Updated name — must follow the same snake_case rules as table creation (optional)
+    #[schema(example = "legal_documents")]
     pub name: Option<String>,
 
     /// Updated description (optional)
@@ -59,7 +62,7 @@ pub struct TableResponse {
     pub id: String,
 
     /// Table name
-    #[schema(example = "Legal Contracts")]
+    #[schema(example = "legal_contracts")]
     pub name: String,
 
     /// Table description
@@ -109,7 +112,7 @@ pub struct TableSummary {
     pub id: String,
 
     /// Table name
-    #[schema(example = "Legal Contracts")]
+    #[schema(example = "legal_contracts")]
     pub name: String,
 
     /// Number of documents
@@ -152,6 +155,69 @@ pub struct DeleteTableRequest {
     pub cascade: bool,
 }
 
+// ==================== Validation ====================
+
+/// Validate a table name against naming rules.
+///
+/// Rules:
+/// - Must start with a lowercase letter (`a-z`)
+/// - May contain only lowercase letters, digits, and underscores
+/// - No consecutive underscores (`foo__bar` is invalid)
+/// - Cannot end with an underscore
+/// - Maximum 63 characters
+fn validate_table_name(name: &str) -> Result<(), ApiError> {
+    if name.is_empty() {
+        return Err(ApiError::ValidationError(
+            "Table name is required".to_string(),
+        ));
+    }
+
+    if name.len() > 63 {
+        return Err(ApiError::ValidationError(format!(
+            "Table name is too long ({} chars). Maximum is 63 characters.",
+            name.len()
+        )));
+    }
+
+    let first = name.chars().next().unwrap();
+    if !first.is_ascii_lowercase() {
+        return Err(ApiError::ValidationError(format!(
+            "Table name '{}' must start with a lowercase letter (a-z). \
+             Use snake_case, e.g. '{}'.",
+            name,
+            name.to_lowercase().trim_start_matches(|c: char| !c.is_ascii_alphabetic())
+        )));
+    }
+
+    for c in name.chars() {
+        if !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '_' {
+            let suggestion = reasondb_core::Table::slugify(name);
+            return Err(ApiError::ValidationError(format!(
+                "Table name '{}' contains invalid character '{}'. \
+                 Only lowercase letters, digits, and underscores are allowed. \
+                 Did you mean '{}'?",
+                name, c, suggestion
+            )));
+        }
+    }
+
+    if name.contains("__") {
+        return Err(ApiError::ValidationError(format!(
+            "Table name '{}' contains consecutive underscores. Use a single underscore to separate words.",
+            name
+        )));
+    }
+
+    if name.ends_with('_') {
+        return Err(ApiError::ValidationError(format!(
+            "Table name '{}' cannot end with an underscore.",
+            name
+        )));
+    }
+
+    Ok(())
+}
+
 // ==================== Endpoints ====================
 
 /// Create a new table
@@ -173,9 +239,7 @@ pub async fn create_table<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     State(state): State<Arc<AppState<R>>>,
     Json(request): Json<CreateTableRequest>,
 ) -> ApiResult<Json<TableResponse>> {
-    if request.name.is_empty() {
-        return Err(ApiError::ValidationError("Name is required".to_string()));
-    }
+    validate_table_name(&request.name)?;
 
     info!("Creating table: {}", request.name);
 
@@ -288,6 +352,8 @@ pub async fn update_table<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     info!("Updating table: {}", id);
 
     if let Some(name) = request.name {
+        validate_table_name(&name)?;
+        table.slug = reasondb_core::Table::slugify(&name);
         table.name = name;
     }
 

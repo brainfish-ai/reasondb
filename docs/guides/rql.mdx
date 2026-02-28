@@ -180,9 +180,14 @@ REASON 'What are the confidentiality obligations?'
   "documents": [{
     "id": "doc_abc",
     "title": "NDA Agreement",
-    "answer": "The confidentiality obligations require parties to...",
     "confidence": 0.92,
-    "highlights": ["Section 3.1: Confidentiality..."]
+    "matched_nodes": [{
+      "node_id": "node_sec3",
+      "title": "Confidentiality Obligations",
+      "content": "The confidentiality obligations require parties to hold all non-public information in strict confidence and not disclose it to any third party without prior written consent.",
+      "path": ["NDA Agreement", "Obligations", "Confidentiality Obligations"],
+      "confidence": 0.92
+    }]
   }],
   "total_count": 1,
   "execution_time_ms": 2340

@@ -380,6 +380,54 @@ fn test_execute_order_by() {
 }
 
 #[test]
+fn test_execute_order_by_metadata_numeric_asc() {
+    let (store, _dir) = create_test_store();
+    setup_test_data(&store);
+
+    // value: Contract B=25000, Contract A=50000, Contract C=100000
+    let query = Query::parse("SELECT * FROM legal ORDER BY metadata.value ASC").unwrap();
+    let result = store.execute_rql(&query).unwrap();
+
+    assert_eq!(result.documents[0].document.title, "Contract B");
+    assert_eq!(result.documents[1].document.title, "Contract A");
+    assert_eq!(result.documents[2].document.title, "Contract C");
+}
+
+#[test]
+fn test_execute_order_by_metadata_numeric_desc() {
+    let (store, _dir) = create_test_store();
+    setup_test_data(&store);
+
+    // value DESC: Contract C=100000, Contract A=50000, Contract B=25000
+    let query = Query::parse("SELECT * FROM legal ORDER BY metadata.value DESC").unwrap();
+    let result = store.execute_rql(&query).unwrap();
+
+    assert_eq!(result.documents[0].document.title, "Contract C");
+    assert_eq!(result.documents[1].document.title, "Contract A");
+    assert_eq!(result.documents[2].document.title, "Contract B");
+}
+
+#[test]
+fn test_execute_order_by_metadata_string() {
+    let (store, _dir) = create_test_store();
+    setup_test_data(&store);
+
+    // author: Alice (A), Alice (C), Bob (B) — stable order for equal keys not
+    // guaranteed, but Bob must come after Alice.
+    let query = Query::parse("SELECT * FROM legal ORDER BY metadata.author ASC").unwrap();
+    let result = store.execute_rql(&query).unwrap();
+
+    // All Alice docs come before Bob
+    let titles: Vec<&str> = result
+        .documents
+        .iter()
+        .map(|d| d.document.title.as_str())
+        .collect();
+    let bob_idx = titles.iter().position(|&t| t == "Contract B").unwrap();
+    assert!(bob_idx == 2, "Contract B (Bob) should sort last");
+}
+
+#[test]
 fn test_execute_limit_offset() {
     let (store, _dir) = create_test_store();
     setup_test_data(&store);

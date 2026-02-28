@@ -283,7 +283,7 @@ impl NodeStore {
     // ==================== Helper Methods ====================
 
     /// Resolve a table name to its ID.
-    pub(crate) fn resolve_table_id(&self, name: &str) -> Result<String> {
+    pub fn resolve_table_id(&self, name: &str) -> Result<String> {
         // If it looks like a table ID, return as-is
         if name.starts_with("tbl_") {
             return Ok(name.to_string());
@@ -455,13 +455,7 @@ impl NodeStore {
         if !has_search {
             if let Some(ref order_by) = query.order_by {
                 results.sort_by(|(a, _, _), (b, _, _)| {
-                    let field = order_by.field.first_field().unwrap_or("");
-                    let cmp = match field {
-                        "title" => a.title.cmp(&b.title),
-                        "created_at" => a.created_at.cmp(&b.created_at),
-                        "updated_at" => a.updated_at.cmp(&b.updated_at),
-                        _ => std::cmp::Ordering::Equal,
-                    };
+                    let cmp = filter::compare_docs_for_order_by(a, b, order_by);
                     if order_by.direction == SortDirection::Desc {
                         cmp.reverse()
                     } else {

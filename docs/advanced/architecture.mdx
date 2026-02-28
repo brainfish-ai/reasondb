@@ -351,9 +351,10 @@ The HTTP server built with Axum:
 /v1/tables/:id       DELETE- Delete table
 /v1/tables/:id/documents GET - List documents in table
 
-/v1/ingest/text      POST  - Ingest text
-/v1/ingest/file      POST  - Ingest file (multipart)
-/v1/ingest/url       POST  - Ingest URL
+/v1/tables/:name/ingest/text  POST  - Ingest text into table
+/v1/tables/:name/ingest/file  POST  - Ingest file (multipart) into table
+/v1/tables/:name/ingest/url   POST  - Ingest URL into table
+/v1/tables/:name/ingest/batch POST  - Batch ingest into table
 
 /v1/search           POST  - LLM-guided search
 /v1/query            POST  - RQL query
@@ -395,8 +396,10 @@ struct AppState<R: ReasoningEngine> {
     participant LLM
     participant Store
 
-    Client->>Server: POST /v1/ingest/text
-    Server->>Pipeline: Start ingestion
+    Client->>Server: POST /v1/tables/:name/ingest/text
+    Server-->>Client: HTTP 202 { job_id }
+    Note over Server: Background job queued
+    Server->>Pipeline: Start ingestion (async)
     Pipeline->>Pipeline: Extract & chunk text
     Pipeline->>Pipeline: Build tree structure
     loop For each node (bottom-up)
@@ -405,8 +408,9 @@ struct AppState<R: ReasoningEngine> {
     end
     Pipeline->>Store: Save document & nodes
     Pipeline->>Store: Index for BM25
-    Store-->>Server: Document created
-    Server-->>Client: IngestResponse`}
+    Note over Client,Server: Client polls GET /v1/jobs/{job_id}
+    Client->>Server: GET /v1/jobs/job_abc123
+    Server-->>Client: { status: "completed", result: { document_id } }`}
 </Mermaid>
 
 ### Search Flow

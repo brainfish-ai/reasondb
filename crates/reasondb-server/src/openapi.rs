@@ -30,10 +30,10 @@ use crate::routes::{documents, ingest, search};
         (name = "health", description = "Health check endpoints")
     ),
     paths(
-        ingest::ingest_file,
-        ingest::ingest_text,
-        ingest::ingest_batch,
-        ingest::ingest_url,
+        ingest::ingest_file_for_table,
+        ingest::ingest_text_for_table,
+        ingest::ingest_batch_for_table,
+        ingest::ingest_url_for_table,
         search::search,
         documents::list_documents,
         documents::get_document,
@@ -46,11 +46,11 @@ use crate::routes::{documents, ingest, search};
             // Ingestion
             ingest::IngestResponse,
             ingest::IngestStats,
-            ingest::IngestTextRequest,
+            ingest::IngestTextBody,
+            ingest::IngestUrlBody,
             ingest::BatchIngestItem,
-            ingest::BatchIngestRequest,
+            ingest::BatchIngestBody,
             ingest::BatchIngestResponse,
-            ingest::IngestUrlRequest,
             // Search
             search::SearchRequest,
             search::SearchResponse,

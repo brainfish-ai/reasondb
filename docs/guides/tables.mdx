@@ -14,11 +14,13 @@ Tables in ReasonDB are collections that group related documents. They help you o
 
 ## Creating Tables
 
+Table names must be lowercase `snake_case`, start with a letter, and contain only letters, digits, and underscores (e.g. `legal_contracts`, `research_papers`).
+
 ```bash
 curl -X POST http://localhost:4444/v1/tables \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Legal Contracts",
+    "name": "legal_contracts",
     "description": "All legal documents and contracts",
     "metadata": {
       "department": "legal",
@@ -31,7 +33,7 @@ Response:
 ```json
 {
   "id": "tbl_abc123",
-  "name": "Legal Contracts",
+  "name": "legal_contracts",
   "description": "All legal documents and contracts",
   "metadata": {
     "department": "legal",
@@ -67,8 +69,8 @@ Response:
 ```json
 {
   "tables": [
-    {"id": "tbl_abc123", "name": "Legal Contracts", "document_count": 45, "total_nodes": 1250},
-    {"id": "tbl_def456", "name": "Research Papers", "document_count": 120, "total_nodes": 3400}
+    {"id": "tbl_abc123", "name": "legal_contracts", "document_count": 45, "total_nodes": 1250},
+    {"id": "tbl_def456", "name": "research_papers", "document_count": 120, "total_nodes": 3400}
   ],
   "total": 2
 }
@@ -139,15 +141,21 @@ curl -X DELETE http://localhost:4444/v1/tables/default
 
 ### Assign During Ingestion
 
-Specify `table_id` when ingesting:
+Put the table name in the URL path — no `table_id` field needed in the body:
 
 ```bash
-curl -X POST http://localhost:4444/v1/ingest/text \
+curl -X POST http://localhost:4444/v1/tables/legal_contracts/ingest/text \
+  -H "Content-Type: application/json" \
   -d '{
     "title": "NDA Agreement",
-    "table_id": "tbl_legal",
     "content": "..."
   }'
+```
+
+Ingest is async (HTTP 202). Poll the returned `job_id` for completion:
+
+```bash
+curl http://localhost:4444/v1/jobs/JOB_ID
 ```
 
 ### List Documents in Table

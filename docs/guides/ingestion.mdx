@@ -44,21 +44,20 @@ Before ingesting documents, create a table to organize them:
 ```bash
 curl -X POST http://localhost:4444/v1/tables \
   -H "Content-Type: application/json" \
-  -d '{"name": "My Documents"}'
+  -d '{"name": "my_documents"}'
 ```
 
-Save the returned `id` (e.g., `tbl_abc123`) for use in ingestion requests.
+The table name is used directly in ingest URLs and RQL queries — no need to save an ID.
 
 ## Ingest Text
 
 The simplest method is ingesting plain text or Markdown directly. Text ingestion is **async** — it returns a job ID immediately (HTTP 202) and processes in the background:
 
 ```bash
-curl -X POST http://localhost:4444/v1/ingest/text \
+curl -X POST http://localhost:4444/v1/tables/my_documents/ingest/text \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Project Documentation",
-    "table_id": "tbl_abc123",
     "content": "# Project Overview\n\nThis project aims to...\n\n## Features\n\n### Feature 1\nDescription...",
     "tags": ["documentation", "internal"],
     "metadata": {"author": "Engineering Team", "department": "Engineering"}
@@ -76,14 +75,32 @@ Response (HTTP 202):
 }
 ```
 
-Poll `GET /v1/jobs/{job_id}` until the job completes. The final result contains the document ID, tree structure, and ingestion stats.
+Poll `GET /v1/jobs/{job_id}` until the job completes:
+
+```bash
+curl http://localhost:4444/v1/jobs/job_abc123
+```
+
+When complete, the result contains the document ID, tree structure, and ingestion stats:
+
+```json
+{
+  "job_id": "job_abc123",
+  "status": "completed",
+  "result": {
+    "document_id": "doc_xyz789",
+    "title": "Project Documentation",
+    "total_nodes": 4,
+    "stats": { "nodes_created": 4, "summaries_generated": 4 }
+  }
+}
+```
 
 ### Parameters
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `title` | Yes | Document title |
-| `table_id` | Yes | Table ID to assign the document to |
 | `content` | Yes | Plain text or Markdown content |
 | `generate_summaries` | No | Generate LLM summaries (default: true) |
 | `tags` | No | Array of tags for filtering |
@@ -117,12 +134,11 @@ Use clear heading hierarchy for better tree structure. Each heading becomes a no
 
 ## Ingest Files
 
-Upload PDF, Word, Excel, PowerPoint, images, and audio files:
+Upload PDF, Word, Excel, PowerPoint, images, and audio files. The table name goes in the URL path:
 
 ```bash
-curl -X POST http://localhost:4444/v1/ingest/file \
-  -F "file=@/path/to/document.pdf" \
-  -F "table_id=tbl_abc123"
+curl -X POST http://localhost:4444/v1/tables/my_documents/ingest/file \
+  -F "file=@/path/to/document.pdf"
 ```
 
 ### Supported Formats
@@ -145,38 +161,36 @@ File ingestion uses the [plugin system](/guides/plugins). The built-in `markitdo
 ### Example: Ingest a PDF
 
 ```bash
-curl -X POST http://localhost:4444/v1/ingest/file \
-  -F "file=@research-paper.pdf" \
-  -F "table_id=tbl_research"
+curl -X POST http://localhost:4444/v1/tables/research_papers/ingest/file \
+  -F "file=@research-paper.pdf"
 ```
 
-Response:
+Response (HTTP 202):
+
 ```json
 {
-  "document_id": "doc_abc123",
-  "title": "Research Paper Title",
-  "total_nodes": 28,
-  "max_depth": 3,
-  "stats": {
-    "chars_extracted": 45000,
-    "chunks_created": 15,
-    "nodes_created": 28,
-    "summaries_generated": 28,
-    "total_time_ms": 12500
-  }
+  "job_id": "job_abc123",
+  "status": "queued",
+  "created_at": "2026-01-30T10:00:00Z",
+  "updated_at": "2026-01-30T10:00:00Z"
 }
+```
+
+Poll until complete:
+
+```bash
+curl http://localhost:4444/v1/jobs/job_abc123
 ```
 
 ## Ingest URLs
 
-Fetch and ingest content from web pages or YouTube videos. Like text ingestion, URL ingestion is **async**:
+Fetch and ingest content from web pages or YouTube videos. URL ingestion is **async**:
 
 ```bash
-curl -X POST http://localhost:4444/v1/ingest/url \
+curl -X POST http://localhost:4444/v1/tables/my_documents/ingest/url \
   -H "Content-Type: application/json" \
   -d '{
-    "url": "https://example.com/article",
-    "table_id": "tbl_abc123"
+    "url": "https://example.com/article"
   }'
 ```
 
@@ -191,8 +205,10 @@ Response (HTTP 202):
 }
 ```
 
+Poll `GET /v1/jobs/job_def456` for completion.
+
 <Note>
-URL ingestion accepts `url`, `table_id`, and `generate_summaries` parameters. Tags and metadata are not supported for URL ingestion — use the text ingestion endpoint if you need those.
+URL ingestion accepts `url` and `generate_summaries` parameters. Tags and metadata are not supported for URL ingestion — use the text ingestion endpoint if you need those.
 </Note>
 
 ### Supported URL Types
@@ -206,26 +222,24 @@ URL ingestion accepts `url`, `table_id`, and `generate_summaries` parameters. Ta
 ### Example: Ingest a YouTube Video
 
 ```bash
-curl -X POST http://localhost:4444/v1/ingest/url \
+curl -X POST http://localhost:4444/v1/tables/videos/ingest/url \
   -H "Content-Type: application/json" \
   -d '{
-    "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-    "table_id": "tbl_videos"
+    "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
   }'
 ```
 
-The video transcript will be extracted and organized into a searchable tree.
+Poll the returned `job_id` for completion. The video transcript will be extracted and organized into a searchable tree.
 
 ## Metadata and Tags
 
 Add metadata and tags during ingestion for filtering:
 
 ```bash
-curl -X POST http://localhost:4444/v1/ingest/text \
+curl -X POST http://localhost:4444/v1/tables/legal/ingest/text \
   -H "Content-Type: application/json" \
   -d '{
     "title": "NDA Agreement",
-    "table_id": "tbl_legal",
     "content": "...",
     "tags": ["nda", "confidential", "2024"],
     "metadata": {
@@ -260,11 +274,10 @@ REASON 'What are the confidentiality obligations?'
 For faster ingestion without LLM processing:
 
 ```bash
-curl -X POST http://localhost:4444/v1/ingest/text \
+curl -X POST http://localhost:4444/v1/tables/my_documents/ingest/text \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Quick Import",
-    "table_id": "tbl_abc123",
     "content": "...",
     "generate_summaries": false
   }'

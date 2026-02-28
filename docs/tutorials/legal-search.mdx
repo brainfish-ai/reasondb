@@ -81,22 +81,20 @@ A contract analysis system that can:
       }'
     ```
 
-    Save the returned table ID.
   </Step>
 </Steps>
 
 ## Step 2: Ingest Sample Contracts
 
-Let's add three different contract types. Replace `TABLE_ID` with your table ID:
+Let's add three different contract types:
 
 ### NDA Agreement
 
 ```bash
-curl -X POST http://localhost:4444/v1/ingest/text \
+curl -X POST http://localhost:4444/v1/tables/contracts/ingest/text \
   -H "Content-Type: application/json" \
   -d '{
     "title": "NDA - Acme Corp & Beta Inc",
-    "table_id": "TABLE_ID",
     "content": "# Non-Disclosure Agreement\n\n**Effective Date:** January 15, 2024\n\n**Parties:**\n- Acme Corporation (\"Disclosing Party\")\n- Beta Inc (\"Receiving Party\")\n\n## 1. Definition of Confidential Information\n\nConfidential Information includes all non-public information disclosed by the Disclosing Party, including but not limited to: trade secrets, business plans, customer lists, financial data, and technical specifications.\n\n## 2. Obligations of Receiving Party\n\nThe Receiving Party agrees to:\n- Hold all Confidential Information in strict confidence\n- Not disclose to any third party without prior written consent\n- Use Confidential Information only for the permitted purpose\n- Return or destroy all materials upon request\n\n## 3. Exclusions\n\nConfidential Information does not include information that:\n- Is publicly available through no fault of Receiving Party\n- Was known to Receiving Party prior to disclosure\n- Is independently developed without use of Confidential Information\n\n## 4. Term and Termination\n\nThis Agreement shall remain in effect for three (3) years from the Effective Date. Either party may terminate with 30 days written notice. Confidentiality obligations survive termination for five (5) years.\n\n## 5. Remedies\n\nThe Receiving Party acknowledges that breach may cause irreparable harm. The Disclosing Party shall be entitled to seek injunctive relief in addition to any other remedies.",
     "tags": ["nda", "confidentiality", "active"],
     "metadata": {
@@ -113,11 +111,10 @@ curl -X POST http://localhost:4444/v1/ingest/text \
 ### Service Agreement
 
 ```bash
-curl -X POST http://localhost:4444/v1/ingest/text \
+curl -X POST http://localhost:4444/v1/tables/contracts/ingest/text \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Master Service Agreement - Acme Corp & CloudTech",
-    "table_id": "TABLE_ID",
     "content": "# Master Service Agreement\n\n**Effective Date:** March 1, 2024\n\n**Parties:**\n- Acme Corporation (\"Client\")\n- CloudTech Solutions (\"Provider\")\n\n## 1. Services\n\nProvider agrees to provide cloud infrastructure services as detailed in Exhibit A, including:\n- Managed Kubernetes hosting\n- Database administration\n- 24/7 monitoring and support\n\n## 2. Service Levels\n\n### 2.1 Availability\nProvider guarantees 99.9% uptime measured monthly. Downtime excludes scheduled maintenance.\n\n### 2.2 Response Times\n- Critical issues: 15 minutes\n- High priority: 1 hour\n- Normal priority: 4 hours\n\n### 2.3 Credits\nFor each 0.1% below 99.9% uptime, Client receives 5% credit on monthly fee.\n\n## 3. Payment Terms\n\n### 3.1 Fees\nClient shall pay $15,000 per month, due within 30 days of invoice.\n\n### 3.2 Late Payment\nLate payments accrue interest at 1.5% per month.\n\n## 4. Liability\n\n### 4.1 Limitation\nProvider total liability shall not exceed fees paid in the preceding 12 months.\n\n### 4.2 Exclusions\nNeither party liable for indirect, consequential, or punitive damages.\n\n## 5. Termination\n\n### 5.1 For Convenience\nEither party may terminate with 90 days written notice.\n\n### 5.2 For Cause\nImmediate termination for material breach not cured within 30 days.\n\n### 5.3 Effect of Termination\nProvider will assist with data migration for 30 days post-termination.",
     "tags": ["msa", "services", "cloud", "active"],
     "metadata": {
@@ -134,11 +131,10 @@ curl -X POST http://localhost:4444/v1/ingest/text \
 ### Employment Agreement
 
 ```bash
-curl -X POST http://localhost:4444/v1/ingest/text \
+curl -X POST http://localhost:4444/v1/tables/contracts/ingest/text \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Employment Agreement - Sarah Chen",
-    "table_id": "TABLE_ID",
     "content": "# Employment Agreement\n\n**Effective Date:** February 1, 2024\n\n**Parties:**\n- Acme Corporation (\"Company\")\n- Sarah Chen (\"Employee\")\n\n## 1. Position and Duties\n\nEmployee is hired as Senior Software Engineer, reporting to the VP of Engineering. Duties include software development, code review, and mentoring junior engineers.\n\n## 2. Compensation\n\n### 2.1 Base Salary\nAnnual salary of $175,000, paid bi-weekly.\n\n### 2.2 Bonus\nEligible for annual bonus up to 15% of base salary based on performance.\n\n### 2.3 Equity\n10,000 stock options vesting over 4 years with 1-year cliff.\n\n## 3. Benefits\n\n- Health, dental, and vision insurance\n- 401(k) with 4% company match\n- 20 days paid time off\n- Remote work flexibility\n\n## 4. Confidentiality\n\nEmployee agrees to maintain confidentiality of all proprietary information during and after employment.\n\n## 5. Intellectual Property\n\nAll work product created during employment belongs to the Company.\n\n## 6. Termination\n\n### 6.1 At-Will Employment\nEither party may terminate at any time with or without cause.\n\n### 6.2 Severance\nIf terminated without cause, Employee receives 3 months salary as severance.\n\n## 7. Non-Compete\n\nEmployee agrees not to work for direct competitors for 12 months after termination within 50-mile radius.",
     "tags": ["employment", "hr", "active"],
     "metadata": {
@@ -151,6 +147,29 @@ curl -X POST http://localhost:4444/v1/ingest/text \
     }
   }'
 ```
+
+Ingestion is async — each `POST /v1/tables/contracts/ingest/text` call returns a job ID immediately (HTTP 202). Poll until complete before running queries:
+
+```bash
+# Replace JOB_ID with the job_id from the ingest response
+curl http://localhost:4444/v1/jobs/JOB_ID
+```
+
+When complete:
+
+```json
+{
+  "job_id": "job_abc123",
+  "status": "completed",
+  "result": {
+    "document_id": "doc_xyz789",
+    "title": "NDA - Acme Corp & Beta Inc",
+    "total_nodes": 8
+  }
+}
+```
+
+Repeat for all three contracts before running queries.
 
 ## Step 3: Basic Contract Queries
 
@@ -202,18 +221,36 @@ SELECT * FROM contracts REASON 'What are the termination notice periods for each
   "documents": [
     {
       "title": "NDA - Acme Corp & Beta Inc",
-      "answer": "The NDA can be terminated by either party with 30 days written notice.",
-      "confidence": 0.94
+      "confidence": 0.94,
+      "matched_nodes": [{
+        "node_id": "node_1",
+        "title": "Term and Termination",
+        "content": "The NDA can be terminated by either party with 30 days written notice.",
+        "path": ["Non-Disclosure Agreement", "Term and Termination"],
+        "confidence": 0.94
+      }]
     },
     {
       "title": "Master Service Agreement - Acme Corp & CloudTech",
-      "answer": "The MSA requires 90 days written notice for termination for convenience, or immediate termination for material breach not cured within 30 days.",
-      "confidence": 0.92
+      "confidence": 0.92,
+      "matched_nodes": [{
+        "node_id": "node_2",
+        "title": "Termination",
+        "content": "The MSA requires 90 days written notice for termination for convenience, or immediate termination for material breach not cured within 30 days.",
+        "path": ["Master Service Agreement", "Termination"],
+        "confidence": 0.92
+      }]
     },
     {
       "title": "Employment Agreement - Sarah Chen",
-      "answer": "The employment is at-will, meaning either party can terminate at any time without notice.",
-      "confidence": 0.89
+      "confidence": 0.89,
+      "matched_nodes": [{
+        "node_id": "node_3",
+        "title": "At-Will Employment",
+        "content": "The employment is at-will, meaning either party can terminate at any time without notice.",
+        "path": ["Employment Agreement", "Termination", "At-Will Employment"],
+        "confidence": 0.89
+      }]
     }
   ]
 }

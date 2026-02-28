@@ -171,24 +171,97 @@ fn matches_contains_any(doc: &Document, path: &FieldPath, values: &Value) -> boo
     }
 }
 
-/// Sort documents by a field.
+/// Sort documents by a field, including `metadata.*` paths.
 pub fn sort_documents(docs: &mut [Document], order_by: &OrderByClause) {
-    let field = order_by.field.first_field().unwrap_or("");
     let desc = order_by.direction == SortDirection::Desc;
-
     docs.sort_by(|a, b| {
-        let cmp = match field {
-            "title" => a.title.cmp(&b.title),
-            "created_at" => a.created_at.cmp(&b.created_at),
-            "updated_at" => a.updated_at.cmp(&b.updated_at),
-            _ => std::cmp::Ordering::Equal,
-        };
+        let cmp = compare_docs_for_order_by(a, b, order_by);
         if desc {
             cmp.reverse()
         } else {
             cmp
         }
     });
+}
+
+/// Compare two documents according to an ORDER BY clause.
+///
+/// Supports top-level fields (`title`, `created_at`, `updated_at`) and
+/// `metadata.<key>` paths (including deeply nested paths such as
+/// `metadata.employee.department`). Numbers are compared numerically,
+/// strings lexicographically, booleans by value. `null` / missing values
+/// sort last.
+pub fn compare_docs_for_order_by(
+    a: &Document,
+    b: &Document,
+    order_by: &OrderByClause,
+) -> std::cmp::Ordering {
+    let first = order_by.field.first_field().unwrap_or("");
+    match first {
+        "title" => a.title.cmp(&b.title),
+        "created_at" => a.created_at.cmp(&b.created_at),
+        "updated_at" => a.updated_at.cmp(&b.updated_at),
+        "metadata" => {
+            if let Some(PathSegment::Field(key)) = order_by.field.segments.get(1) {
+                let va = get_metadata_sort_value(a, key, &order_by.field.segments[2..]);
+                let vb = get_metadata_sort_value(b, key, &order_by.field.segments[2..]);
+                compare_json_sort_values(va, vb)
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        }
+        _ => std::cmp::Ordering::Equal,
+    }
+}
+
+/// Retrieve a metadata value following an optional chain of sub-segments.
+fn get_metadata_sort_value<'a>(
+    doc: &'a Document,
+    key: &str,
+    remaining: &[PathSegment],
+) -> Option<&'a serde_json::Value> {
+    let mut current = doc.metadata.get(key)?;
+    for seg in remaining {
+        match seg {
+            PathSegment::Field(k) => {
+                if let serde_json::Value::Object(obj) = current {
+                    current = obj.get(k)?;
+                } else {
+                    return None;
+                }
+            }
+            PathSegment::Index(i) => {
+                if let serde_json::Value::Array(arr) = current {
+                    current = arr.get(*i)?;
+                } else {
+                    return None;
+                }
+            }
+        }
+    }
+    Some(current)
+}
+
+/// Compare two optional JSON values for sort ordering. `None` (missing) sorts last.
+fn compare_json_sort_values(
+    a: Option<&serde_json::Value>,
+    b: Option<&serde_json::Value>,
+) -> std::cmp::Ordering {
+    match (a, b) {
+        (None, None) => std::cmp::Ordering::Equal,
+        (None, _) => std::cmp::Ordering::Greater,
+        (_, None) => std::cmp::Ordering::Less,
+        (Some(av), Some(bv)) => match (av, bv) {
+            (serde_json::Value::Number(an), serde_json::Value::Number(bn)) => {
+                let af = an.as_f64().unwrap_or(0.0);
+                let bf = bn.as_f64().unwrap_or(0.0);
+                af.partial_cmp(&bf).unwrap_or(std::cmp::Ordering::Equal)
+            }
+            (serde_json::Value::String(as_), serde_json::Value::String(bs)) => as_.cmp(bs),
+            (serde_json::Value::Bool(ab), serde_json::Value::Bool(bb)) => ab.cmp(bb),
+            _ => std::cmp::Ordering::Equal,
+        },
+    }
 }
 
 // ==================== Value Conversion ====================

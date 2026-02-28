@@ -70,47 +70,50 @@ First, create tables to organize your documents:
 curl -X POST http://localhost:4444/v1/tables \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Contracts",
+    "name": "contracts",
     "description": "Master agreements and amendments",
     "metadata": {"department": "legal", "retention_years": 7}
   }'
 
-# Create a table for policies  
+# Create a table for policies
 curl -X POST http://localhost:4444/v1/tables \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Policies",
+    "name": "policies",
     "description": "Company policies and procedures",
     "metadata": {"department": "compliance"}
   }'
 ```
+
 
 ## Step 2: Ingest the Master Contract
 
 Let's create a master services agreement:
 
 ```bash
-curl -X POST http://localhost:4444/v1/ingest/text \
+curl -X POST http://localhost:4444/v1/tables/contracts/ingest/text \
   -H "Content-Type: application/json" \
-  -d '{
-    "title": "Master Services Agreement - Acme Corp",
-    "table_id": "contracts",
-    "tags": ["msa", "acme", "active"],
-    "metadata": {
-      "author": "Legal Team",
-      "client": "Acme Corporation",
-      "effective_date": "2025-01-01",
-      "value_usd": 500000,
-      "version": "1.0"
+  -d "{
+    \"title\": \"Master Services Agreement - Acme Corp\",
+    \"tags\": [\"msa\", \"acme\", \"active\"],
+    \"metadata\": {
+      \"author\": \"Legal Team\",
+      \"client\": \"Acme Corporation\",
+      \"effective_date\": \"2025-01-01\",
+      \"value_usd\": 500000,
+      \"version\": \"1.0\"
     },
-    "content": "# Master Services Agreement\n\n## 1. Services\nProvider agrees to deliver software development services as described in Exhibit A.\n\n## 2. Payment Terms\nClient shall pay Provider within 30 days of invoice receipt. Late payments incur 1.5% monthly interest.\n\n## 3. Confidentiality\nBoth parties agree to maintain confidentiality of proprietary information for 5 years after termination.\n\n## 4. Term\nThis agreement is effective for 24 months from the Effective Date.\n\n## 5. Termination\nEither party may terminate with 90 days written notice."
-  }'
+    \"content\": \"# Master Services Agreement\n\n## 1. Services\nProvider agrees to deliver software development services as described in Exhibit A.\n\n## 2. Payment Terms\nClient shall pay Provider within 30 days of invoice receipt. Late payments incur 1.5% monthly interest.\n\n## 3. Confidentiality\nBoth parties agree to maintain confidentiality of proprietary information for 5 years after termination.\n\n## 4. Term\nThis agreement is effective for 24 months from the Effective Date.\n\n## 5. Termination\nEither party may terminate with 90 days written notice.\"
+  }"
 ```
 
-Save the returned `document_id` - we'll call it `MSA_ID`:
+Ingest is async — poll the returned job until complete, then save the `document_id`:
 
 ```bash
-export MSA_ID="<returned document_id>"
+# Poll until "status": "completed"
+curl http://localhost:4444/v1/jobs/JOB_ID
+
+export MSA_ID="<result.document_id from completed job>"
 ```
 
 ## Step 3: Add an Amendment
@@ -118,27 +121,28 @@ export MSA_ID="<returned document_id>"
 Now add an amendment that modifies the payment terms:
 
 ```bash
-curl -X POST http://localhost:4444/v1/ingest/text \
+curl -X POST http://localhost:4444/v1/tables/contracts/ingest/text \
   -H "Content-Type: application/json" \
-  -d '{
-    "title": "Amendment #1 - Payment Terms",
-    "table_id": "contracts",
-    "tags": ["amendment", "acme", "payment"],
-    "metadata": {
-      "author": "Legal Team",
-      "client": "Acme Corporation",
-      "effective_date": "2025-06-01",
-      "amendment_number": 1,
-      "modifies_section": "2"
+  -d "{
+    \"title\": \"Amendment #1 - Payment Terms\",
+    \"tags\": [\"amendment\", \"acme\", \"payment\"],
+    \"metadata\": {
+      \"author\": \"Legal Team\",
+      \"client\": \"Acme Corporation\",
+      \"effective_date\": \"2025-06-01\",
+      \"amendment_number\": 1,
+      \"modifies_section\": \"2\"
     },
-    "content": "# Amendment #1 to Master Services Agreement\n\n## Purpose\nThis amendment modifies Section 2 (Payment Terms) of the Master Services Agreement dated January 1, 2025.\n\n## Amended Terms\nSection 2 is hereby replaced with:\n\nClient shall pay Provider within 45 days of invoice receipt. Late payments incur 2% monthly interest. A 5% early payment discount applies if paid within 10 days."
-  }'
+    \"content\": \"# Amendment #1 to Master Services Agreement\n\n## Purpose\nThis amendment modifies Section 2 (Payment Terms) of the Master Services Agreement dated January 1, 2025.\n\n## Amended Terms\nSection 2 is hereby replaced with:\n\nClient shall pay Provider within 45 days of invoice receipt. Late payments incur 2% monthly interest. A 5% early payment discount applies if paid within 10 days.\"
+  }"
 ```
 
-Save as `AMENDMENT1_ID`:
+Poll the job for completion, then save:
 
 ```bash
-export AMENDMENT1_ID="<returned document_id>"
+curl http://localhost:4444/v1/jobs/JOB_ID
+
+export AMENDMENT1_ID="<result.document_id from completed job>"
 ```
 
 ## Step 4: Create the Relationship
@@ -170,23 +174,24 @@ Let's add a second amendment and a side letter:
 
 ```bash
 # Amendment #2 - Extends the term
-curl -X POST http://localhost:4444/v1/ingest/text \
+curl -X POST http://localhost:4444/v1/tables/contracts/ingest/text \
   -H "Content-Type: application/json" \
-  -d '{
-    "title": "Amendment #2 - Term Extension",
-    "table_id": "contracts",
-    "tags": ["amendment", "acme", "term"],
-    "metadata": {
-      "author": "Legal Team",
-      "client": "Acme Corporation",
-      "effective_date": "2025-12-01",
-      "amendment_number": 2,
-      "modifies_section": "4"
+  -d "{
+    \"title\": \"Amendment #2 - Term Extension\",
+    \"tags\": [\"amendment\", \"acme\", \"term\"],
+    \"metadata\": {
+      \"author\": \"Legal Team\",
+      \"client\": \"Acme Corporation\",
+      \"effective_date\": \"2025-12-01\",
+      \"amendment_number\": 2,
+      \"modifies_section\": \"4\"
     },
-    "content": "# Amendment #2 to Master Services Agreement\n\n## Purpose\nThis amendment extends the term of the Master Services Agreement.\n\n## Amended Terms\nSection 4 (Term) is hereby replaced with:\n\nThis agreement is effective for 36 months from the original Effective Date, with automatic annual renewals unless terminated with 90 days notice."
-  }'
+    \"content\": \"# Amendment #2 to Master Services Agreement\n\n## Purpose\nThis amendment extends the term of the Master Services Agreement.\n\n## Amended Terms\nSection 4 (Term) is hereby replaced with:\n\nThis agreement is effective for 36 months from the original Effective Date, with automatic annual renewals unless terminated with 90 days notice.\"
+  }"
 
-export AMENDMENT2_ID="<returned document_id>"
+# Poll job until complete, then save document_id
+curl http://localhost:4444/v1/jobs/JOB_ID
+export AMENDMENT2_ID="<result.document_id from completed job>"
 
 # Create relationship
 curl -X POST http://localhost:4444/v1/relations \
@@ -201,21 +206,22 @@ curl -X POST http://localhost:4444/v1/relations \
 
 ```bash
 # Side Letter - Special pricing
-curl -X POST http://localhost:4444/v1/ingest/text \
+curl -X POST http://localhost:4444/v1/tables/contracts/ingest/text \
   -H "Content-Type: application/json" \
-  -d '{
-    "title": "Side Letter - Volume Discount",
-    "table_id": "contracts",
-    "tags": ["side-letter", "acme", "pricing"],
-    "metadata": {
-      "author": "Sales Team",
-      "client": "Acme Corporation",
-      "effective_date": "2025-03-15"
+  -d "{
+    \"title\": \"Side Letter - Volume Discount\",
+    \"tags\": [\"side-letter\", \"acme\", \"pricing\"],
+    \"metadata\": {
+      \"author\": \"Sales Team\",
+      \"client\": \"Acme Corporation\",
+      \"effective_date\": \"2025-03-15\"
     },
-    "content": "# Side Letter - Volume Discount Agreement\n\nIn connection with the Master Services Agreement, Provider agrees to the following volume discounts:\n\n- 10% discount for projects over $100,000\n- 15% discount for projects over $250,000\n- 20% discount for projects over $500,000\n\nThis side letter is incorporated by reference into the Master Services Agreement."
-  }'
+    \"content\": \"# Side Letter - Volume Discount Agreement\n\nIn connection with the Master Services Agreement, Provider agrees to the following volume discounts:\n\n- 10% discount for projects over \$100,000\n- 15% discount for projects over \$250,000\n- 20% discount for projects over \$500,000\n\nThis side letter is incorporated by reference into the Master Services Agreement.\"
+  }"
 
-export SIDELETTER_ID="<returned document_id>"
+# Poll job until complete, then save document_id
+curl http://localhost:4444/v1/jobs/JOB_ID
+export SIDELETTER_ID="<result.document_id from completed job>"
 
 # Create relationship
 curl -X POST http://localhost:4444/v1/relations \
@@ -292,23 +298,24 @@ The LLM will find Amendment #1 and extract the updated payment terms.
 Now let's create a new version of the master agreement that supersedes the original:
 
 ```bash
-curl -X POST http://localhost:4444/v1/ingest/text \
+curl -X POST http://localhost:4444/v1/tables/contracts/ingest/text \
   -H "Content-Type: application/json" \
-  -d '{
-    "title": "Master Services Agreement v2.0 - Acme Corp",
-    "table_id": "contracts",
-    "tags": ["msa", "acme", "active"],
-    "metadata": {
-      "author": "Legal Team",
-      "client": "Acme Corporation",
-      "effective_date": "2026-01-01",
-      "value_usd": 750000,
-      "version": "2.0"
+  -d "{
+    \"title\": \"Master Services Agreement v2.0 - Acme Corp\",
+    \"tags\": [\"msa\", \"acme\", \"active\"],
+    \"metadata\": {
+      \"author\": \"Legal Team\",
+      \"client\": \"Acme Corporation\",
+      \"effective_date\": \"2026-01-01\",
+      \"value_usd\": 750000,
+      \"version\": \"2.0\"
     },
-    "content": "# Master Services Agreement v2.0\n\nThis agreement supersedes and replaces the Master Services Agreement dated January 1, 2025, and all amendments thereto.\n\n## 1. Services\n[Updated terms...]\n\n## 2. Payment Terms\nClient shall pay within 45 days. 2% monthly late fee. 5% early payment discount.\n\n## 3. Confidentiality\n[Updated terms...]\n\n## 4. Term\n36 months with automatic renewal.\n\n## 5. Termination\n[Updated terms...]"
-  }'
+    \"content\": \"# Master Services Agreement v2.0\n\nThis agreement supersedes and replaces the Master Services Agreement dated January 1, 2025, and all amendments thereto.\n\n## 1. Services\n[Updated terms...]\n\n## 2. Payment Terms\nClient shall pay within 45 days. 2% monthly late fee. 5% early payment discount.\n\n## 3. Confidentiality\n[Updated terms...]\n\n## 4. Term\n36 months with automatic renewal.\n\n## 5. Termination\n[Updated terms...]\"
+  }"
 
-export MSA_V2_ID="<returned document_id>"
+# Poll job until complete, then save document_id
+curl http://localhost:4444/v1/jobs/JOB_ID
+export MSA_V2_ID="<result.document_id from completed job>"
 ```
 
 Create the supersedes relationship:
@@ -341,17 +348,18 @@ curl -s "http://localhost:4444/v1/documents/$MSA_ID/relations" | jq '.relations[
 Create a policy that references the contract:
 
 ```bash
-curl -X POST http://localhost:4444/v1/ingest/text \
+curl -X POST http://localhost:4444/v1/tables/policies/ingest/text \
   -H "Content-Type: application/json" \
-  -d '{
-    "title": "Vendor Payment Policy",
-    "table_id": "policies",
-    "tags": ["policy", "payment", "vendors"],
-    "metadata": {"author": "Finance Team"},
-    "content": "# Vendor Payment Policy\n\n## Overview\nThis policy governs payment terms for all vendor agreements.\n\n## Standard Terms\n- Net 30 payment terms unless otherwise negotiated\n- Early payment discounts may be offered per individual agreements\n- Late payment penalties as specified in vendor contracts\n\n## Exceptions\nExceptions require CFO approval and must be documented in the vendor agreement."
-  }'
+  -d "{
+    \"title\": \"Vendor Payment Policy\",
+    \"tags\": [\"policy\", \"payment\", \"vendors\"],
+    \"metadata\": {\"author\": \"Finance Team\"},
+    \"content\": \"# Vendor Payment Policy\n\n## Overview\nThis policy governs payment terms for all vendor agreements.\n\n## Standard Terms\n- Net 30 payment terms unless otherwise negotiated\n- Early payment discounts may be offered per individual agreements\n- Late payment penalties as specified in vendor contracts\n\n## Exceptions\nExceptions require CFO approval and must be documented in the vendor agreement.\"
+  }"
 
-export POLICY_ID="<returned document_id>"
+# Poll job until complete, then save document_id
+curl http://localhost:4444/v1/jobs/JOB_ID
+export POLICY_ID="<result.document_id from completed job>"
 
 # Link policy to MSA v2
 curl -X POST http://localhost:4444/v1/relations \

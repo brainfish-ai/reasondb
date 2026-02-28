@@ -58,11 +58,23 @@ fn v1_routes<R: ReasoningEngine + Clone + Send + Sync + 'static>(
             "/tables/:id/values/:column",
             get(tables::get_column_values::<R>),
         )
-        // Ingestion
-        .route("/ingest/file", post(ingest::ingest_file::<R>))
-        .route("/ingest/text", post(ingest::ingest_text::<R>))
-        .route("/ingest/batch", post(ingest::ingest_batch::<R>))
-        .route("/ingest/url", post(ingest::ingest_url::<R>))
+        // Ingestion (table name in URL path)
+        .route(
+            "/tables/:table_name/ingest/file",
+            post(ingest::ingest_file_for_table::<R>),
+        )
+        .route(
+            "/tables/:table_name/ingest/text",
+            post(ingest::ingest_text_for_table::<R>),
+        )
+        .route(
+            "/tables/:table_name/ingest/batch",
+            post(ingest::ingest_batch_for_table::<R>),
+        )
+        .route(
+            "/tables/:table_name/ingest/url",
+            post(ingest::ingest_url_for_table::<R>),
+        )
         // Jobs
         .route("/jobs", get(jobs::list_jobs::<R>))
         .route("/jobs/:id", get(jobs::get_job::<R>))

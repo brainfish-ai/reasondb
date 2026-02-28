@@ -76,16 +76,15 @@ curl -X POST http://localhost:4444/v1/tables \
 
 ## Step 2: Ingest Research Papers
 
-Replace `TABLE_ID` with your table ID:
+
 
 ### Paper 1: Transformer Architecture
 
 ```bash
-curl -X POST http://localhost:4444/v1/ingest/text \
+curl -X POST http://localhost:4444/v1/tables/research_papers/ingest/text \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Attention Is All You Need - Summary",
-    "table_id": "TABLE_ID",
     "content": "# Attention Is All You Need\n\n**Authors:** Vaswani et al.\n**Year:** 2017\n**Venue:** NeurIPS\n\n## Abstract\n\nThe dominant sequence transduction models are based on complex recurrent or convolutional neural networks. We propose a new simple network architecture, the Transformer, based solely on attention mechanisms.\n\n## Introduction\n\nRecurrent models have limitations in parallelization due to their sequential nature. The Transformer addresses this by relying entirely on self-attention to compute representations.\n\n## Architecture\n\n### Encoder-Decoder Structure\nThe Transformer follows an encoder-decoder structure using stacked self-attention and fully connected layers.\n\n### Multi-Head Attention\nInstead of performing a single attention function, we linearly project queries, keys, and values h times. This allows the model to attend to information from different representation subspaces.\n\n### Positional Encoding\nSince the model contains no recurrence or convolution, we inject positional information using sinusoidal functions.\n\n## Results\n\n### Machine Translation\n- BLEU score of 28.4 on WMT 2014 English-to-German\n- BLEU score of 41.8 on WMT 2014 English-to-French\n- Training time reduced by order of magnitude\n\n### Model Variations\n- Base model: 65M parameters\n- Big model: 213M parameters\n\n## Conclusions\n\nThe Transformer achieves state-of-the-art results while being more parallelizable and requiring less training time.",
     "tags": ["transformers", "attention", "nlp", "deep-learning"],
     "metadata": {"author": "Vaswani et al.", "year": 2017, "venue": "NeurIPS", "citations": 90000, "topic": "architecture"}
@@ -95,11 +94,10 @@ curl -X POST http://localhost:4444/v1/ingest/text \
 ### Paper 2: BERT
 
 ```bash
-curl -X POST http://localhost:4444/v1/ingest/text \
+curl -X POST http://localhost:4444/v1/tables/research_papers/ingest/text \
   -H "Content-Type: application/json" \
   -d '{
     "title": "BERT: Pre-training of Deep Bidirectional Transformers",
-    "table_id": "TABLE_ID",
     "content": "# BERT: Pre-training of Deep Bidirectional Transformers\n\n**Authors:** Devlin et al.\n**Year:** 2019\n**Venue:** NAACL\n\n## Abstract\n\nWe introduce BERT, which stands for Bidirectional Encoder Representations from Transformers. Unlike previous models, BERT is designed to pre-train deep bidirectional representations.\n\n## Introduction\n\nPre-trained language representations can be applied to downstream tasks in two strategies: feature-based (like ELMo) and fine-tuning (like GPT). BERT uses fine-tuning but is bidirectional.\n\n## Model Architecture\n\n### Bidirectional Training\nBERT uses masked language modeling (MLM) to enable bidirectional training. 15% of tokens are randomly masked during pre-training.\n\n### Next Sentence Prediction\nThe model also learns sentence relationships through next sentence prediction (NSP) task.\n\n### Model Sizes\n- BERT-Base: 12 layers, 768 hidden, 12 heads, 110M parameters\n- BERT-Large: 24 layers, 1024 hidden, 16 heads, 340M parameters\n\n## Pre-training\n\n### Data\n- BooksCorpus (800M words)\n- English Wikipedia (2,500M words)\n\n### Procedure\n- Batch size: 256 sequences\n- Training steps: 1,000,000\n- Optimizer: Adam with learning rate warmup\n\n## Results\n\n### GLUE Benchmark\nBERT-Large achieves 80.5% average score, 7.7% improvement over previous best.\n\n### SQuAD\n- SQuAD 1.1: F1 of 93.2\n- SQuAD 2.0: F1 of 83.1\n\n## Conclusions\n\nBidirectional pre-training is crucial for language understanding. BERT advances the state-of-the-art on eleven NLP tasks.",
     "tags": ["bert", "transformers", "nlp", "pre-training"],
     "metadata": {"author": "Devlin et al.", "year": 2019, "venue": "NAACL", "citations": 75000, "topic": "pre-training"}
@@ -109,16 +107,38 @@ curl -X POST http://localhost:4444/v1/ingest/text \
 ### Paper 3: GPT-3
 
 ```bash
-curl -X POST http://localhost:4444/v1/ingest/text \
+curl -X POST http://localhost:4444/v1/tables/research_papers/ingest/text \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Language Models are Few-Shot Learners (GPT-3)",
-    "table_id": "TABLE_ID",
     "content": "# Language Models are Few-Shot Learners\n\n**Authors:** Brown et al.\n**Year:** 2020\n**Venue:** NeurIPS\n\n## Abstract\n\nWe demonstrate that scaling up language models greatly improves task-agnostic, few-shot performance. GPT-3, with 175 billion parameters, achieves strong performance on many NLP tasks without fine-tuning.\n\n## Introduction\n\nRecent work has shown that pre-training followed by fine-tuning is effective, but requires task-specific datasets. We explore few-shot learning where the model learns from a few examples in context.\n\n## Approach\n\n### Model Architecture\nGPT-3 uses the same architecture as GPT-2 but scaled up:\n- 175 billion parameters\n- 96 attention layers\n- 96 heads per layer\n- 12,288 dimensional embeddings\n\n### Training\n- Dataset: 570GB of filtered text\n- Batch size: 3.2 million tokens\n- Training compute: 3.14E23 FLOPS\n\n### Evaluation Settings\n- **Zero-shot**: No examples, just task description\n- **One-shot**: One example provided\n- **Few-shot**: Multiple examples (typically 10-100)\n\n## Results\n\n### Language Tasks\n- Translation: Competitive with supervised systems\n- Question answering: 64.3% on TriviaQA\n- Reading comprehension: Strong zero-shot performance\n\n### Arithmetic\nGPT-3 can perform 2-digit addition with 100% accuracy and 3-digit with 80%.\n\n### Code Generation\nGPT-3 shows ability to generate simple Python functions from descriptions.\n\n## Limitations\n\n- Struggles with tasks requiring precise factual knowledge\n- Cannot learn during inference (no gradient updates)\n- High compute cost for training\n\n## Conclusions\n\nScaling language models enables few-shot learning across diverse tasks without fine-tuning.",
     "tags": ["gpt", "transformers", "nlp", "few-shot", "large-models"],
     "metadata": {"author": "Brown et al.", "year": 2020, "venue": "NeurIPS", "citations": 25000, "topic": "scaling"}
   }'
 ```
+
+Ingestion is async — each `POST /v1/tables/research_papers/ingest/text` call returns a job ID immediately (HTTP 202). Poll until complete before running queries:
+
+```bash
+# Replace JOB_ID with the job_id from the ingest response
+curl http://localhost:4444/v1/jobs/JOB_ID
+```
+
+When complete:
+
+```json
+{
+  "job_id": "job_abc123",
+  "status": "completed",
+  "result": {
+    "document_id": "doc_xyz789",
+    "title": "Attention Is All You Need - Summary",
+    "total_nodes": 10
+  }
+}
+```
+
+Repeat for all three papers before running queries.
 
 ## Step 3: Basic Research Queries
 
@@ -150,8 +170,14 @@ REASON 'What are the key differences between BERT and GPT architectures?'
   "documents": [
     {
       "title": "BERT: Pre-training of Deep Bidirectional Transformers",
-      "answer": "BERT uses bidirectional training with masked language modeling, while GPT uses unidirectional (left-to-right) training. BERT is designed for understanding tasks and requires fine-tuning, while GPT-3 focuses on generation and few-shot learning without fine-tuning.",
-      "confidence": 0.89
+      "confidence": 0.89,
+      "matched_nodes": [{
+        "node_id": "node_abc",
+        "title": "Bidirectional Training",
+        "content": "BERT uses bidirectional training with masked language modeling, while GPT uses unidirectional (left-to-right) training. BERT is designed for understanding tasks and requires fine-tuning, while GPT-3 focuses on generation and few-shot learning without fine-tuning.",
+        "path": ["BERT: Pre-training of Deep Bidirectional Transformers", "Model Architecture", "Bidirectional Training"],
+        "confidence": 0.89
+      }]
     }
   ]
 }
