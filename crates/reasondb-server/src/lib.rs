@@ -300,6 +300,7 @@ pub async fn run_server() -> anyhow::Result<()> {
                 api_key: Some("unconfigured".into()),
                 model: Some("gpt-4o-mini".into()),
                 base_url: None,
+                region: None,
                 options: LlmOptions::default(),
             };
             let placeholder_settings = LlmSettings {
@@ -384,6 +385,8 @@ fn llm_settings_from_env() -> anyhow::Result<LlmSettings> {
         "glm",
         "kimi",
         "ollama",
+        "vertex",
+        "bedrock",
     ];
     if !supported.contains(&provider_name.as_str()) {
         anyhow::bail!(
@@ -407,6 +410,9 @@ fn llm_settings_from_env() -> anyhow::Result<LlmSettings> {
         base_url: std::env::var("REASONDB_LLM_BASE_URL")
             .ok()
             .filter(|u| !u.is_empty()),
+        region: std::env::var("AWS_REGION").ok().or_else(|| {
+            std::env::var("REASONDB_LLM_REGION").ok()
+        }),
         options: LlmOptions::default(),
     };
 

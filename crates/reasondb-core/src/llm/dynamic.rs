@@ -151,6 +151,7 @@ mod tests {
             api_key: Some("sk-test".into()),
             model: Some("gpt-4o-mini".into()),
             base_url: None,
+            region: None,
             options: LlmOptions::default(),
         }
     }

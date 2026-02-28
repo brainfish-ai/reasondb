@@ -20,6 +20,8 @@ const PROVIDERS = [
   { value: 'glm', label: 'GLM (Zhipu AI)' },
   { value: 'kimi', label: 'Kimi (Moonshot)' },
   { value: 'ollama', label: 'Ollama (Local)' },
+  { value: 'vertex', label: 'Google Vertex AI' },
+  { value: 'bedrock', label: 'AWS Bedrock' },
 ]
 
 function StatusBadge({ status, testing }: { status?: LlmTestStatus; testing: boolean }) {
@@ -62,6 +64,8 @@ function ModelConfigForm({
   testing: boolean
 }) {
   const isOllama = config.provider === 'ollama'
+  const isVertex = config.provider === 'vertex'
+  const isBedrock = config.provider === 'bedrock'
 
   const update = (patch: Partial<LlmModelConfig>) => {
     onChange({ ...config, ...patch })
@@ -98,14 +102,16 @@ function ModelConfigForm({
           </Select>
         </div>
 
-        {!isOllama && (
+        {!isOllama && !isBedrock && (
           <div>
-            <label className="block text-xs font-medium text-subtext-0 mb-1">API Key</label>
+            <label className="block text-xs font-medium text-subtext-0 mb-1">
+              {isVertex ? 'Access token (Google Cloud)' : 'API Key'}
+            </label>
             <input
               type="password"
               value={config.api_key || ''}
               onChange={(e) => update({ api_key: e.target.value || undefined })}
-              placeholder="sk-..."
+              placeholder={isVertex ? 'Bearer token from gcloud auth' : 'sk-...'}
               className={cn(
                 'w-full h-9 rounded-md border border-border bg-surface-0 px-3 py-2 text-sm',
                 'placeholder:text-overlay-0 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2'
@@ -128,14 +134,36 @@ function ModelConfigForm({
           />
         </div>
 
-        {isOllama && (
+        {(isOllama || isVertex) && (
           <div>
-            <label className="block text-xs font-medium text-subtext-0 mb-1">Base URL</label>
+            <label className="block text-xs font-medium text-subtext-0 mb-1">
+              Base URL {isVertex && '(Vertex OpenAI-compatible endpoint)'}
+            </label>
             <input
               type="text"
               value={config.base_url || ''}
               onChange={(e) => update({ base_url: e.target.value || undefined })}
-              placeholder="http://localhost:11434/v1"
+              placeholder={
+                isVertex
+                  ? 'https://LOCATION-aiplatform.googleapis.com/v1/projects/PROJECT/locations/LOCATION/endpoints/openapi'
+                  : 'http://localhost:11434/v1'
+              }
+              className={cn(
+                'w-full h-9 rounded-md border border-border bg-surface-0 px-3 py-2 text-sm',
+                'placeholder:text-overlay-0 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2'
+              )}
+            />
+          </div>
+        )}
+
+        {isBedrock && (
+          <div>
+            <label className="block text-xs font-medium text-subtext-0 mb-1">Region</label>
+            <input
+              type="text"
+              value={config.region || ''}
+              onChange={(e) => update({ region: e.target.value || undefined })}
+              placeholder="e.g. us-east-1"
               className={cn(
                 'w-full h-9 rounded-md border border-border bg-surface-0 px-3 py-2 text-sm',
                 'placeholder:text-overlay-0 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2'

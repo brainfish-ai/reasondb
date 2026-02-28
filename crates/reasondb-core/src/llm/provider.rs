@@ -8,6 +8,8 @@
 //! - GLM (Zhipu AI — GLM-4, GLM-4-Flash, etc.)
 //! - Kimi (Moonshot AI — moonshot-v1-8k, moonshot-v1-128k, etc.)
 //! - Ollama (local models — Llama, Qwen, Mistral, etc.)
+//! - Google Vertex AI (Gemini via OpenAI-compatible endpoint)
+//! - AWS Bedrock (Claude, etc. via Converse API)
 //!
 //! Uses structured output extraction via `schemars::JsonSchema`.
 
@@ -60,6 +62,37 @@ fn extract_json_from_response(response: &str) -> &str {
     }
 
     trimmed
+}
+
+/// Extract plain text from a Bedrock Converse response output (assistant message content).
+#[cfg(feature = "bedrock")]
+fn extract_bedrock_message_text(
+    output: Option<&aws_sdk_bedrockruntime::types::ConverseOutput>,
+) -> Result<String> {
+    use aws_sdk_bedrockruntime::types::ContentBlock;
+    let output = output.ok_or_else(|| {
+        ReasonError::Reasoning("Bedrock returned no output".into())
+    })?;
+    let msg = output.as_message().map_err(|_| {
+        ReasonError::Reasoning("Bedrock output was not a message".into())
+    })?;
+    let text: String = msg
+        .content()
+        .iter()
+        .filter_map(|block| {
+            if let ContentBlock::Text(s) = block {
+                Some(s.clone())
+            } else {
+                None
+            }
+        })
+        .collect();
+    if text.is_empty() {
+        return Err(ReasonError::Reasoning(
+            "Bedrock response contained no text content".into(),
+        ));
+    }
+    Ok(text)
 }
 
 /// Attempt to repair malformed JSON where the LLM flattened multiple array
@@ -118,6 +151,14 @@ pub enum LLMProvider {
     Kimi { api_key: String, model: String },
     /// Ollama local models (OpenAI-compatible API, no API key needed)
     Ollama { base_url: String, model: String },
+    /// Google Vertex AI (Gemini via OpenAI-compatible endpoint)
+    Vertex {
+        base_url: String,
+        api_key: String,
+        model: String,
+    },
+    /// AWS Bedrock (Converse API; uses default credential chain)
+    Bedrock { region: String, model: String },
 }
 
 impl LLMProvider {
@@ -233,6 +274,27 @@ impl LLMProvider {
         }
     }
 
+    /// Create a Vertex AI provider (base_url = Vertex openapi endpoint, api_key = Google Cloud token)
+    pub fn vertex(
+        base_url: impl Into<String>,
+        api_key: impl Into<String>,
+        model: impl Into<String>,
+    ) -> Self {
+        Self::Vertex {
+            base_url: base_url.into(),
+            api_key: api_key.into(),
+            model: model.into(),
+        }
+    }
+
+    /// Create an AWS Bedrock provider (uses default credential chain)
+    pub fn bedrock(region: impl Into<String>, model: impl Into<String>) -> Self {
+        Self::Bedrock {
+            region: region.into(),
+            model: model.into(),
+        }
+    }
+
     /// The provider name (e.g. "openai", "anthropic")
     pub fn provider_name(&self) -> &str {
         match self {
@@ -243,6 +305,8 @@ impl LLMProvider {
             Self::Glm { .. } => "glm",
             Self::Kimi { .. } => "kimi",
             Self::Ollama { .. } => "ollama",
+            Self::Vertex { .. } => "vertex",
+            Self::Bedrock { .. } => "bedrock",
         }
     }
 
@@ -255,7 +319,9 @@ impl LLMProvider {
             | Self::Cohere { model, .. }
             | Self::Glm { model, .. }
             | Self::Kimi { model, .. }
-            | Self::Ollama { model, .. } => model,
+            | Self::Ollama { model, .. }
+            | Self::Vertex { model, .. }
+            | Self::Bedrock { model, .. } => model,
         }
     }
 }
@@ -523,6 +589,95 @@ impl Reasoner {
                     .await
                     .map_err(|e| ReasonError::Reasoning(format!("Ollama extraction error: {}", e)))
             }
+            LLMProvider::Vertex {
+                base_url,
+                api_key,
+                model,
+            } => {
+                let client =
+                    rig::providers::openai::Client::from_url(api_key.as_str(), base_url);
+                let mut builder = client.extractor::<T>(model);
+                if let Some(preamble) = &self.options.system_prompt {
+                    builder = builder.preamble(preamble);
+                }
+                let extractor = builder.build();
+
+                extractor
+                    .extract(prompt)
+                    .await
+                    .map_err(|e| ReasonError::Reasoning(format!("Vertex extraction error: {}", e)))
+            }
+            #[cfg(feature = "bedrock")]
+            LLMProvider::Bedrock { region, model } => {
+                let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+                    .region(aws_sdk_bedrockruntime::config::Region::new(region.clone()))
+                    .load()
+                    .await;
+                let client = aws_sdk_bedrockruntime::Client::new(&config);
+                let default_preamble = "You are a JSON extraction assistant. Always respond with valid JSON only, no other text.";
+                let system = vec![aws_sdk_bedrockruntime::types::SystemContentBlock::Text(
+                    self.effective_preamble(default_preamble).to_string(),
+                )];
+                let schema = schemars::schema_for!(T);
+                let schema_json = serde_json::to_string_pretty(&schema)
+                    .map_err(|e| ReasonError::Reasoning(format!("Schema error: {}", e)))?;
+                let extraction_prompt = format!(
+                    "Extract the following information and return ONLY valid JSON matching this schema.\n\
+                    IMPORTANT: When the schema has an array of objects, return EACH item as a SEPARATE object in the array.\n\n\
+                    Schema:\n{}\n\nText:\n{}",
+                    schema_json, prompt
+                );
+                let user_message = aws_sdk_bedrockruntime::types::Message::builder()
+                    .role(aws_sdk_bedrockruntime::types::ConversationRole::User)
+                    .content(aws_sdk_bedrockruntime::types::ContentBlock::Text(extraction_prompt))
+                    .build();
+                let inference_config = aws_sdk_bedrockruntime::types::InferenceConfiguration::builder()
+                    .max_tokens(self.effective_max_tokens(4096) as i32)
+                    .build();
+                let response = client
+                    .converse()
+                    .model_id(model)
+                    .set_messages(Some(vec![user_message]))
+                    .set_system(Some(system))
+                    .set_inference_config(Some(inference_config))
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        error!("Bedrock Converse failed: {}", e);
+                        ReasonError::Reasoning(format!("Bedrock extraction error: {}", e))
+                    })?;
+                let response_text = extract_bedrock_message_text(response.output())?;
+                let json_str = extract_json_from_response(&response_text);
+                match serde_json::from_str(json_str) {
+                    Ok(parsed) => Ok(parsed),
+                    Err(e) => {
+                        let err_msg = e.to_string();
+                        if err_msg.contains("duplicate field") {
+                            let field = err_msg
+                                .strip_prefix("duplicate field `")
+                                .and_then(|s| s.split('`').next())
+                                .unwrap_or("node_id");
+                            if let Some(repaired) = repair_duplicate_key_json(json_str, field) {
+                                if let Ok(parsed) = serde_json::from_str(&repaired) {
+                                    warn!(
+                                        "Bedrock returned duplicate-key JSON (field '{}'), repaired successfully",
+                                        field
+                                    );
+                                    return Ok(parsed);
+                                }
+                            }
+                        }
+                        Err(ReasonError::Reasoning(format!(
+                            "Failed to parse Bedrock JSON response: {}. Response was: {}",
+                            e, json_str
+                        )))
+                    }
+                }
+            }
+            #[cfg(not(feature = "bedrock"))]
+            LLMProvider::Bedrock { .. } => Err(ReasonError::Reasoning(
+                "AWS Bedrock support is not compiled in. Rebuild with --features bedrock.".into(),
+            )),
         }
     }
 
@@ -641,6 +796,51 @@ impl Reasoner {
                     .await
                     .map_err(|e| ReasonError::Reasoning(format!("Ollama completion error: {}", e)))
             }
+            LLMProvider::Vertex {
+                base_url,
+                api_key,
+                model,
+            } => {
+                let client =
+                    rig::providers::openai::Client::from_url(api_key.as_str(), base_url);
+                let agent = self.apply_agent_options(client.agent(model)).build();
+
+                agent
+                    .prompt(prompt)
+                    .await
+                    .map_err(|e| ReasonError::Reasoning(format!("Vertex completion error: {}", e)))
+            }
+            #[cfg(feature = "bedrock")]
+            LLMProvider::Bedrock { region, model } => {
+                let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+                    .region(aws_sdk_bedrockruntime::config::Region::new(region.clone()))
+                    .load()
+                    .await;
+                let client = aws_sdk_bedrockruntime::Client::new(&config);
+                let user_message = aws_sdk_bedrockruntime::types::Message::builder()
+                    .role(aws_sdk_bedrockruntime::types::ConversationRole::User)
+                    .content(aws_sdk_bedrockruntime::types::ContentBlock::Text(prompt.to_string()))
+                    .build();
+                let inference_config = aws_sdk_bedrockruntime::types::InferenceConfiguration::builder()
+                    .max_tokens(self.effective_max_tokens(4096) as i32)
+                    .build();
+                let response = client
+                    .converse()
+                    .model_id(model)
+                    .set_messages(Some(vec![user_message]))
+                    .set_inference_config(Some(inference_config))
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        error!("Bedrock Converse failed: {}", e);
+                        ReasonError::Reasoning(format!("Bedrock completion error: {}", e))
+                    })?;
+                extract_bedrock_message_text(response.output())
+            }
+            #[cfg(not(feature = "bedrock"))]
+            LLMProvider::Bedrock { .. } => Err(ReasonError::Reasoning(
+                "AWS Bedrock support is not compiled in. Rebuild with --features bedrock.".into(),
+            )),
         }
     }
 }
@@ -947,6 +1147,18 @@ mod tests {
         assert!(
             matches!(ollama_custom, LLMProvider::Ollama { base_url, model } if base_url == "http://remote:11434/v1" && model == "qwen2.5")
         );
+
+        let vertex = LLMProvider::vertex(
+            "https://us-central1-aiplatform.googleapis.com/v1/projects/p/locations/us-central1/endpoints/openapi",
+            "token",
+            "gemini-2.0-flash-001",
+        );
+        assert!(matches!(vertex, LLMProvider::Vertex { ref model, .. } if model == "gemini-2.0-flash-001"));
+        assert_eq!(vertex.provider_name(), "vertex");
+
+        let bedrock = LLMProvider::bedrock("us-east-1", "anthropic.claude-3-sonnet-20240229-v1:0");
+        assert!(matches!(bedrock, LLMProvider::Bedrock { ref region, ref model, .. } if region == "us-east-1" && model == "anthropic.claude-3-sonnet-20240229-v1:0"));
+        assert_eq!(bedrock.provider_name(), "bedrock");
     }
 
     #[test]

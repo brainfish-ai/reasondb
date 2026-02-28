@@ -37,7 +37,7 @@ pub struct LlmOptions {
 /// Configuration for a single LLM model (provider + credentials + options)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmModelConfig {
-    /// Provider name: "openai", "anthropic", "gemini", "cohere", "glm", "kimi", "ollama"
+    /// Provider name: "openai", "anthropic", "gemini", "cohere", "glm", "kimi", "ollama", "vertex", "bedrock"
     pub provider: String,
     /// API key (not required for Ollama)
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -45,9 +45,12 @@ pub struct LlmModelConfig {
     /// Model name override. None = provider default.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub model: Option<String>,
-    /// Base URL override (primarily for Ollama)
+    /// Base URL override (primarily for Ollama, required for Vertex)
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub base_url: Option<String>,
+    /// Region (for AWS Bedrock; falls back to AWS_REGION env if unset)
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub region: Option<String>,
     /// LLM options (temperature, max_tokens, etc.)
     #[serde(default)]
     pub options: LlmOptions,
@@ -124,8 +127,34 @@ impl LlmModelConfig {
                     model: model_or("llama3.3"),
                 })
             }
+            "vertex" => {
+                let base_url = self.base_url.clone().ok_or_else(|| {
+                    ReasonError::Config("Vertex requires base_url (e.g. https://LOCATION-aiplatform.googleapis.com/v1/projects/PROJECT/locations/LOCATION/endpoints/openapi)".into())
+                })?;
+                let key = self.api_key.clone().ok_or_else(|| {
+                    ReasonError::Config("Vertex requires an API key (Google Cloud access token)".into())
+                })?;
+                Ok(LLMProvider::Vertex {
+                    base_url,
+                    api_key: key,
+                    model: model_or("gemini-2.0-flash-001"),
+                })
+            }
+            "bedrock" => {
+                let region = self
+                    .region
+                    .clone()
+                    .or_else(|| std::env::var("AWS_REGION").ok())
+                    .ok_or_else(|| {
+                        ReasonError::Config("Bedrock requires region (set in config or AWS_REGION)".into())
+                    })?;
+                Ok(LLMProvider::Bedrock {
+                    region,
+                    model: model_or("anthropic.claude-3-sonnet-20240229-v1:0"),
+                })
+            }
             other => Err(ReasonError::Config(format!(
-                "Unknown LLM provider: '{}'. Supported: openai, anthropic, gemini, cohere, glm, kimi, ollama",
+                "Unknown LLM provider: '{}'. Supported: openai, anthropic, gemini, cohere, glm, kimi, ollama, vertex, bedrock",
                 other
             ))),
         }
@@ -147,6 +176,7 @@ impl From<&LLMProvider> for LlmModelConfig {
                 api_key: Some(api_key.clone()),
                 model: Some(model.clone()),
                 base_url: None,
+                region: None,
                 options: LlmOptions::default(),
             },
             LLMProvider::Anthropic { api_key, model } => Self {
@@ -154,6 +184,7 @@ impl From<&LLMProvider> for LlmModelConfig {
                 api_key: Some(api_key.clone()),
                 model: Some(model.clone()),
                 base_url: None,
+                region: None,
                 options: LlmOptions::default(),
             },
             LLMProvider::Gemini { api_key, model } => Self {
@@ -161,6 +192,7 @@ impl From<&LLMProvider> for LlmModelConfig {
                 api_key: Some(api_key.clone()),
                 model: Some(model.clone()),
                 base_url: None,
+                region: None,
                 options: LlmOptions::default(),
             },
             LLMProvider::Cohere { api_key, model } => Self {
@@ -168,6 +200,7 @@ impl From<&LLMProvider> for LlmModelConfig {
                 api_key: Some(api_key.clone()),
                 model: Some(model.clone()),
                 base_url: None,
+                region: None,
                 options: LlmOptions::default(),
             },
             LLMProvider::Glm { api_key, model } => Self {
@@ -175,6 +208,7 @@ impl From<&LLMProvider> for LlmModelConfig {
                 api_key: Some(api_key.clone()),
                 model: Some(model.clone()),
                 base_url: None,
+                region: None,
                 options: LlmOptions::default(),
             },
             LLMProvider::Kimi { api_key, model } => Self {
@@ -182,6 +216,7 @@ impl From<&LLMProvider> for LlmModelConfig {
                 api_key: Some(api_key.clone()),
                 model: Some(model.clone()),
                 base_url: None,
+                region: None,
                 options: LlmOptions::default(),
             },
             LLMProvider::Ollama { base_url, model } => Self {
@@ -189,6 +224,27 @@ impl From<&LLMProvider> for LlmModelConfig {
                 api_key: None,
                 model: Some(model.clone()),
                 base_url: Some(base_url.clone()),
+                region: None,
+                options: LlmOptions::default(),
+            },
+            LLMProvider::Vertex {
+                base_url,
+                api_key,
+                model,
+            } => Self {
+                provider: "vertex".into(),
+                api_key: Some(api_key.clone()),
+                model: Some(model.clone()),
+                base_url: Some(base_url.clone()),
+                region: None,
+                options: LlmOptions::default(),
+            },
+            LLMProvider::Bedrock { region, model } => Self {
+                provider: "bedrock".into(),
+                api_key: None,
+                model: Some(model.clone()),
+                base_url: None,
+                region: Some(region.clone()),
                 options: LlmOptions::default(),
             },
         }
@@ -264,6 +320,39 @@ mod tests {
     }
 
     #[test]
+    fn test_round_trip_vertex() {
+        let provider = LLMProvider::vertex(
+            "https://us-central1-aiplatform.googleapis.com/v1/projects/p/locations/us-central1/endpoints/openapi",
+            "test-token",
+            "gemini-2.0-flash-001",
+        );
+        let config = LlmModelConfig::from(&provider);
+        assert_eq!(config.provider, "vertex");
+        assert_eq!(config.api_key.as_deref(), Some("test-token"));
+        assert_eq!(config.model.as_deref(), Some("gemini-2.0-flash-001"));
+        assert!(config.base_url.as_deref().unwrap().contains("aiplatform.googleapis.com"));
+
+        let back = config.to_provider().unwrap();
+        assert_eq!(back.provider_name(), "vertex");
+        assert_eq!(back.model(), "gemini-2.0-flash-001");
+    }
+
+    #[test]
+    fn test_round_trip_bedrock() {
+        let provider = LLMProvider::bedrock("us-east-1", "anthropic.claude-3-sonnet-20240229-v1:0");
+        let config = LlmModelConfig::from(&provider);
+        assert_eq!(config.provider, "bedrock");
+        assert!(config.api_key.is_none());
+        assert_eq!(config.region.as_deref(), Some("us-east-1"));
+        assert_eq!(config.model.as_deref(), Some("anthropic.claude-3-sonnet-20240229-v1:0"));
+
+        // to_provider needs region (from config or AWS_REGION); set it in config
+        let back = config.to_provider().unwrap();
+        assert_eq!(back.provider_name(), "bedrock");
+        assert_eq!(back.model(), "anthropic.claude-3-sonnet-20240229-v1:0");
+    }
+
+    #[test]
     fn test_mask_key() {
         assert_eq!(mask_key("sk-1234567890abcdef"), "sk-1...cdef");
         assert_eq!(mask_key("short"), "****");
@@ -276,6 +365,7 @@ mod tests {
             api_key: None,
             model: None,
             base_url: None,
+            region: None,
             options: LlmOptions::default(),
         };
         assert!(config.to_provider().is_err());

@@ -72,6 +72,7 @@ mod tests {
                 api_key: Some("sk-test".into()),
                 model: Some("gpt-4o-mini".into()),
                 base_url: None,
+                region: None,
                 options: LlmOptions {
                     temperature: Some(0.2),
                     disable_thinking: true,
@@ -83,6 +84,7 @@ mod tests {
                 api_key: Some("sk-ant-test".into()),
                 model: Some("claude-sonnet-4-5-20250929".into()),
                 base_url: None,
+                region: None,
                 options: LlmOptions::default(),
             },
         };

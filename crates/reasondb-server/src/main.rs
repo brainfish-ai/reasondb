@@ -285,6 +285,8 @@ async fn main() -> anyhow::Result<()> {
                     "glm",
                     "kimi",
                     "ollama",
+                    "vertex",
+                    "bedrock",
                 ];
                 if !supported.contains(&pn.as_str()) {
                     anyhow::bail!(
@@ -298,6 +300,7 @@ async fn main() -> anyhow::Result<()> {
                     api_key,
                     model,
                     base_url,
+                    region: None,
                     options: LlmOptions::default(),
                 };
                 let env_settings = LlmSettings {
@@ -340,6 +343,7 @@ async fn main() -> anyhow::Result<()> {
                 api_key: Some("unconfigured".into()),
                 model: Some("gpt-4o-mini".into()),
                 base_url: None,
+                region: None,
                 options: LlmOptions::default(),
             };
             let placeholder_settings = LlmSettings {

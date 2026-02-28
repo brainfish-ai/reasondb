@@ -491,6 +491,7 @@ export interface LlmModelConfig {
   api_key?: string
   model?: string
   base_url?: string
+  region?: string
   options?: LlmOptions
 }
 

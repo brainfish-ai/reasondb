@@ -60,6 +60,10 @@ url = "2.5"
 rig-core = "0.6"
 schemars = "0.8"
 
+# AWS Bedrock (optional; enable with reasondb-core "bedrock" feature)
+aws-config = "1.4"
+aws-sdk-bedrockruntime = "1.36"
+
 # Testing
 tempfile = "3.9"
 

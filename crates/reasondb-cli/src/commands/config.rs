@@ -71,7 +71,7 @@ fn default_db_path() -> String {
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct LLMConfig {
-    /// LLM provider (openai, anthropic, gemini, cohere, glm, kimi, ollama)
+    /// LLM provider (openai, anthropic, gemini, cohere, glm, kimi, ollama, vertex, bedrock)
     #[serde(default)]
     pub provider: Option<String>,
 
@@ -225,7 +225,7 @@ pub enum LlmConfigCommands {
 
     /// Replace both ingestion and retrieval config (JSON body from stdin or args)
     Set {
-        /// Provider name (openai, anthropic, gemini, cohere, glm, kimi, ollama)
+        /// Provider name (openai, anthropic, gemini, cohere, glm, kimi, ollama, vertex, bedrock)
         #[arg(long)]
         provider: String,
         /// API key
@@ -588,8 +588,10 @@ async fn init_interactive() -> Result<()> {
     println!("  5. GLM (Zhipu AI)");
     println!("  6. Kimi (Moonshot)");
     println!("  7. Ollama (local)");
-    println!("  8. Skip (use mock provider)");
-    print!("\nSelect provider [1-8]: ");
+    println!("  8. Google Vertex AI");
+    println!("  9. AWS Bedrock");
+    println!("  10. Skip (use mock provider)");
+    print!("\nSelect provider [1-10]: ");
     io::stdout().flush()?;
 
     let mut input = String::new();
@@ -603,6 +605,8 @@ async fn init_interactive() -> Result<()> {
         "5" => Some("glm"),
         "6" => Some("kimi"),
         "7" => Some("ollama"),
+        "8" => Some("vertex"),
+        "9" => Some("bedrock"),
         _ => None,
     };
 

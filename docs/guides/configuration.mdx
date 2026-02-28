@@ -15,7 +15,7 @@ reasondb config init
 ```
 
 This walks you through:
-1. Selecting your LLM provider (Anthropic, OpenAI, Gemini, Cohere, GLM, Kimi, or Ollama)
+1. Selecting your LLM provider (Anthropic, OpenAI, Gemini, Cohere, GLM, Kimi, Ollama, Vertex AI, or Bedrock)
 2. Setting your API key (or model name for Ollama)
 3. Configuring server settings
 
@@ -118,7 +118,7 @@ Environment variables override config file values. This is useful for:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `REASONDB_LLM_PROVIDER` | LLM provider (`anthropic`, `openai`, `gemini`, `cohere`, `glm`, `kimi`, `ollama`) | - |
+| `REASONDB_LLM_PROVIDER` | LLM provider (`anthropic`, `openai`, `gemini`, `cohere`, `glm`, `kimi`, `ollama`, `vertex`, `bedrock`) | - |
 | `REASONDB_LLM_API_KEY` | API key for the chosen LLM provider | - |
 | `REASONDB_MODEL` | Override the default model (required for `ollama`) | - |
 | `REASONDB_OLLAMA_BASE_URL` | Ollama server URL (only for `ollama` provider) | `http://localhost:11434/v1` |
@@ -147,6 +147,8 @@ Environment variables override config file values. This is useful for:
 | GLM (Zhipu AI) | `glm` | Cost-effective |
 | Kimi (Moonshot) | `kimi` | Long context |
 | Ollama (local) | `ollama` | Privacy, no API key needed |
+| Google Vertex AI | `vertex` | GCP, enterprise Gemini |
+| AWS Bedrock | `bedrock` | AWS, Claude and others |
 
 ### Using Ollama (Local Models)
 
@@ -187,6 +189,22 @@ reasondb serve
 <Info>
 Both `REASONDB_LLM_PROVIDER` and `REASONDB_LLM_API_KEY` must be set when using environment variables. There is no auto-detection from provider-specific env vars.
 </Info>
+
+### Using Google Vertex AI
+
+Vertex AI exposes an OpenAI-compatible endpoint for Gemini models. Set the base URL to your Vertex openapi endpoint and use a Google Cloud access token as the API key.
+
+- **Base URL**: `https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/{LOCATION}/endpoints/openapi`
+- **API key**: Use `gcloud auth print-access-token` or Application Default Credentials (ADC). Configure via the API or UI (base_url and api_key).
+- **Model**: e.g. `gemini-2.0-flash-001` (see Vertex AI model IDs).
+
+### Using AWS Bedrock
+
+Bedrock uses the AWS default credential chain (env vars, `~/.aws/credentials`, IAM roles). No API key is required.
+
+- **Region**: Set `AWS_REGION` or `REASONDB_LLM_REGION`, or set `region` in the LLM config via the API/UI.
+- **Model**: e.g. `anthropic.claude-3-sonnet-20240229-v1:0` (see [Bedrock model IDs](https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html)).
+- **Build with Bedrock**: Enable the feature when compiling: `cargo build -p reasondb-server --features bedrock` (requires Rust 1.91+).
 
 ## Server Configuration
 

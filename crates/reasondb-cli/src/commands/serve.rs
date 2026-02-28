@@ -109,6 +109,12 @@ pub async fn run(port: u16, host: String, db_path: String) -> Result<()> {
                     std::env::set_var("COHERE_API_KEY", api_key);
                 }
             }
+            "vertex" => {
+                // Vertex uses api_key as Google Cloud access token; no standard env var
+            }
+            "bedrock" => {
+                // Bedrock uses AWS default credential chain (set AWS_REGION in env if needed)
+            }
             _ => {}
         }
 

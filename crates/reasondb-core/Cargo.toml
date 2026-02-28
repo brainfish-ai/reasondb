@@ -6,6 +6,11 @@ authors.workspace = true
 license.workspace = true
 description = "Core library for ReasonDB - models, storage, and reasoning engine"
 
+[features]
+default = []
+# Enable AWS Bedrock provider (requires Rust 1.91+)
+bedrock = ["aws-config", "aws-sdk-bedrockruntime"]
+
 [dependencies]
 # Serialization
 serde.workspace = true
@@ -44,6 +49,8 @@ reqwest.workspace = true
 # LLM Framework
 rig-core.workspace = true
 schemars.workspace = true
+aws-config = { workspace = true, optional = true }
+aws-sdk-bedrockruntime = { workspace = true, optional = true }
 
 # Concurrency (hot-swap reasoner)
 arc-swap = "1"
