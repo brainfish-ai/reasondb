@@ -66,7 +66,7 @@ ReasonDB introduces **Hierarchical Reasoning Retrieval (HRR)**, a fundamentally 
 - **Hierarchical Reasoning Retrieval**: LLM-guided tree traversal with parallel beam search - AI navigates document structure instead of relying on similarity matching
 - **RQL Query Language**: SQL-like syntax with built-in `SEARCH` (BM25) and `REASON` (LLM) clauses in a single query
 - **Plugin Architecture**: Extensible extraction pipeline - PDF, Office, images, audio, and URLs out of the box via [MarkItDown](https://github.com/microsoft/markitdown)
-- **Multi-Provider LLM Support**: Anthropic, OpenAI, Gemini, Cohere - switch providers without code changes
+- **Multi-Provider LLM Support**: Anthropic, OpenAI, Gemini, Cohere, Vertex AI, AWS Bedrock, and more — switch providers without code changes
 - **Production Ready**: ACID-compliant storage, API key auth, rate limiting, async parallel traversal - all in a single Rust binary
 
 <h2>Contents</h2>
@@ -194,7 +194,7 @@ reasondb config init
 
 | Variable | Description | Required |
 |---|---|---|
-| `REASONDB_LLM_PROVIDER` | `openai`, `anthropic`, `gemini`, or `cohere` | Yes |
+| `REASONDB_LLM_PROVIDER` | `openai`, `anthropic`, `gemini`, `cohere`, `glm`, `kimi`, `ollama`, `vertex`, `bedrock` | Yes |
 | `REASONDB_LLM_API_KEY` | API key for the chosen provider | Yes |
 | `REASONDB_MODEL` | Override the default model for the provider | No |
 
@@ -336,6 +336,7 @@ Community plugins can be installed by dropping a directory into `$REASONDB_PLUGI
 | Full Documentation | [reason-db.devdoc.sh](https://reason-db.devdoc.sh) |
 | Quick Start Guide | [reason-db.devdoc.sh/documentation/page/quickstart](https://reason-db.devdoc.sh/documentation/page/quickstart) |
 | Core Concepts | [reason-db.devdoc.sh/documentation/page/concepts](https://reason-db.devdoc.sh/documentation/page/concepts) |
+| **Contributing** | [Contributing guide](CONTRIBUTING.md) · [docs](https://reason-db.devdoc.sh/documentation/page/guides/contributing) |
 | Plugin Guide | [reason-db.devdoc.sh/documentation/page/guides/plugins](https://reason-db.devdoc.sh/documentation/page/guides/plugins) |
 | API Reference | [reason-db.devdoc.sh/api-reference](https://reason-db.devdoc.sh/api-reference/introduction) |
 | Swagger UI | [localhost:4444/swagger-ui](http://localhost:4444/swagger-ui/) *(when server is running)* |
@@ -349,7 +350,7 @@ Join our growing community for help, ideas, and discussions regarding ReasonDB.
 
 <h2>Contributing</h2>
 
-We would love for you to get involved with ReasonDB development! If you wish to help, you can learn more about how you can contribute to this project in the [contribution guide](CONTRIBUTING.md).
+We’d love your help. See the **[contributing guide](CONTRIBUTING.md)** for development setup, running tests, and how to submit PRs. You can also read it in the [docs](https://reason-db.devdoc.sh/documentation/page/guides/contributing).
 
 <h2>License</h2>
 

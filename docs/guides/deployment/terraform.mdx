@@ -1,0 +1,220 @@
+---
+title: Deploy with Terraform
+description: Deploy ReasonDB on AWS or GCP using Terraform HCL templates
+---
+
+Deploy ReasonDB using Terraform HCL. Templates are in `deploy/aws/terraform/` and `deploy/gcp/terraform/`. Both provision a VM, persistent data disk, static IP, and firewall rules — and output the API URL when done.
+
+## Prerequisites
+
+- [Terraform ≥ 1.5](https://developer.hashicorp.com/terraform/install)
+- AWS CLI (`aws configure`) or GCP credentials (`gcloud auth application-default login`)
+- An SSH key pair (`ssh-keygen -t rsa -b 4096` if you don't have one)
+- An LLM API key — see [supported providers](/guides/configuration)
+
+Clone the repo to get the templates:
+
+```bash
+git clone https://github.com/reasondb/reasondb.git
+cd reasondb
+```
+
+---
+
+## AWS
+
+Provisions **EC2 `t3.medium`** + **EBS `gp3` 20 GB** + **Elastic IP** + **Security Group**. Estimated cost: ~$35/month.
+
+<Steps>
+  <Step title="Configure variables">
+    ```bash
+    cd deploy/aws/terraform
+    cp terraform.tfvars.example terraform.tfvars
+    ```
+
+    Edit `terraform.tfvars`:
+
+    ```hcl
+    region         = "us-east-1"
+    instance_type  = "t3.medium"
+    ssh_public_key = "ssh-rsa AAAA..."   # paste contents of ~/.ssh/id_rsa.pub
+    llm_provider   = "openai"
+    llm_api_key    = "sk-..."
+    # llm_model    = "gpt-4o-mini"       # optional model override
+    ```
+
+    <Tip>
+      Set `allowed_cidr` to your IP (`curl ifconfig.me`/32) to restrict API access during testing.
+    </Tip>
+  </Step>
+
+  <Step title="Initialize and apply">
+    ```bash
+    terraform init
+    terraform apply
+    ```
+
+    Terraform prints a resource plan. Type `yes` to confirm. Provisioning takes ~3 minutes.
+  </Step>
+
+  <Step title="Access your instance">
+    The apply output includes:
+
+    ```
+    api_url       = "http://54.x.x.x:4444"
+    swagger_ui    = "http://54.x.x.x:4444/swagger-ui/"
+    ssh_command   = "ssh ubuntu@54.x.x.x"
+    ebs_volume_id = "vol-0abc..."
+    ```
+
+    Wait ~60 seconds for Docker to start, then open `swagger_ui` in your browser.
+
+    ```bash
+    curl http://54.x.x.x:4444/health
+    ```
+  </Step>
+</Steps>
+
+### AWS Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `region` | `us-east-1` | AWS region |
+| `instance_type` | `t3.medium` | EC2 instance type |
+| `volume_size_gb` | `20` | EBS data volume size (GB) |
+| `allowed_cidr` | `0.0.0.0/0` | Source CIDR for ports 22 and 4444 |
+| `ssh_public_key` | — | SSH public key material (required) |
+| `llm_provider` | `openai` | LLM provider name |
+| `llm_api_key` | — | LLM API key (required, sensitive) |
+| `llm_model` | _(provider default)_ | Model name override |
+| `llm_base_url` | — | Custom base URL for Ollama / proxies |
+| `reasondb_image` | `ajainvivek/reasondb:latest` | Docker image |
+| `name_prefix` | `reasondb-testing` | Prefix for all resource names |
+
+### Teardown
+
+```bash
+terraform destroy
+```
+
+<Warning>
+  `terraform destroy` permanently deletes the EBS volume and all ReasonDB data on it. [Export your data](/guides/backup) first if needed.
+</Warning>
+
+---
+
+## GCP
+
+Provisions **GCE `e2-medium`** + **Persistent Disk `pd-ssd` 20 GB** + **Static IP** + **Firewall rule**. Estimated cost: ~$27/month.
+
+<Steps>
+  <Step title="Authenticate">
+    ```bash
+    gcloud auth application-default login
+    ```
+  </Step>
+
+  <Step title="Configure variables">
+    ```bash
+    cd deploy/gcp/terraform
+    cp terraform.tfvars.example terraform.tfvars
+    ```
+
+    Edit `terraform.tfvars`:
+
+    ```hcl
+    project_id     = "my-gcp-project"   # gcloud config get-value project
+    region         = "us-central1"
+    zone           = "us-central1-a"
+    ssh_public_key = "ssh-rsa AAAA..."  # paste contents of ~/.ssh/id_rsa.pub
+    ssh_user       = "reasondb"
+    llm_provider   = "openai"
+    llm_api_key    = "sk-..."
+    # llm_model    = "gpt-4o-mini"      # optional model override
+    ```
+  </Step>
+
+  <Step title="Initialize and apply">
+    ```bash
+    terraform init
+    terraform apply
+    ```
+
+    Provisioning takes ~3 minutes.
+  </Step>
+
+  <Step title="Access your instance">
+    ```
+    api_url              = "http://34.x.x.x:4444"
+    swagger_ui           = "http://34.x.x.x:4444/swagger-ui/"
+    ssh_command          = "ssh reasondb@34.x.x.x"
+    persistent_disk_name = "reasondb-testing-data"
+    ```
+
+    Wait ~90 seconds for the GCE startup script and Docker to complete, then open `swagger_ui`.
+
+    ```bash
+    curl http://34.x.x.x:4444/health
+    ```
+  </Step>
+</Steps>
+
+### GCP Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `project_id` | — | GCP project ID (required) |
+| `region` | `us-central1` | GCP region |
+| `zone` | `us-central1-a` | GCP zone |
+| `machine_type` | `e2-medium` | GCE machine type |
+| `disk_size_gb` | `20` | Persistent disk size (GB) |
+| `allowed_cidr` | `0.0.0.0/0` | Source CIDR for ports 22 and 4444 |
+| `ssh_public_key` | — | SSH public key material (required) |
+| `ssh_user` | `reasondb` | OS username for SSH |
+| `llm_provider` | `openai` | LLM provider name |
+| `llm_api_key` | — | LLM API key (required, sensitive) |
+| `llm_model` | _(provider default)_ | Model name override |
+| `llm_base_url` | — | Custom base URL for Ollama / proxies |
+| `reasondb_image` | `ajainvivek/reasondb:latest` | Docker image |
+| `name_prefix` | `reasondb-testing` | Prefix for all resource names |
+
+### Teardown
+
+```bash
+terraform destroy
+```
+
+<Warning>
+  `terraform destroy` permanently deletes the persistent disk and all ReasonDB data on it. [Export your data](/guides/backup) first if needed.
+</Warning>
+
+---
+
+## Updating the LLM Provider
+
+The `llm_provider` and `llm_api_key` variables seed the initial config on first boot. After that, change the provider at runtime without redeploying:
+
+```bash
+curl -X PUT http://<ip>:4444/v1/config/llm \
+  -H "Content-Type: application/json" \
+  -d '{"provider": "anthropic", "api_key": "sk-ant-..."}'
+```
+
+See [Configuration](/guides/configuration) for all supported providers.
+
+---
+
+<CardGroup cols={2}>
+  <Card title="Deploy with Pulumi" icon="code" href="/guides/deployment/pulumi">
+    TypeScript alternative to Terraform
+  </Card>
+  <Card title="Authentication" icon="key" href="/guides/authentication">
+    Secure your instance with API keys
+  </Card>
+  <Card title="Monitoring" icon="chart-line" href="/guides/monitoring">
+    Add Prometheus and Grafana
+  </Card>
+  <Card title="Backup & Restore" icon="database" href="/guides/backup">
+    Export data before tearing down
+  </Card>
+</CardGroup>

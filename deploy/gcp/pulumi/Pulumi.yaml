@@ -1,0 +1,52 @@
+name: reasondb-gcp
+runtime:
+  name: nodejs
+  options:
+    typescript: true
+description: Deploy ReasonDB on GCP (GCE + Persistent Disk + Static IP) for customer testing
+
+config:
+  gcp:project:
+    description: GCP project ID
+  gcp:region:
+    default: us-central1
+  gcp:zone:
+    default: us-central1-a
+
+  # Instance configuration
+  machineType:
+    default: e2-medium
+    description: GCE machine type
+  diskSizeGb:
+    default: 20
+    description: Persistent data disk size in GB
+  allowedCidr:
+    default: "0.0.0.0/0"
+    description: Source CIDR allowed to reach ports 22 and 4444
+  namePrefix:
+    default: reasondb-testing
+    description: Prefix for all resource names
+
+  # SSH access
+  sshPublicKey:
+    description: SSH public key material (contents of ~/.ssh/id_rsa.pub)
+  sshUser:
+    default: reasondb
+    description: OS username for SSH access
+
+  # LLM configuration
+  llmProvider:
+    default: openai
+    description: "LLM provider (openai, anthropic, gemini, cohere, bedrock, vertex, ollama)"
+  llmApiKey:
+    secret: true
+    description: API key for the LLM provider
+  llmModel:
+    default: ""
+    description: Model name override (leave empty for provider default)
+  llmBaseUrl:
+    default: ""
+    description: Custom LLM base URL (for Ollama or compatible endpoints)
+  reasondbImage:
+    default: ajainvivek/reasondb:latest
+    description: Docker image to run

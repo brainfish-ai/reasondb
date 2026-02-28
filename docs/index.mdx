@@ -108,15 +108,32 @@ With **1 million documents** (50M nodes), a vector DB scans all 50M embeddings. 
 
 ## Quick Start
 
-Get from zero to intelligent document search in under 5 minutes:
+Run ReasonDB with Docker—no dev setup or repository clone:
 
 ```bash
-# Clone and start
-git clone https://github.com/reasondb/reasondb.git && cd reasondb
+mkdir reasondb-app && cd reasondb-app
 echo 'REASONDB_LLM_PROVIDER=anthropic' > .env
 echo 'REASONDB_LLM_API_KEY=sk-ant-...' >> .env
-docker compose up --build
 ```
+
+Create <code>docker-compose.yml</code> with:
+
+```yaml
+services:
+  reasondb:
+    image: ajainvivek/reasondb:latest
+    ports: ["4444:4444"]
+    volumes: [reasondb_data:/data]
+    env_file: [.env]
+    environment:
+      REASONDB_HOST: "0.0.0.0"
+      REASONDB_PATH: "/data/reasondb.redb"
+    restart: unless-stopped
+volumes:
+  reasondb_data:
+```
+
+Then run <code>docker compose up -d</code>. Open **http://localhost:4444/swagger-ui/** to use the API. Optional: **Homebrew** (<code>brew tap reasondb/tap && brew install reasondb</code>) for the CLI. Contributors: see [Quickstart](/quickstart) for build-from-source.
 
 Then query your documents with RQL:
 
@@ -140,7 +157,7 @@ REASON 'What are the termination conditions?'
     SQL-like syntax with `SEARCH` (BM25) and `REASON` (LLM) clauses. Familiar yet powerful.
   </Card>
   <Card title="Multi-Provider LLM Support" icon="plug">
-    Anthropic, OpenAI, Gemini, Cohere, GLM, Kimi, and Ollama (local). Switch providers without code changes.
+    Anthropic, OpenAI, Gemini, Cohere, GLM, Kimi, Ollama (local), Google Vertex AI, and AWS Bedrock. Switch providers without code changes.
   </Card>
   <Card title="API Key Authentication" icon="shield-check">
     Production-ready security with fine-grained permissions and rate limiting.

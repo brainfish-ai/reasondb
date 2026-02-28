@@ -1,0 +1,38 @@
+# Copy this file to terraform.tfvars and fill in the values.
+# Never commit terraform.tfvars — it contains secrets.
+
+# Your GCP project ID (find it in the GCP Console or via: gcloud config get-value project)
+project_id = "my-gcp-project"
+
+# GCP region and zone
+region = "us-central1"
+zone   = "us-central1-a"
+
+# GCE machine type (e2-medium = 2 vCPU / 4 GB RAM, ~$25/mo)
+machine_type = "e2-medium"
+
+# Persistent disk size in GB
+disk_size_gb = 20
+
+# Paste the contents of your ~/.ssh/id_rsa.pub (or equivalent)
+ssh_public_key = "ssh-rsa AAAA... you@example.com"
+
+# OS username for SSH access
+ssh_user = "reasondb"
+
+# Restrict access to your IP for security, or use 0.0.0.0/0 for open access
+allowed_cidr = "0.0.0.0/0"
+
+# ── LLM configuration ─────────────────────────────────────────────────────────
+# Supported providers: openai, anthropic, gemini, cohere, bedrock, vertex, ollama
+llm_provider = "openai"
+llm_api_key  = "sk-..."
+
+# Optional: override the default model for your provider
+# llm_model = "gpt-4o-mini"
+
+# Optional: custom base URL (e.g. for Ollama or a proxy)
+# llm_base_url = "http://localhost:11434/v1"
+
+# Docker image (use a specific version tag in production, e.g. "ajainvivek/reasondb:0.1.0")
+reasondb_image = "ajainvivek/reasondb:latest"

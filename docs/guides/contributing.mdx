@@ -1,0 +1,29 @@
+---
+title: Contributing
+description: How to set up your environment and contribute to ReasonDB
+---
+
+This page summarizes how to contribute. The canonical guide is **[CONTRIBUTING.md](https://github.com/reasondb/reasondb/blob/main/CONTRIBUTING.md)** in the repository.
+
+## Quick links
+
+| Topic | Where |
+|-------|--------|
+| **Development setup** | Clone repo, Rust 1.91+, `cargo build --release` — see [CONTRIBUTING.md](https://github.com/reasondb/reasondb/blob/main/CONTRIBUTING.md#development-setup) |
+| **Running tests** | `cargo test --workspace --exclude reasondb` — see [CONTRIBUTING.md](https://github.com/reasondb/reasondb/blob/main/CONTRIBUTING.md#running-tests) |
+| **Submitting changes** | Branch from `main`, run tests, open a PR — see [CONTRIBUTING.md](https://github.com/reasondb/reasondb/blob/main/CONTRIBUTING.md#submitting-changes) |
+| **Docker for dev** | `make docker-up` from repo root — see [CONTRIBUTING.md](https://github.com/reasondb/reasondb/blob/main/CONTRIBUTING.md#optional-docker-for-development) |
+| **Desktop client** | `make client-install`, `make client-app` — see [CONTRIBUTING.md](https://github.com/reasondb/reasondb/blob/main/CONTRIBUTING.md#optional-desktop-client-tauri) |
+
+## For users (no contribution)
+
+If you only want to **run** ReasonDB, you don't need to clone or build. Use the [Quick Start](/quickstart): run the [Docker image](https://hub.docker.com/r/ajainvivek/reasondb) or install via Homebrew. The contribution guide is for people who want to change code or docs.
+
+## Full guide
+
+Read **[CONTRIBUTING.md](https://github.com/reasondb/reasondb/blob/main/CONTRIBUTING.md)** on GitHub for:
+
+- Prerequisites and clone/build steps
+- Running tests and optional Docker/client setup
+- PR process and code conventions
+- Reporting issues and feature ideas

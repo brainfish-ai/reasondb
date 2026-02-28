@@ -1,0 +1,31 @@
+# Copy this file to terraform.tfvars and fill in the values.
+# Never commit terraform.tfvars — it contains secrets.
+
+# AWS region
+region = "us-east-1"
+
+# EC2 instance type (t3.medium = 2 vCPU / 4 GB RAM, ~$30/mo)
+instance_type = "t3.medium"
+
+# EBS data volume size in GB
+volume_size_gb = 20
+
+# Paste the contents of your ~/.ssh/id_rsa.pub (or equivalent)
+ssh_public_key = "ssh-rsa AAAA... you@example.com"
+
+# Restrict access to your IP for security, or use 0.0.0.0/0 for open access
+allowed_cidr = "0.0.0.0/0"
+
+# ── LLM configuration ─────────────────────────────────────────────────────────
+# Supported providers: openai, anthropic, gemini, cohere, bedrock, vertex, ollama
+llm_provider = "openai"
+llm_api_key  = "sk-..."
+
+# Optional: override the default model for your provider
+# llm_model = "gpt-4o-mini"
+
+# Optional: custom base URL (e.g. for Ollama or a proxy)
+# llm_base_url = "http://localhost:11434/v1"
+
+# Docker image (use a specific version tag in production, e.g. "ajainvivek/reasondb:0.1.0")
+reasondb_image = "ajainvivek/reasondb:latest"

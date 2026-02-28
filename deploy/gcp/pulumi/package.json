@@ -1,0 +1,17 @@
+{
+  "name": "reasondb-gcp",
+  "version": "1.0.0",
+  "description": "Pulumi program to deploy ReasonDB on GCP for customer testing",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@pulumi/gcp": "^7.0.0",
+    "@pulumi/pulumi": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}

@@ -1,0 +1,45 @@
+name: reasondb-aws
+runtime:
+  name: nodejs
+  options:
+    typescript: true
+description: Deploy ReasonDB on AWS (EC2 + EBS + Elastic IP) for customer testing
+
+config:
+  aws:region:
+    default: us-east-1
+
+  # Instance configuration
+  instanceType:
+    default: t3.medium
+    description: EC2 instance type
+  volumeSizeGb:
+    default: 20
+    description: EBS data volume size in GB
+  allowedCidr:
+    default: "0.0.0.0/0"
+    description: Source CIDR allowed to reach ports 22 and 4444
+  namePrefix:
+    default: reasondb-testing
+    description: Prefix for all resource names
+
+  # SSH access
+  sshPublicKey:
+    description: SSH public key material (contents of ~/.ssh/id_rsa.pub)
+
+  # LLM configuration
+  llmProvider:
+    default: openai
+    description: "LLM provider (openai, anthropic, gemini, cohere, bedrock, vertex, ollama)"
+  llmApiKey:
+    secret: true
+    description: API key for the LLM provider
+  llmModel:
+    default: ""
+    description: Model name override (leave empty for provider default)
+  llmBaseUrl:
+    default: ""
+    description: Custom LLM base URL (for Ollama or compatible endpoints)
+  reasondbImage:
+    default: ajainvivek/reasondb:latest
+    description: Docker image to run

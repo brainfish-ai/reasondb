@@ -1,0 +1,257 @@
+---
+title: Deploy with Pulumi
+description: Deploy ReasonDB on AWS or GCP using Pulumi TypeScript programs
+---
+
+Deploy ReasonDB using Pulumi TypeScript. Programs are in `deploy/aws/pulumi/` and `deploy/gcp/pulumi/`. Both provision a VM, persistent data disk, static IP, and firewall rules — and export the API URL as stack outputs when done.
+
+## Prerequisites
+
+- [Pulumi CLI](https://www.pulumi.com/docs/install/) and [Node.js ≥ 20](https://nodejs.org/)
+- AWS CLI (`aws configure`) or GCP credentials (`gcloud auth application-default login`)
+- An SSH key pair (`ssh-keygen -t rsa -b 4096` if you don't have one)
+- An LLM API key — see [supported providers](/guides/configuration)
+
+Clone the repo to get the programs:
+
+```bash
+git clone https://github.com/reasondb/reasondb.git
+cd reasondb
+```
+
+---
+
+## AWS
+
+Provisions **EC2 `t3.medium`** + **EBS `gp3` 20 GB** + **Elastic IP** + **Security Group**. Estimated cost: ~$35/month.
+
+<Steps>
+  <Step title="Install dependencies">
+    ```bash
+    cd deploy/aws/pulumi
+    npm install
+    ```
+  </Step>
+
+  <Step title="Create a stack">
+    ```bash
+    pulumi stack init testing
+    ```
+
+    You can create multiple stacks (e.g. `testing`, `staging`) to run independent instances side by side.
+  </Step>
+
+  <Step title="Configure the stack">
+    ```bash
+    pulumi config set aws:region         us-east-1
+    pulumi config set sshPublicKey       "$(cat ~/.ssh/id_rsa.pub)"
+    pulumi config set llmProvider        openai
+    pulumi config set --secret llmApiKey "sk-..."
+
+    # Optional overrides
+    # pulumi config set instanceType     t3.large
+    # pulumi config set llmModel         gpt-4o-mini
+    # pulumi config set allowedCidr      "$(curl -s ifconfig.me)/32"
+    ```
+
+    <Tip>
+      `--secret` encrypts the API key in `Pulumi.testing.yaml` — it is never stored in plaintext.
+    </Tip>
+  </Step>
+
+  <Step title="Deploy">
+    ```bash
+    pulumi up
+    ```
+
+    Pulumi shows a diff of resources to create. Select `yes`. Provisioning takes ~3 minutes.
+  </Step>
+
+  <Step title="Access your instance">
+    Stack outputs are printed after deploy:
+
+    ```
+    apiUrl      : http://54.x.x.x:4444
+    swaggerUi   : http://54.x.x.x:4444/swagger-ui/
+    sshCommand  : ssh ubuntu@54.x.x.x
+    ebsVolumeId : vol-0abc...
+    ```
+
+    Wait ~60 seconds for Docker to start, then open `swaggerUi` in your browser.
+
+    ```bash
+    curl http://54.x.x.x:4444/health
+    ```
+  </Step>
+</Steps>
+
+### AWS Configuration Keys
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `aws:region` | `us-east-1` | AWS region |
+| `instanceType` | `t3.medium` | EC2 instance type |
+| `volumeSizeGb` | `20` | EBS data volume size (GB) |
+| `allowedCidr` | `0.0.0.0/0` | Source CIDR for ports 22 and 4444 |
+| `sshPublicKey` | — | SSH public key material (required) |
+| `llmProvider` | `openai` | LLM provider name |
+| `llmApiKey` | — | LLM API key (required, secret) |
+| `llmModel` | _(provider default)_ | Model name override |
+| `llmBaseUrl` | — | Custom base URL for Ollama / proxies |
+| `reasondbImage` | `ajainvivek/reasondb:latest` | Docker image |
+| `namePrefix` | `reasondb-testing` | Prefix for all resource names |
+
+### Teardown
+
+```bash
+pulumi destroy
+```
+
+<Warning>
+  `pulumi destroy` permanently deletes the EBS volume and all ReasonDB data on it. [Export your data](/guides/backup) first if needed.
+</Warning>
+
+---
+
+## GCP
+
+Provisions **GCE `e2-medium`** + **Persistent Disk `pd-ssd` 20 GB** + **Static IP** + **Firewall rule**. Estimated cost: ~$27/month.
+
+<Steps>
+  <Step title="Install dependencies and authenticate">
+    ```bash
+    cd deploy/gcp/pulumi
+    npm install
+    gcloud auth application-default login
+    ```
+  </Step>
+
+  <Step title="Create a stack">
+    ```bash
+    pulumi stack init testing
+    ```
+  </Step>
+
+  <Step title="Configure the stack">
+    ```bash
+    pulumi config set gcp:project        my-gcp-project
+    pulumi config set gcp:region         us-central1
+    pulumi config set gcp:zone           us-central1-a
+    pulumi config set sshPublicKey       "$(cat ~/.ssh/id_rsa.pub)"
+    pulumi config set llmProvider        openai
+    pulumi config set --secret llmApiKey "sk-..."
+
+    # Optional overrides
+    # pulumi config set machineType      e2-standard-2
+    # pulumi config set llmModel         gpt-4o-mini
+    # pulumi config set sshUser          myuser
+    ```
+  </Step>
+
+  <Step title="Deploy">
+    ```bash
+    pulumi up
+    ```
+
+    Provisioning takes ~3 minutes.
+  </Step>
+
+  <Step title="Access your instance">
+    ```
+    apiUrl             : http://34.x.x.x:4444
+    swaggerUi          : http://34.x.x.x:4444/swagger-ui/
+    sshCommand         : ssh reasondb@34.x.x.x
+    persistentDiskName : reasondb-testing-data
+    ```
+
+    Wait ~90 seconds for the GCE startup script and Docker to complete, then open `swaggerUi`.
+
+    ```bash
+    curl http://34.x.x.x:4444/health
+    ```
+  </Step>
+</Steps>
+
+### GCP Configuration Keys
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `gcp:project` | — | GCP project ID (required) |
+| `gcp:region` | `us-central1` | GCP region |
+| `gcp:zone` | `us-central1-a` | GCP zone |
+| `machineType` | `e2-medium` | GCE machine type |
+| `diskSizeGb` | `20` | Persistent disk size (GB) |
+| `allowedCidr` | `0.0.0.0/0` | Source CIDR for ports 22 and 4444 |
+| `sshPublicKey` | — | SSH public key material (required) |
+| `sshUser` | `reasondb` | OS username for SSH |
+| `llmProvider` | `openai` | LLM provider name |
+| `llmApiKey` | — | LLM API key (required, secret) |
+| `llmModel` | _(provider default)_ | Model name override |
+| `llmBaseUrl` | — | Custom base URL for Ollama / proxies |
+| `reasondbImage` | `ajainvivek/reasondb:latest` | Docker image |
+| `namePrefix` | `reasondb-testing` | Prefix for all resource names |
+
+### Teardown
+
+```bash
+pulumi destroy
+```
+
+<Warning>
+  `pulumi destroy` permanently deletes the persistent disk and all ReasonDB data on it. [Export your data](/guides/backup) first if needed.
+</Warning>
+
+---
+
+## Managing Multiple Environments
+
+Pulumi's stack system makes it easy to spin up isolated instances for different customers or use cases:
+
+```bash
+# Create a stack per customer
+pulumi stack init customer-acme
+pulumi stack init customer-globex
+
+# Switch between stacks
+pulumi stack select customer-acme
+pulumi up
+
+pulumi stack select customer-globex
+pulumi up
+
+# List all stacks and their status
+pulumi stack ls
+```
+
+Each stack maintains its own state and config — including its own encrypted `llmApiKey`.
+
+---
+
+## Updating the LLM Provider
+
+The `llmProvider` and `llmApiKey` config values seed the initial config on first boot. After that, change the provider at runtime without redeploying:
+
+```bash
+curl -X PUT http://<ip>:4444/v1/config/llm \
+  -H "Content-Type: application/json" \
+  -d '{"provider": "anthropic", "api_key": "sk-ant-..."}'
+```
+
+See [Configuration](/guides/configuration) for all supported providers.
+
+---
+
+<CardGroup cols={2}>
+  <Card title="Deploy with Terraform" icon="terminal" href="/guides/deployment/terraform">
+    HCL alternative to Pulumi
+  </Card>
+  <Card title="Authentication" icon="key" href="/guides/authentication">
+    Secure your instance with API keys
+  </Card>
+  <Card title="Monitoring" icon="chart-line" href="/guides/monitoring">
+    Add Prometheus and Grafana
+  </Card>
+  <Card title="Backup & Restore" icon="database" href="/guides/backup">
+    Export data before tearing down
+  </Card>
+</CardGroup>

@@ -1,0 +1,80 @@
+---
+title: Cloud Deployment
+description: Deploy ReasonDB on AWS or GCP for customer testing using Terraform or Pulumi
+---
+
+Deploy a self-hosted ReasonDB instance into your own cloud account in under 5 minutes. All templates live in the `deploy/` directory of the repository and provision a single VM with a persistent data disk — the same pattern used by Qdrant, Weaviate, and other stateful databases for self-hosted testing.
+
+<Note>
+These templates are designed for **testing and evaluation**. They provision a single node without TLS termination or a load balancer. For production deployments, see [Clustering](/guides/clustering).
+</Note>
+
+## What Gets Provisioned
+
+<Tabs>
+  <Tab title="AWS">
+    - **EC2 `t3.medium`** — 2 vCPU / 4 GB RAM (~$35/month)
+    - **EBS `gp3` 20 GB** — persistent data volume mounted at `/data`
+    - **Elastic IP** — stable address that survives reboots
+    - **Security Group** — ingress on ports `22` (SSH) and `4444` (API)
+  </Tab>
+  <Tab title="GCP">
+    - **GCE `e2-medium`** — 2 vCPU / 4 GB RAM (~$27/month)
+    - **Persistent Disk `pd-ssd` 20 GB** — data volume mounted at `/data`
+    - **Static external IP** — stable address that survives reboots
+    - **Firewall rule** — ingress on ports `22` (SSH) and `4444` (API)
+  </Tab>
+</Tabs>
+
+ReasonDB runs as a Docker container on the VM. The data disk holds the `reasondb.redb` database file independently of the boot disk — you can upgrade or replace the VM without losing data.
+
+## Choose Your IaC Tool
+
+<CardGroup cols={2}>
+  <Card title="Terraform" icon="terminal" href="/guides/deployment/terraform">
+    HCL-based. Ideal if your team already uses Terraform for cloud infrastructure. Works with existing AWS/GCP providers and state backends.
+  </Card>
+  <Card title="Pulumi" icon="code" href="/guides/deployment/pulumi">
+    TypeScript-based. Ideal if your team prefers code over config files. Secrets are managed natively via `pulumi config set --secret`.
+  </Card>
+</CardGroup>
+
+## Before You Start
+
+Clone the repository to get the deployment templates:
+
+```bash
+git clone https://github.com/reasondb/reasondb.git
+cd reasondb
+```
+
+Make sure you have credentials set up for your target cloud:
+
+<Tabs>
+  <Tab title="AWS">
+    ```bash
+    aws configure
+    # or export AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
+    ```
+  </Tab>
+  <Tab title="GCP">
+    ```bash
+    gcloud auth application-default login
+    ```
+  </Tab>
+</Tabs>
+
+<CardGroup cols={2}>
+  <Card title="Terraform Deployment" icon="terminal" href="/guides/deployment/terraform">
+    Step-by-step guide for AWS and GCP with Terraform
+  </Card>
+  <Card title="Pulumi Deployment" icon="code" href="/guides/deployment/pulumi">
+    Step-by-step guide for AWS and GCP with Pulumi
+  </Card>
+  <Card title="Configuration" icon="gear" href="/guides/configuration">
+    Configure LLM providers, rate limits, and storage
+  </Card>
+  <Card title="Clustering" icon="circle-nodes" href="/guides/clustering">
+    Scale to a multi-node cluster for production
+  </Card>
+</CardGroup>

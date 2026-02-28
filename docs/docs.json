@@ -16,7 +16,8 @@
             "pages": [
               "index",
               "quickstart",
-              "concepts"
+              "concepts",
+              "guides/contributing"
             ]
           },
           {
@@ -49,8 +50,17 @@
             ]
           },
           {
-            "group": "Infrastructure",
+            "group": "Deployment",
             "icon": "cloud-arrow-up",
+            "pages": [
+              "guides/deployment/overview",
+              "guides/deployment/terraform",
+              "guides/deployment/pulumi"
+            ]
+          },
+          {
+            "group": "Infrastructure",
+            "icon": "circle-nodes",
             "pages": [
               "guides/clustering",
               "guides/monitoring",

@@ -15,32 +15,26 @@ By the end of this guide, you'll have:
 ## Prerequisites
 
 <CardGroup cols={2}>
-  <Card title="Docker (recommended)" icon="cube">
-    Or Rust 1.70+ to build from source
+  <Card title="Docker" icon="cube">
+    Run ReasonDB with Docker—no dev tools or clone required. Just Docker and an LLM API key.
   </Card>
   <Card title="LLM API Key" icon="key">
-    Anthropic (recommended), OpenAI, Gemini, Cohere, GLM, or Kimi — or use Ollama for local models
+    Anthropic (recommended), OpenAI, Gemini, Cohere, Vertex AI, Bedrock — or use Ollama for local models
   </Card>
 </CardGroup>
 
 ## Installation
 
-Choose the method that works best for you:
+**For users:** Use Docker (or the published image). No repository clone or build required.
 
 <Tabs>
-  <Tab title="Docker Compose (Recommended)">
+  <Tab title="Docker (recommended for users)">
     <Steps>
-      <Step title="Clone the Repository">
-        ```bash
-        git clone https://github.com/reasondb/reasondb.git
-        cd reasondb
-        ```
-      </Step>
-
-      <Step title="Configure Your LLM">
-        Create a `.env` file in the project root:
+      <Step title="Create a project folder and env file">
+        No need to clone the repo. Create a folder and add your LLM config:
 
         ```bash
+        mkdir reasondb-app && cd reasondb-app
         cat > .env <<'EOF'
         REASONDB_LLM_PROVIDER=anthropic
         REASONDB_LLM_API_KEY=sk-ant-xxxxx
@@ -53,41 +47,89 @@ Choose the method that works best for you:
           | **Anthropic Claude** | `anthropic` | Best reasoning quality |
           | **OpenAI GPT-4** | `openai` | Widely available |
           | **Google Gemini** | `gemini` | Cost-effective |
+          | **Google Vertex AI** | `vertex` | GCP, enterprise Gemini |
+          | **AWS Bedrock** | `bedrock` | AWS, Claude and others |
           | **Cohere** | `cohere` | Enterprise features |
-          | **GLM (Zhipu AI)** | `glm` | Cost-effective |
-          | **Kimi (Moonshot)** | `kimi` | Long context |
-          | **Ollama (local)** | `ollama` | Privacy, no API key needed |
+          | **Ollama (local)** | `ollama` | Privacy, no API key |
         </Accordion>
+      </Step>
+
+      <Step title="Add a minimal docker-compose.yml">
+        Save this as <code>docker-compose.yml</code> in the same folder:
+
+        ```yaml
+        services:
+          reasondb:
+            image: ajainvivek/reasondb:latest
+            ports:
+              - "4444:4444"
+            volumes:
+              - reasondb_data:/data
+            env_file:
+              - .env
+            environment:
+              REASONDB_HOST: "0.0.0.0"
+              REASONDB_PATH: "/data/reasondb.redb"
+            restart: unless-stopped
+
+        volumes:
+          reasondb_data:
+        ```
       </Step>
 
       <Step title="Start ReasonDB">
         ```bash
-        docker compose up --build
+        docker compose up -d
         ```
 
-        The first build takes a few minutes (compiling Rust + installing Python dependencies). Subsequent starts are fast.
-
-        <Tip>
-        Run `docker compose up --build -d` to start in the background, then `docker compose logs -f` to follow logs.
-        </Tip>
+        The image is pulled once; no build step. Data persists in a Docker volume.
       </Step>
 
-      <Step title="Verify It's Running">
+      <Step title="Verify">
         ```bash
         curl http://localhost:4444/health
-        # Returns: OK
         ```
 
-        Swagger UI is available at **http://localhost:4444/swagger-ui/**
+        API and Swagger UI: **http://localhost:4444/swagger-ui/**
       </Step>
     </Steps>
 
-    <Info>
-    Docker Compose provides persistent data, plugin hot-reload, and automatic health-check restarts. Use `docker compose watch` during development for auto-rebuild on code changes.
-    </Info>
+    <Tip>
+    Optional: install the CLI with <code>brew tap reasondb/tap && brew install reasondb</code> to run <code>reasondb search</code> and <code>reasondb query</code> against your server.
+    </Tip>
   </Tab>
 
-  <Tab title="Build from Source">
+  <Tab title="Docker run (one-liner)">
+    If you prefer a single command without compose:
+
+    ```bash
+    docker run -d --name reasondb -p 4444:4444 \
+      -e REASONDB_LLM_PROVIDER=anthropic \
+      -e REASONDB_LLM_API_KEY=sk-ant-xxxxx \
+      -v reasondb_data:/data \
+      -e REASONDB_PATH=/data/reasondb.redb \
+      ajainvivek/reasondb:latest
+    ```
+
+    Replace the env values with your provider and API key. Data is stored in the <code>reasondb_data</code> volume.
+  </Tab>
+
+  <Tab title="Homebrew (CLI + local server)">
+    For macOS/Linux when you want the CLI and a local server (no Docker):
+
+        ```bash
+        brew tap reasondb/tap
+        brew install reasondb
+        reasondb config init   # set LLM provider and API key
+        reasondb serve
+        ```
+
+    Server at **http://localhost:4444**. Config in <code>~/.config/reasondb/config.toml</code>.
+  </Tab>
+
+  <Tab title="For contributors (build from source)">
+    Clone the repo and build with Rust. Only needed if you're developing or contributing.
+
     <Steps>
       <Step title="Clone and Build">
         ```bash
