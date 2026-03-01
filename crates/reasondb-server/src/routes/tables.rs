@@ -185,7 +185,8 @@ fn validate_table_name(name: &str) -> Result<(), ApiError> {
             "Table name '{}' must start with a lowercase letter (a-z). \
              Use snake_case, e.g. '{}'.",
             name,
-            name.to_lowercase().trim_start_matches(|c: char| !c.is_ascii_alphabetic())
+            name.to_lowercase()
+                .trim_start_matches(|c: char| !c.is_ascii_alphabetic())
         )));
     }
 
