@@ -1,0 +1,105 @@
+name: Bump Version & Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump type"
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      dry_run:
+        description: "Dry run (no commit/tag/push)"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    name: Bump version and tag
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Compute next version
+        id: version
+        run: |
+          CURRENT=$(grep '^version' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "Current version: $CURRENT"
+
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          case "${{ inputs.bump }}" in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH + 1)) ;;
+          esac
+
+          NEXT="$MAJOR.$MINOR.$PATCH"
+          echo "Next version: $NEXT"
+          echo "current=$CURRENT" >> $GITHUB_OUTPUT
+          echo "next=$NEXT" >> $GITHUB_OUTPUT
+
+      - name: Update version in all files
+        run: |
+          NEXT="${{ steps.version.outputs.next }}"
+          CURRENT="${{ steps.version.outputs.current }}"
+
+          sed -i "s/^version = \"$CURRENT\"/version = \"$NEXT\"/" Cargo.toml
+          sed -i "s/^version = \"$CURRENT\"/version = \"$NEXT\"/" crates/reasondb-cli/Cargo.toml
+          sed -i "s/^version = \"$CURRENT\"/version = \"$NEXT\"/" apps/reasondb-client/src-tauri/Cargo.toml
+          sed -i "s/\"version\": \"$CURRENT\"/\"version\": \"$NEXT\"/" apps/reasondb-client/package.json
+          sed -i "s/\"version\": \"$CURRENT\"/\"version\": \"$NEXT\"/" apps/reasondb-client/src-tauri/tauri.conf.json
+
+          echo "Updated files:"
+          grep -r "\"$NEXT\"\|= \"$NEXT\"" Cargo.toml crates/reasondb-cli/Cargo.toml \
+            apps/reasondb-client/src-tauri/Cargo.toml \
+            apps/reasondb-client/package.json \
+            apps/reasondb-client/src-tauri/tauri.conf.json
+
+      - name: Install Rust stable (for Cargo.lock update)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Update Cargo.lock
+        run: cargo update --workspace --precise ${{ steps.version.outputs.next }} 2>/dev/null || cargo generate-lockfile
+
+      - name: Commit, tag, and push
+        if: ${{ !inputs.dry_run }}
+        run: |
+          NEXT="${{ steps.version.outputs.next }}"
+          git add Cargo.toml Cargo.lock crates/reasondb-cli/Cargo.toml \
+            apps/reasondb-client/src-tauri/Cargo.toml \
+            apps/reasondb-client/package.json \
+            apps/reasondb-client/src-tauri/tauri.conf.json
+          git commit -m "chore: bump version to $NEXT"
+          git tag "v$NEXT"
+          git push origin main
+          git push origin "v$NEXT"
+
+      - name: Summary
+        run: |
+          echo "### Version Bump ${{ inputs.dry_run && '(dry run)' || '' }}" >> $GITHUB_STEP_SUMMARY
+          echo "| | |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| **From** | \`${{ steps.version.outputs.current }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **To** | \`${{ steps.version.outputs.next }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Tag** | \`v${{ steps.version.outputs.next }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Bump type** | ${{ inputs.bump }} |" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ inputs.dry_run }}" = "false" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Release and Docker workflows have been triggered by the tag push." >> $GITHUB_STEP_SUMMARY
+          fi
