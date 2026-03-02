@@ -6,11 +6,25 @@ export interface JobStatus {
   error?: string
 }
 
+export interface MatchedNode {
+  node_id: string
+  title: string
+  content: string
+  path: string[]
+  confidence: number
+  highlights?: string[]
+  reasoning_trace?: Array<{ node_title: string; decision: string; confidence: number }>
+}
+
 export interface QueryResult {
   rows: Record<string, unknown>[]
   columns: string[]
   rowCount: number
   executionTimeMs: number
+  /** Populated for REASON queries — the matched nodes with confidence scores */
+  matchedNodes?: MatchedNode[]
+  /** The natural-language question extracted from the REASON clause */
+  question?: string
 }
 
 interface QueryServerResponse {
@@ -98,7 +112,7 @@ export class ReasonDBClient {
       throw new Error(err.message ?? err.error ?? "Query failed")
     }
     const data: QueryServerResponse = await res.json()
-    return this.transformResponse(data)
+    return this.transformResponse(data, query)
   }
 
   async executeQueryStream(
@@ -137,7 +151,7 @@ export class ReasonDBClient {
                   const p = JSON.parse(eventData)
                   onProgress(p.message ?? "")
                 } else if (eventType === "complete") {
-                  resolve(this.transformResponse(JSON.parse(eventData)))
+                  resolve(this.transformResponse(JSON.parse(eventData), query))
                   return
                 } else if (eventType === "error") {
                   reject(new Error(eventData)); return
@@ -153,13 +167,28 @@ export class ReasonDBClient {
     })
   }
 
-  private transformResponse(data: QueryServerResponse): QueryResult {
+  private transformResponse(data: QueryServerResponse, query?: string): QueryResult {
     if (data.documents && data.documents.length > 0) {
+      // Extract matched_nodes from all rows for REASON queries
+      const matchedNodes: MatchedNode[] = []
+      for (const doc of data.documents) {
+        const nodes = doc.matched_nodes
+        if (Array.isArray(nodes)) {
+          for (const n of nodes) {
+            matchedNodes.push(n as MatchedNode)
+          }
+        }
+      }
+
       return {
         columns: Object.keys(data.documents[0]),
         rows: data.documents,
         rowCount: data.total_count ?? data.documents.length,
         executionTimeMs: data.execution_time_ms,
+        ...(matchedNodes.length > 0 && {
+          matchedNodes,
+          question: query ? extractReasonQuestion(query) : undefined,
+        }),
       }
     }
     if (data.aggregates && data.aggregates.length > 0) {
@@ -174,4 +203,10 @@ export class ReasonDBClient {
     }
     return { columns: [], rows: [], rowCount: 0, executionTimeMs: data.execution_time_ms }
   }
+}
+
+/** Extract the natural-language question from a REASON clause, e.g. REASON 'What is...' */
+function extractReasonQuestion(query: string): string | undefined {
+  const match = query.match(/REASON\s+['"](.+?)['"]/i)
+  return match?.[1]
 }

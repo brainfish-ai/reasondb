@@ -1,6 +1,6 @@
 "use client"
-import { Clock, Rows, Copy, Check } from "lucide-react"
-import { useState, useMemo } from "react"
+import { Clock, Rows, Copy, Check, Sparkles } from "lucide-react"
+import { useState, useMemo, useEffect } from "react"
 import dynamic from "next/dynamic"
 import type { Monaco } from "@monaco-editor/react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
@@ -8,6 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
 import type { QueryResult } from "@/lib/api"
 import { ensureTheme, THEME_NAME } from "@reasondb/rql-editor"
+import { AnswerPanel } from "@/components/AnswerPanel"
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false })
 
@@ -18,6 +19,13 @@ interface Props {
 
 export function ResultsDisplay({ result, error }: Props) {
   const [copied, setCopied] = useState(false)
+  const isReason = !!(result?.matchedNodes && result.matchedNodes.length > 0)
+
+  // Auto-switch to Answer tab when a REASON result arrives
+  const [activeTab, setActiveTab] = useState("table")
+  useEffect(() => {
+    setActiveTab(isReason ? "answer" : "table")
+  }, [isReason, result])
 
   const jsonString = useMemo(
     () => (result ? JSON.stringify(result.rows, null, 2) : "[]"),
@@ -71,10 +79,16 @@ export function ResultsDisplay({ result, error }: Props) {
         </Button>
       </div>
 
-      <Tabs defaultValue="table">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="h-8">
           <TabsTrigger value="table" className="text-xs h-7">Table</TabsTrigger>
           <TabsTrigger value="json" className="text-xs h-7">JSON</TabsTrigger>
+          {isReason && (
+            <TabsTrigger value="answer" className="text-xs h-7 gap-1">
+              <Sparkles className="h-3 w-3 text-purple-500" />
+              Answer
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="table">
@@ -161,6 +175,12 @@ export function ResultsDisplay({ result, error }: Props) {
             />
           </div>
         </TabsContent>
+
+        {isReason && (
+          <TabsContent value="answer">
+            <AnswerPanel result={result} />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   )
