@@ -463,7 +463,7 @@ async fn execute_select_query<R: ReasoningEngine + Send + Sync + 'static>(
                             content: n.content.clone(),
                             path: n.path.clone(),
                             confidence: n.confidence,
-                            reasoning_trace: vec![],
+                            reasoning_trace: n.reasoning_trace.clone(),
                         })
                         .collect();
                     let mut doc =
@@ -532,6 +532,7 @@ async fn execute_select_query<R: ReasoningEngine + Send + Sync + 'static>(
                             content: n.content.clone(),
                             path: n.path.clone(),
                             confidence: n.confidence,
+                            reasoning_trace: n.reasoning_trace.clone(),
                         })
                         .collect(),
                 })
@@ -645,7 +646,7 @@ pub async fn execute_query_stream<R: ReasoningEngine + Clone + Send + Sync + 'st
                             content: n.content.clone(),
                             path: n.path.clone(),
                             confidence: n.confidence,
-                            reasoning_trace: vec![],
+                            reasoning_trace: n.reasoning_trace.clone(),
                         })
                         .collect();
                     let mut doc =
@@ -752,6 +753,7 @@ pub async fn execute_query_stream<R: ReasoningEngine + Clone + Send + Sync + 'st
                                         content: n.content.clone(),
                                         path: n.path.clone(),
                                         confidence: n.confidence,
+                                        reasoning_trace: n.reasoning_trace.clone(),
                                     })
                                     .collect(),
                             })

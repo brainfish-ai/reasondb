@@ -3,6 +3,7 @@
 //! Provides fast access to frequently accessed documents and summaries
 //! without hitting disk storage.
 
+use crate::engine::ReasoningStep;
 use std::collections::HashMap;
 use std::sync::RwLock;
 use std::time::{Duration, Instant};
@@ -219,6 +220,7 @@ pub struct CachedMatchedNode {
     pub content: String,
     pub path: Vec<String>,
     pub confidence: f32,
+    pub reasoning_trace: Vec<ReasoningStep>,
 }
 
 /// A cached match result
@@ -445,6 +447,7 @@ mod tests {
                     content: "A late fee of 5% applies".to_string(),
                     path: vec!["Contract".to_string(), "Penalties".to_string()],
                     confidence: 0.95,
+                    reasoning_trace: vec![],
                 }],
             }],
             cached_at: Instant::now(),
