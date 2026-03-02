@@ -17,7 +17,7 @@ const EXAMPLES: ExampleQuery[] = [
   { label: "SEARCH copyright", badge: "BM25", query: "SELECT * FROM regulations SEARCH 'generative AI copyright intellectual property'" },
   { label: "REASON liability", badge: "LLM", query: "SELECT * FROM regulations REASON 'What are the key AI safety and liability requirements mentioned across these regulations?'" },
   { label: "REASON compliance", badge: "LLM", query: "SELECT * FROM regulations REASON 'What steps must organizations take to comply with AI regulations?'" },
-  { label: "COUNT by topic", badge: "AGG", query: "SELECT COUNT(*), metadata.topic FROM regulations GROUP BY metadata.topic" },
+  { label: "COUNT by topic", badge: "AGG", query: "SELECT COUNT(*) FROM regulations GROUP BY metadata.topic" },
   { label: "REASON bias & fairness", badge: "LLM", query: "SELECT * FROM regulations REASON 'How do these regulations address algorithmic bias and require fairness in AI decision-making systems?'" },
   { label: "REASON high-risk AI", badge: "LLM", query: "SELECT * FROM regulations REASON 'How do these regulations define high-risk AI applications and what special obligations apply to them?'" },
   { label: "REASON individual rights", badge: "LLM", query: "SELECT * FROM regulations REASON 'What rights do individuals have when subject to automated AI decision-making under these regulations?'" },

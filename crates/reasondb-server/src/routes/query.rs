@@ -11,8 +11,8 @@ use futures::stream::{Stream, StreamExt};
 use futures::FutureExt;
 use reasondb_core::llm::ReasoningEngine;
 use reasondb_core::rql::{
-    AggregateValue, DocumentMatch, MatchedNode, MutationResult, Query, QueryResult, QueryStats,
-    ReasonProgress, Statement,
+    AggregateValue, DocumentMatch, FieldPath, FieldSelector, MatchedNode, MutationResult,
+    PathSegment, Query, QueryResult, QueryStats, ReasonProgress, SelectClause, Statement,
 };
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
@@ -38,8 +38,8 @@ pub struct QueryRequest {
 /// Query response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct QueryResponse {
-    /// Matched documents
-    pub documents: Vec<QueryDocumentMatch>,
+    /// Matched documents (projected to only the columns named in the SELECT clause)
+    pub documents: Vec<serde_json::Value>,
 
     /// Total count before pagination
     pub total_count: usize,
@@ -201,7 +201,14 @@ impl From<DocumentMatch> for QueryDocumentMatch {
 impl From<QueryResult> for QueryResponse {
     fn from(r: QueryResult) -> Self {
         Self {
-            documents: r.documents.into_iter().map(|m| m.into()).collect(),
+            documents: r
+                .documents
+                .into_iter()
+                .map(|m| {
+                    let qdm = QueryDocumentMatch::from(m);
+                    serde_json::to_value(qdm).unwrap_or_default()
+                })
+                .collect(),
             total_count: r.total_count,
             execution_time_ms: r.execution_time_ms,
             aggregates: r.aggregates.map(|aggs| {
@@ -417,7 +424,8 @@ pub async fn execute_query<R: ReasoningEngine + Send + Sync + 'static>(
         }
         Statement::Select(ref query) => {
             let result = execute_select_query(query, &state).await?;
-            Ok(Json(StatementResponse::Query(result.into())))
+            let response = apply_projection(result.into(), &query.select);
+            Ok(Json(StatementResponse::Query(response)))
         }
     }
 }
@@ -671,7 +679,7 @@ pub async fn execute_query_stream<R: ReasoningEngine + Clone + Send + Sync + 'st
                 aggregates: None,
                 explain: None,
             };
-            let response: QueryResponse = result.into();
+            let response = apply_projection(result.into(), &query.select);
             let event = Event::default()
                 .event("complete")
                 .json_data(&response)
@@ -759,7 +767,7 @@ pub async fn execute_query_stream<R: ReasoningEngine + Clone + Send + Sync + 'st
                         let t = cache_entry.table_id.clone();
                         query_cache.insert(&q, &t, cache_entry);
 
-                        let response: QueryResponse = result.into();
+                        let response = apply_projection(result.into(), &query_clone.select);
                         let event = Event::default()
                             .event("complete")
                             .json_data(&response)
@@ -797,7 +805,7 @@ pub async fn execute_query_stream<R: ReasoningEngine + Clone + Send + Sync + 'st
             .store
             .execute_rql_with_search(&query, Some(state.text_index.as_ref()))
             .map_err(|e| ApiError::Internal(format!("Query execution failed: {}", e)))?;
-        let response: QueryResponse = result.into();
+        let response = apply_projection(result.into(), &query.select);
         let event = Event::default()
             .event("complete")
             .json_data(&response)
@@ -808,4 +816,65 @@ pub async fn execute_query_stream<R: ReasoningEngine + Clone + Send + Sync + 'st
 
     let stream = ReceiverStream::new(sse_rx).map(Ok::<_, Infallible>);
     Ok(Sse::new(stream))
+}
+
+// ---------------------------------------------------------------------------
+// Projection helpers
+// ---------------------------------------------------------------------------
+
+/// Apply SELECT field projection to a `QueryResponse`.
+///
+/// `SELECT *` and aggregate queries are returned unchanged.  
+/// `SELECT col1, col2, metadata.key` projects each document to only the
+/// requested columns, resolving dot-paths into the document JSON.
+fn apply_projection(mut response: QueryResponse, select: &SelectClause) -> QueryResponse {
+    if let SelectClause::Fields(fields) = select {
+        response.documents = response
+            .documents
+            .into_iter()
+            .map(|doc| project_document(doc, fields))
+            .collect();
+    }
+    response
+}
+
+/// Project a single document JSON value to only the fields named in `fields`.
+fn project_document(doc: serde_json::Value, fields: &[FieldSelector]) -> serde_json::Value {
+    let mut result = serde_json::Map::new();
+    for selector in fields {
+        // Use alias if provided, otherwise the dotted path string (e.g. "metadata.topic")
+        let col_name = selector
+            .alias
+            .clone()
+            .unwrap_or_else(|| selector.path.to_string());
+        let val = resolve_path(&doc, &selector.path);
+        result.insert(col_name, val);
+    }
+    serde_json::Value::Object(result)
+}
+
+/// Walk a `FieldPath` into a JSON value, returning `null` if any segment is missing.
+fn resolve_path(doc: &serde_json::Value, path: &FieldPath) -> serde_json::Value {
+    let mut current = doc;
+    // Temporary storage so references stay alive across loop iterations
+    let mut owned: serde_json::Value;
+    for segment in &path.segments {
+        match segment {
+            PathSegment::Field(key) => match current.get(key.as_str()) {
+                Some(v) => {
+                    owned = v.clone();
+                    current = &owned;
+                }
+                None => return serde_json::Value::Null,
+            },
+            PathSegment::Index(idx) => match current.get(idx) {
+                Some(v) => {
+                    owned = v.clone();
+                    current = &owned;
+                }
+                None => return serde_json::Value::Null,
+            },
+        }
+    }
+    current.clone()
 }
