@@ -1,0 +1,29 @@
+[
+  {
+    "company": "Apple Inc.",
+    "slug": "apple-2023-10k",
+    "cik": "0000320193",
+    "accession": "0000320193-23-000106",
+    "primaryDoc": "aapl-20230930.htm",
+    "year": 2023,
+    "file": "apple-2023-10k.txt"
+  },
+  {
+    "company": "Tesla, Inc.",
+    "slug": "tesla-2023-10k",
+    "cik": "0001318605",
+    "accession": "0001628280-24-002390",
+    "primaryDoc": "tsla-20231231.htm",
+    "year": 2023,
+    "file": "tesla-2023-10k.txt"
+  },
+  {
+    "company": "Microsoft Corporation",
+    "slug": "microsoft-2023-10k",
+    "cik": "0000789019",
+    "accession": "0000950170-23-035122",
+    "primaryDoc": "msft-20230630.htm",
+    "year": 2023,
+    "file": "microsoft-2023-10k.txt"
+  }
+]

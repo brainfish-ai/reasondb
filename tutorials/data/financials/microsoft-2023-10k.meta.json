@@ -1,0 +1,12 @@
+{
+  "company": "Microsoft Corporation",
+  "slug": "microsoft-2023-10k",
+  "year": 2023,
+  "filing_type": "10-K",
+  "file": "microsoft-2023-10k.txt",
+  "cik": "0000789019",
+  "accession": "0000950170-23-035122",
+  "source": "SEC EDGAR",
+  "url": "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0000789019&type=10-K",
+  "license": "Public Domain (US Government)"
+}

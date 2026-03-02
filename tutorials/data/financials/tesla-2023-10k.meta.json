@@ -1,0 +1,12 @@
+{
+  "company": "Tesla, Inc.",
+  "slug": "tesla-2023-10k",
+  "year": 2023,
+  "filing_type": "10-K",
+  "file": "tesla-2023-10k.txt",
+  "cik": "0001318605",
+  "accession": "0001628280-24-002390",
+  "source": "SEC EDGAR",
+  "url": "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001318605&type=10-K",
+  "license": "Public Domain (US Government)"
+}

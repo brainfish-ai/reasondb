@@ -1,0 +1,176 @@
+TITLE: Notice and Request for Comment; Proposal for a New United Nations Global Technical Regulation on Automated Driving Systems (ADS)
+Document Number: 2026-01274
+Type: Notice
+Publication Date: 2026-01-23
+URL: https://www.federalregister.gov/documents/2026/01/23/2026-01274/notice-and-request-for-comment-proposal-for-a-new-united-nations-global-technical-regulation-on
+Source: Federal Register
+
+ABSTRACT:
+The United Nations Working Party on Automated/Autonomous and Connected Vehicles (GRVA), under the World Forum for the Harmonization of Vehicle Regulations (WP.29) at United Nations Economic Commission for Europe (UNECE), has proposed a draft Global Technical Regulation (GTR) for Automated Driving Systems (ADS). NHTSA is seeking public comment on the draft GTR to help inform the U.S. government's position, including how that position could relate to any future domestic actions regarding the safety and performance of Automated Driving Systems.
+
+FULL TEXT:
+Document Headings
+
+Document headings vary by document type but may contain
+
+the following:
+
+the agency or agencies that issued and signed a document
+
+the number of the CFR title and the number of each part
+
+the document amends, proposes to amend, or is directly
+
+related to
+
+the agency docket number / agency internal file number
+
+the RIN which identifies each regulatory action listed in
+
+the Unified Agenda of Federal Regulatory and Deregulatory
+
+Actions
+
+See the
+
+Document Drafting Handbook
+
+for more details.
+
+Department of Transportation
+
+National Highway Traffic Safety Administration
+
+[Docket No. NHTSA-2026-0034]
+
+AGENCY:
+
+National Highway Traffic Safety Administration (NHTSA), Department of Transportation (DOT).
+
+ACTION:
+
+Notice and request for comments on a proposed Global Technical Regulation (GTR) for Automated Driving Systems.
+
+SUMMARY:
+
+The United Nations Working Party on Automated/Autonomous and Connected Vehicles (GRVA), under the World Forum for the Harmonization of Vehicle Regulations (WP.29) at United Nations Economic Commission for Europe (UNECE), has proposed a draft Global Technical Regulation (GTR) for Automated Driving Systems (ADS). NHTSA is seeking public comment on the draft GTR to help inform the U.S. government's position, including how that position could relate to any future domestic actions regarding the safety and performance of Automated Driving Systems.
+
+DATES:
+
+Comments must be submitted on or before February 23, 2026.
+
+ADDRESSES:
+
+You may submit comments identified by the Docket No. NHTSA-2026-0034 through any of the following methods:
+
+Electronic Submissions:
+
+Go to the Federal eRulemaking Portal at
+
+http://www.regulations.gov .
+
+Follow the online instructions for submitting comments.
+
+Fax:
+
+(202) 493-2251.
+
+Mail or Hand Delivery:
+
+Docket Management, U.S. Department of Transportation, 1200 New Jersey Avenue SE, West Building, Room W12-140, Washington, DC 20590, between 9 a.m. and 5 p.m., Monday through Friday, except on Federal holidays. To be sure someone is there to help you, please call (202) 366-9322 before coming.
+
+Instructions:
+
+All submissions must include the agency name and docket number for this notice. Note that all comments received will be posted without change to
+
+http://www.regulations.gov ,
+
+including any personal information provided. Please see the Privacy Act heading below.
+
+Privacy Act:
+
+Anyone is able to search the electronic form of all comments received into any of our dockets by the name of the individual submitting the comment (or signing the comment, if submitted on behalf of an association, business, labor union, etc.). You may review DOT's complete Privacy Act Statement in the
+
+Federal Register
+
+published on April 11, 2000 ( 65 FR 19477-78 ) or you may visit
+
+https://www.transportation.gov/ privacy .
+
+Docket:
+
+For access to the docket to read background documents or comments received, go to
+
+http://www.regulations.gov
+
+or the street address listed above. Follow the online instructions for accessing the dockets via internet.
+
+FOR FURTHER INFORMATION CONTACT:
+
+For additional information or access to background documents, contact Caitlin McKeighan, Office of International Policy, Fuel Economy, and Consumer Standards, (202) 923-1215, National Highway Traffic Safety Administration, W45-117, U.S. Department of Transportation, 1200 New Jersey Avenue SE, Washington, DC 20590.
+
+SUPPLEMENTARY INFORMATION:
+
+The United States is a contracting party to the 1998 Global Agreement on Wheeled Vehicles, Equipment and Parts (the 1998 Agreement) concerning the establishment of Global Technical Regulations (GTRs) for the safety of motor vehicles and their parts and equipment. As a contracting party to the 1998 Agreement, and at the request of the U.S. Department of State, NHTSA serves as the head of delegation and technical lead for the U.S. at the World Forum for the Harmonization of Vehicle Regulations (WP.29) and its six subsidiary working parties, which provide guidance to WP.29 on specific aspects of vehicle safety. The Working Party on Automated/Autonomous and Connected Vehicles, or GRVA, was established in June 2018 primarily to develop harmonized performance requirements and assessment methods for ADS-equipped and connected vehicles.
+
+For the past five years, GRVA has been working on new draft regulations for ADS-equipped vehicles. This effort has been a global collaboration involving representatives from contracting parties, the automotive industry, international standards organizations, and others. The draft regulation is now being prepared for expected formal review and endorsement by GRVA in spring 2026. The draft GTR included in this docket contains various provisions as follows:
+
+General Requirements for ADS-equipped vehicles: including requirements for the ADS to perform the Dynamic Driving Task, or DDT;
+
+The safety of interactions between the User and ADS;
+
+Manufacturer requirements, including the overall Safety Management System under which the ADS was developed;
+
+The testing system and environment that the manufacturer used to qualify the safe operation of the ADS;
+
+Requirements for the submission of a valid Safety Case for the ADS; and
+
+Post-deployment monitoring capabilities.
+
+If the ADS GTR draft is approved by GRVA, it will then move forward to WP.29 for review and final decision. If WP.29 endorses the draft GTR by vote, it is then formally established and listed as a Global Technical Regulation. From there, each signatory (contracting party) to the 1998 Agreement is expected to initiate processes to incorporate parts or all of the GTR into their individual national regulatory systems. After following their national process, if a contracting party determines that a GTR cannot be incorporated domestically, they would then provide written notice to WP.29 indicating the cause. It is expected that WP.29 will review and vote on the draft ADS GTR later in 2026.
+
+Public Comments Invited:
+
+In accordance with  49 CFR part 553, Appendix C , NHTSA is soliciting
+
+(
+
+printed page 2995)
+
+specific feedback on the draft GTR to assure that the U.S. position reflects the best available safety data and technical expertise. The draft ADS GTR can be found as an attachment to this docket. Specifically, NHTSA encourages commenters to address the following elements of the draft GTR:
+
+1.
+
+Technical Merit:
+
+Whether the proposed performance requirements and test procedures are technologically feasible and provide safety or other benefits.
+
+2.
+
+Compatibility with U.S. Safety Standards:
+
+Any potential conflicts between the draft GTR and existing U.S. Federal Motor Vehicle Safety Standards (FMVSS).
+
+3.
+
+Impact on Innovation:
+
+How the adoption of this GTR might affect the development and deployment of ADS technology in the U.S.
+
+4.
+
+Data and Research:
+
+Commenters are encouraged to provide any technical, scientific, or economic data that supports or challenges any of the requirements set forth in the draft GTR.
+
+Authority:  49 U.S.C. 30111 , as delegated at  49 CFR part 1.95 .
+
+Issued on January 21, 2026.
+
+Jonathan Morrison,
+
+Administrator.
+
+[ FR Doc. 2026-01274  Filed 1-22-26; 8:45 am]
+
+BILLING CODE 4910-59-P

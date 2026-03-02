@@ -1,0 +1,62 @@
+[
+  {
+    "slug": "ai-executive-order",
+    "document_number": "2025-00698",
+    "title": "Request for Comments on AISI's Draft Document: Managing Misuse Risk for Dual-Use Foundation Models, Pursuant to Executive Order 14110 (Section 4.1(a)(ii) and Section4.1(a)(ii)(A)",
+    "type": "Notice",
+    "publication_date": "2025-01-15",
+    "topic": "ai_policy",
+    "file": "ai-executive-order.txt",
+    "source": "Federal Register (federalregister.gov)",
+    "url": "https://www.federalregister.gov/documents/2025/01/15/2025-00698/request-for-comments-on-aisis-draft-document-managing-misuse-risk-for-dual-use-foundation-models",
+    "license": "Public Domain (US Government)"
+  },
+  {
+    "slug": "ml-bias-regulation",
+    "document_number": "2024-12336",
+    "title": "Request for Information on Uses, Opportunities, and Risks of Artificial Intelligence in the Financial Services Sector",
+    "type": "Notice",
+    "publication_date": "2024-06-12",
+    "topic": "ai_ethics",
+    "file": "ml-bias-regulation.txt",
+    "source": "Federal Register (federalregister.gov)",
+    "url": "https://www.federalregister.gov/documents/2024/06/12/2024-12336/request-for-information-on-uses-opportunities-and-risks-of-artificial-intelligence-in-the-financial",
+    "license": "Public Domain (US Government)"
+  },
+  {
+    "slug": "algorithmic-accountability",
+    "document_number": "2025-23693",
+    "title": "Transparency in Coverage",
+    "type": "Proposed Rule",
+    "publication_date": "2025-12-23",
+    "topic": "ai_transparency",
+    "file": "algorithmic-accountability.txt",
+    "source": "Federal Register (federalregister.gov)",
+    "url": "https://www.federalregister.gov/documents/2025/12/23/2025-23693/transparency-in-coverage",
+    "license": "Public Domain (US Government)"
+  },
+  {
+    "slug": "generative-ai-copyright",
+    "document_number": "2023-18624",
+    "title": "Artificial Intelligence and Copyright",
+    "type": "Notice",
+    "publication_date": "2023-08-30",
+    "topic": "ai_copyright",
+    "file": "generative-ai-copyright.txt",
+    "source": "Federal Register (federalregister.gov)",
+    "url": "https://www.federalregister.gov/documents/2023/08/30/2023-18624/artificial-intelligence-and-copyright",
+    "license": "Public Domain (US Government)"
+  },
+  {
+    "slug": "autonomous-vehicles",
+    "document_number": "2026-01274",
+    "title": "Notice and Request for Comment; Proposal for a New United Nations Global Technical Regulation on Automated Driving Systems (ADS)",
+    "type": "Notice",
+    "publication_date": "2026-01-23",
+    "topic": "ai_safety",
+    "file": "autonomous-vehicles.txt",
+    "source": "Federal Register (federalregister.gov)",
+    "url": "https://www.federalregister.gov/documents/2026/01/23/2026-01274/notice-and-request-for-comment-proposal-for-a-new-united-nations-global-technical-regulation-on",
+    "license": "Public Domain (US Government)"
+  }
+]

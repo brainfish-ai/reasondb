@@ -1,4 +1,3 @@
-data/
 node_modules/
 .next/
 .env.local

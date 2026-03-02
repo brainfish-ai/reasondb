@@ -1,0 +1,37 @@
+[
+  {
+    "file": "pride-and-prejudice.txt",
+    "title": "pride and prejudice",
+    "author": "Jane Austen",
+    "source": "Project Gutenberg",
+    "gutenberg_id": 1342
+  },
+  {
+    "file": "moby-dick.txt",
+    "title": "moby dick",
+    "author": "Herman Melville",
+    "source": "Project Gutenberg",
+    "gutenberg_id": 2701
+  },
+  {
+    "file": "frankenstein.txt",
+    "title": "frankenstein",
+    "author": "Mary Shelley",
+    "source": "Project Gutenberg",
+    "gutenberg_id": 84
+  },
+  {
+    "file": "dracula.txt",
+    "title": "dracula",
+    "author": "Bram Stoker",
+    "source": "Project Gutenberg",
+    "gutenberg_id": 345
+  },
+  {
+    "file": "sherlock-holmes.txt",
+    "title": "sherlock holmes",
+    "author": "Arthur Conan Doyle",
+    "source": "Project Gutenberg",
+    "gutenberg_id": 1661
+  }
+]

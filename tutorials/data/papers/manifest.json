@@ -1,0 +1,32 @@
+[
+  {
+    "id": "1706.03762",
+    "slug": "attention-is-all-you-need",
+    "title": "Attention Is All You Need",
+    "authors": "Vaswani et al.",
+    "year": 2017,
+    "file": "attention-is-all-you-need.pdf",
+    "arxiv_url": "https://arxiv.org/abs/1706.03762",
+    "source": "ArXiv"
+  },
+  {
+    "id": "1810.04805",
+    "slug": "bert",
+    "title": "BERT: Pre-training of Deep Bidirectional Transformers",
+    "authors": "Devlin et al.",
+    "year": 2018,
+    "file": "bert.pdf",
+    "arxiv_url": "https://arxiv.org/abs/1810.04805",
+    "source": "ArXiv"
+  },
+  {
+    "id": "2005.14165",
+    "slug": "gpt-3",
+    "title": "Language Models are Few-Shot Learners (GPT-3)",
+    "authors": "Brown et al.",
+    "year": 2020,
+    "file": "gpt-3.pdf",
+    "arxiv_url": "https://arxiv.org/abs/2005.14165",
+    "source": "ArXiv"
+  }
+]

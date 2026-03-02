@@ -1,0 +1,136 @@
+TITLE: Request for Comments on AISI's Draft Document: Managing Misuse Risk for Dual-Use Foundation Models, Pursuant to Executive Order 14110 (Section 4.1(a)(ii) and Section4.1(a)(ii)(A)
+Document Number: 2025-00698
+Type: Notice
+Publication Date: 2025-01-15
+URL: https://www.federalregister.gov/documents/2025/01/15/2025-00698/request-for-comments-on-aisis-draft-document-managing-misuse-risk-for-dual-use-foundation-models
+Source: Federal Register
+
+ABSTRACT:
+The U.S. Artificial Intelligence Safety Institute (AISI), housed within NIST at the Department of Commerce, requests comments on an updated draft document responsive to Section 4.1(a)(ii) and Section 4.1(a)(ii)(A) of Executive Order 14110 on Safe, Secure, and Trustworthy Development and Use of Artificial Intelligence (AI) issued on October 30, 2023 (E.O. 14110). This draft document, NIST AI 800-1, Managing Misuse Risk for Dual-Use Foundation Models, can be found at https:// nvlpubs.nist.gov/nistpubs/ai/NIST.AI.800-1.ipd2.pdf. This document is an update to an initial public draft and includes changes based on the previous round of public comment, as well as two new appendices that apply these guidelines to (1) chemical and biological misuse risk and (2) cyber misuse risk.
+
+FULL TEXT:
+Document Headings
+
+Document headings vary by document type but may contain
+
+the following:
+
+the agency or agencies that issued and signed a document
+
+the number of the CFR title and the number of each part
+
+the document amends, proposes to amend, or is directly
+
+related to
+
+the agency docket number / agency internal file number
+
+the RIN which identifies each regulatory action listed in
+
+the Unified Agenda of Federal Regulatory and Deregulatory
+
+Actions
+
+See the
+
+Document Drafting Handbook
+
+for more details.
+
+Department of Commerce
+
+National Institute of Standards and Technology
+
+[Docket Number: 250108-0011]
+
+XRIN: 0693-XC137
+
+AGENCY:
+
+U.S. Artificial Intelligence Safety Institute (AISI), National Institute of Standards and Technology (NIST), U.S. Department of Commerce.
+
+ACTION:
+
+Notice; request for comments.
+
+SUMMARY:
+
+The U.S. Artificial Intelligence Safety Institute (AISI), housed within NIST at the Department of Commerce, requests comments on an updated draft document responsive to Section 4.1(a)(ii) and Section 4.1(a)(ii)(A) of  Executive Order 14110  on Safe, Secure, and Trustworthy Development and Use of Artificial Intelligence (AI) issued on October 30, 2023 ( E.O. 14110 ). This draft document, NIST AI 800-1, Managing Misuse Risk for Dual-Use Foundation Models, can be found at
+
+https://nvlpubs.nist.gov/ nistpubs/ ai/ NIST.AI.800-1.ipd2.pdf .
+
+This document is an update to an initial public draft and includes changes based on the previous round of public comment, as well as two new appendices that apply these guidelines to (1) chemical and biological misuse risk and (2) cyber misuse risk.
+
+DATES:
+
+Comments containing information in response to this notice must be received on or before March 15, 2025, at 11:59 p.m. Eastern Time. Submissions received after that date may not be considered.
+
+ADDRESSES:
+
+The draft of NIST AI 800-1, Managing Misuse Risk for Dual-Use Foundation Models is available for review and comment on the U.S. AI Safety Institute website at
+
+https://nvlpubs.nist.gov/ nistpubs/ ai/ NIST.AI.800-1.ipd2.pdf
+
+and at
+
+www.regulations.gov
+
+under docket number NIST-2025-0001.
+
+Comments may be submitted:
+
+By email:
+
+Comments on NIST AI 800-1 may be sent electronically to  NISTAI800-1@nist.gov
+
+with &ldquo;NIST AI 800-1, Managing the Risk of Misuse for Dual-Use Foundation Models&rdquo; in the subject line. Electronic submissions may be sent as an attachment in any of the following unlocked formats: HTML; ASCII; Word; RTF; or PDF.
+
+Via
+
+www.regulations.gov :
+
+(
+
+printed page 3799)
+
+To submit electronic public comments via the Federal eRulemaking Portal.
+
+1. Go to
+
+www.regulations.gov
+
+and enter NIST-2025-0001 in the search field,
+
+2. Click the &ldquo;Comment Now!&rdquo; icon, complete the required fields, including the relevant document number and title in the subject field, and
+
+3. Enter or attach your comments.
+
+Written comments may also be submitted by mail to Information Technology Laboratory, ATTN: AI E.O. Document Comments, National Institute of Standards and Technology, 100 Bureau Drive, Mail Stop 8900, Gaithersburg, MD 20899-8900.
+
+Comments containing references, studies, research, and other empirical data that are not widely published should include copies of the referenced materials. All submissions, including attachments and other supporting materials, will become part of the public record and subject to public disclosure.
+
+AISI will not accept comments accompanied by a request that part or all of the material be treated confidentially because of its business proprietary nature or for any other reason. Therefore, do not submit confidential business information or otherwise sensitive, protected, or personal information, such as account numbers, Social Security numbers, or names of other individuals.
+
+All relevant comments received by the deadline will be posted at
+
+https://www.regulations.gov
+
+under docket number NIST-2025-0001 and at
+
+https://www.nist.gov/ artificial-intelligence/ executive-order-safe-secure-and-trustworthy-artificial-intelligence .
+
+Attachments and other supporting materials may become part of the public record and may be subject to public disclosure.
+
+FOR FURTHER INFORMATION CONTACT:
+
+For questions about this request for comments contact: Christina Knight, U.S. Department of Commerce, 1401 Constitution Ave. NW, Washington, DC, ((240) 961-8688). Direct media inquiries to NIST's Office of Public Affairs at (301) 975-2762. Users of telecommunication devices for the deaf, or a text telephone may call the Federal Relay Service toll free at 1-800-877-8339. Accessible Format: NIST will make the request for comments available in alternate formats, such as Braille or large print, upon request by persons with disabilities.
+
+Authority:  Executive Order 14110  of Oct. 30, 2023;  15 U.S.C. 272 .
+
+Alicia Chambers,
+
+NIST Executive Secretariat.
+
+[ FR Doc. 2025-00698  Filed 1-14-25; 8:45 am]
+
+BILLING CODE 3510-13-P

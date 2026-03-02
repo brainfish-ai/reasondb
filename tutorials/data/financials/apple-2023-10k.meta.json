@@ -1,0 +1,12 @@
+{
+  "company": "Apple Inc.",
+  "slug": "apple-2023-10k",
+  "year": 2023,
+  "filing_type": "10-K",
+  "file": "apple-2023-10k.txt",
+  "cik": "0000320193",
+  "accession": "0000320193-23-000106",
+  "source": "SEC EDGAR",
+  "url": "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0000320193&type=10-K",
+  "license": "Public Domain (US Government)"
+}

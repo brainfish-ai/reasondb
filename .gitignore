@@ -17,7 +17,7 @@ target/
 *.db-*
 *.redb
 *_search_index/
-data/
+/data/
 
 # IDE
 .idea/

@@ -1,0 +1,22 @@
+[
+  {
+    "slug": "machine-learning",
+    "title": "Machine learning"
+  },
+  {
+    "slug": "neural-network",
+    "title": "Artificial neural network"
+  },
+  {
+    "slug": "nlp",
+    "title": "Natural language processing"
+  },
+  {
+    "slug": "transformer",
+    "title": "Transformer (deep learning architecture)"
+  },
+  {
+    "slug": "llm",
+    "title": "Large language model"
+  }
+]
