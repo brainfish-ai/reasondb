@@ -151,6 +151,7 @@ mod tests {
                 args: vec![],
                 timeout_secs: 60,
                 env: HashMap::new(),
+                daemon: false,
             },
             capabilities: PluginCapabilities {
                 kind,

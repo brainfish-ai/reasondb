@@ -21,6 +21,8 @@ pub struct QueryResult {
     pub aggregates: Option<Vec<AggregateResult>>,
     /// Query plan (for EXPLAIN queries)
     pub explain: Option<QueryPlan>,
+    /// Trace ID for this query (only set for REASON queries when tracing is enabled)
+    pub trace_id: Option<String>,
 }
 
 /// A node selected during REASON traversal with full context.

@@ -16,6 +16,7 @@ use crate::error::Result;
 use crate::llm::config::{LlmModelConfig, LlmSettings};
 use crate::llm::provider::Reasoner;
 use crate::llm::ReasoningConfig;
+use crate::query_decomposer::{DomainContext, SubQuery};
 
 /// Holds the two swappable reasoner instances.
 struct Inner {
@@ -103,14 +104,25 @@ impl ReasoningEngine for DynamicReasoner {
         query: &str,
         current_context: &str,
         candidates: &[NodeSummary],
+        max_selections: usize,
     ) -> Result<Vec<TraversalDecision>> {
         self.retrieval()
-            .decide_next_step(query, current_context, candidates)
+            .decide_next_step(query, current_context, candidates, max_selections)
             .await
     }
 
     async fn verify_answer(&self, query: &str, content: &str) -> Result<VerificationResult> {
         self.retrieval().verify_answer(query, content).await
+    }
+
+    async fn batch_verify_answers(
+        &self,
+        query: &str,
+        candidates: &[crate::llm::BatchVerifyInput],
+    ) -> Result<Vec<VerificationResult>> {
+        self.retrieval()
+            .batch_verify_answers(query, candidates)
+            .await
     }
 
     async fn summarize(&self, content: &str, context: &SummarizationContext) -> Result<String> {
@@ -132,6 +144,26 @@ impl ReasoningEngine for DynamicReasoner {
     ) -> Result<Vec<DocumentRanking>> {
         self.retrieval()
             .rank_documents(query, documents, top_k)
+            .await
+    }
+
+    async fn decompose_query(
+        &self,
+        query: &str,
+        domain_context: Option<&DomainContext>,
+    ) -> Result<Vec<SubQuery>> {
+        self.retrieval()
+            .decompose_query(query, domain_context)
+            .await
+    }
+
+    async fn extract_domain_vocab(
+        &self,
+        document_summary: &str,
+        existing_vocab: &[String],
+    ) -> Result<Vec<String>> {
+        self.ingestion()
+            .extract_domain_vocab(document_summary, existing_vocab)
             .await
     }
 

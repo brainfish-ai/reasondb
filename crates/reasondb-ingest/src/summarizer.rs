@@ -226,23 +226,31 @@ impl MockSummarizer {
 ///
 /// Reduces API round-trips from N (one per node) to ceil(N / batch_size)
 /// per depth level. Bottom-up ordering is preserved so parent nodes
-/// always have access to child summaries.
+/// always have access to child summaries. Within each depth level, all
+/// batches are dispatched concurrently (bounded by `max_concurrent`).
 pub struct BatchSummarizer<'a, R: ReasoningEngine> {
     reasoner: &'a R,
     batch_size: usize,
+    max_concurrent: usize,
 }
 
 impl<'a, R: ReasoningEngine> BatchSummarizer<'a, R> {
     /// Create a new batch summarizer.
     /// `batch_size` controls how many nodes are sent per LLM request.
-    pub fn new(reasoner: &'a R, batch_size: usize) -> Self {
+    /// `max_concurrent` caps the number of in-flight LLM calls per depth level.
+    pub fn new(reasoner: &'a R, batch_size: usize, max_concurrent: usize) -> Self {
         Self {
             reasoner,
             batch_size,
+            max_concurrent: max_concurrent.max(1),
         }
     }
 
     /// Summarize all nodes in a document tree using batched LLM requests.
+    ///
+    /// Depth levels are processed sequentially (bottom-up) so parent nodes always
+    /// see completed child summaries. Within each depth level, all batches are
+    /// dispatched in parallel bounded by `max_concurrent`.
     pub async fn summarize_batch(&self, nodes: &mut [PageNode]) -> Result<()> {
         let max_depth = nodes.iter().map(|n| n.depth).max().unwrap_or(0);
 
@@ -253,10 +261,13 @@ impl<'a, R: ReasoningEngine> BatchSummarizer<'a, R> {
             .collect();
 
         info!(
-            "Batch-summarizing {} nodes (batch_size: {})",
+            "Batch-summarizing {} nodes (batch_size: {}, max_concurrent: {})",
             nodes.len(),
-            self.batch_size
+            self.batch_size,
+            self.max_concurrent
         );
+
+        let semaphore = Arc::new(Semaphore::new(self.max_concurrent));
 
         for depth in (0..=max_depth).rev() {
             let indices: Vec<usize> = nodes
@@ -267,10 +278,20 @@ impl<'a, R: ReasoningEngine> BatchSummarizer<'a, R> {
                 .collect();
 
             debug!(
-                "Batch-summarizing {} nodes at depth {}",
+                "Batch-summarizing {} nodes at depth {} ({} concurrent)",
                 indices.len(),
-                depth
+                depth,
+                self.max_concurrent
             );
+
+            // Build all batch inputs upfront (immutable reads from nodes).
+            // Empty-content nodes are handled immediately; the rest are collected
+            // into batches that will be dispatched concurrently below.
+            #[allow(clippy::type_complexity)]
+            let mut all_batches: Vec<(
+                Vec<(usize, String)>,
+                Vec<(String, String, SummarizationContext)>,
+            )> = Vec::new();
 
             for batch_indices in indices.chunks(self.batch_size) {
                 let mut llm_items: Vec<(usize, String, String, SummarizationContext)> = Vec::new();
@@ -306,19 +327,40 @@ impl<'a, R: ReasoningEngine> BatchSummarizer<'a, R> {
                     .map(|(_, id, content, ctx)| (id.clone(), content.clone(), ctx.clone()))
                     .collect();
 
-                let summaries = self
-                    .reasoner
-                    .summarize_batch(&batch_input)
-                    .await
-                    .map_err(|e| IngestError::Summarization(e.to_string()))?;
+                let idx_map: Vec<(usize, String)> = llm_items
+                    .iter()
+                    .map(|(idx, id, _, _)| (*idx, id.clone()))
+                    .collect();
 
-                let summary_map: HashMap<String, String> = summaries.into_iter().collect();
+                all_batches.push((idx_map, batch_input));
+            }
 
-                for (idx, node_id, _, _) in &llm_items {
-                    if let Some(summary) = summary_map.get(node_id) {
-                        nodes[*idx].summary = summary.clone();
+            // Dispatch all batches for this depth level concurrently.
+            let mut futures = FuturesUnordered::new();
+            for (idx_map, batch_input) in all_batches {
+                let permit = semaphore.clone();
+                futures.push(async move {
+                    let _permit = permit.acquire().await.unwrap();
+                    let summaries = self
+                        .reasoner
+                        .summarize_batch(&batch_input)
+                        .await
+                        .map_err(|e| IngestError::Summarization(e.to_string()))?;
+                    Ok::<(Vec<(usize, String)>, HashMap<String, String>), IngestError>((
+                        idx_map,
+                        summaries.into_iter().collect(),
+                    ))
+                });
+            }
+
+            // Collect results and write summaries back.
+            while let Some(result) = futures.next().await {
+                let (idx_map, summary_map) = result?;
+                for (idx, node_id) in idx_map {
+                    if let Some(summary) = summary_map.get(&node_id) {
+                        nodes[idx].summary = summary.clone();
                     } else {
-                        nodes[*idx].summary = format!("Section: {}", nodes[*idx].title);
+                        nodes[idx].summary = format!("Section: {}", nodes[idx].title);
                     }
                 }
             }

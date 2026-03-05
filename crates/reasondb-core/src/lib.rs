@@ -51,12 +51,14 @@ pub mod engine;
 pub mod error;
 pub mod llm;
 pub mod model;
+pub mod query_decomposer;
 pub mod query_filter;
 pub mod ratelimit;
 pub mod rql;
 pub mod shard;
 pub mod store;
 pub mod text_index;
+pub mod trace;
 pub mod tree_grep;
 
 // Re-export main types
@@ -84,7 +86,9 @@ pub use model::{
     Document, DocumentId, DocumentRelation, NodeId, NodeMetadata, PageNode, RelationBuilder,
     RelationType, SearchFilter, Table, TableId,
 };
+pub use query_decomposer::{DecomposedQuery, DomainContext, SubQuery};
 pub use ratelimit::{RateLimitConfig, RateLimitResult, RateLimitStore, RateLimitTier, RateLimiter};
 pub use shard::{ScatterGatherResult, ShardMap, ShardRouter};
 pub use store::{NodeStore, StoreStats};
 pub use text_index::{TextIndex, TextSearchResult};
+pub use trace::{QueryTrace, QueryTraceSummary};

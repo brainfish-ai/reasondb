@@ -22,6 +22,7 @@
 //! Plugins are one-shot: spawned per request, receive a JSON `PluginRequest`
 //! on stdin, write a JSON `PluginResponse` to stdout, then exit.
 
+pub mod daemon;
 pub mod error;
 pub mod manager;
 pub mod manifest;

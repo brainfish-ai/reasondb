@@ -22,6 +22,7 @@ mod queries;
 pub mod rate_limits;
 mod relations;
 mod tables;
+mod traces;
 
 #[cfg(test)]
 mod tests;
@@ -73,6 +74,9 @@ pub(crate) const JOBS_ORDER_TABLE: TableDefinition<&str, &str> = TableDefinition
 /// Rate limit snapshots (ClientId -> bincode bytes) for persistence across restarts
 pub(crate) const RATE_LIMITS_TABLE: TableDefinition<&str, &[u8]> =
     TableDefinition::new("rate_limits");
+
+/// Query traces (TraceId -> bincode bytes) for audit and observability
+pub(crate) const TRACES_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("traces");
 
 // ==================== NodeStore ====================
 
@@ -191,6 +195,11 @@ impl NodeStore {
             // Rate limit snapshot table
             let _ = write_txn
                 .open_table(RATE_LIMITS_TABLE)
+                .map_err(StorageError::from)?;
+
+            // Query trace table
+            let _ = write_txn
+                .open_table(TRACES_TABLE)
                 .map_err(StorageError::from)?;
 
             // Config table

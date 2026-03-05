@@ -10,7 +10,7 @@ use tokio::sync::Mutex;
 use tracing::{debug, info, instrument, warn};
 
 use crate::error::Result;
-use crate::llm::{NodeSummary, ReasoningEngine};
+use crate::llm::{BatchVerifyInput, NodeSummary, ReasoningEngine};
 use crate::model::PageNode;
 use crate::store::NodeStore;
 
@@ -34,7 +34,7 @@ pub struct SearchConfig {
 impl Default for SearchConfig {
     fn default() -> Self {
         Self {
-            beam_width: 2,
+            beam_width: 4,
             max_depth: 5,
             max_results: 5,
             min_confidence: 0.3,
@@ -84,6 +84,17 @@ pub struct TraversalStats {
     /// Number of LLM calls made
     pub llm_calls: usize,
 }
+
+// ==================== Keyword helpers ====================
+//
+// Delegate to the shared `query_filter` module which uses the `stop-words`
+// crate (400+ English stopwords) and `rust_stemmers` for English stemming.
+// This ensures the same term normalisation pipeline is used everywhere:
+// tree-grep, BM25 candidate selection, and beam-search pre-filtering.
+
+use crate::query_filter::{extract_query_terms, has_any_term};
+
+// ==================== Search Engine ====================
 
 /// The core search engine that performs LLM-guided tree traversal
 pub struct SearchEngine<R: ReasoningEngine + 'static> {
@@ -296,13 +307,80 @@ impl<R: ReasoningEngine + 'static> SearchEngine<R> {
             }
 
             // Ask LLM which branches to explore
-            let candidates: Vec<NodeSummary> = children.iter().map(NodeSummary::from).collect();
+            let all_candidates: Vec<NodeSummary> = children.iter().map(NodeSummary::from).collect();
 
             let context = if self.config.include_path {
                 current_path.join(" > ")
             } else {
                 node.summary.clone()
             };
+
+            // Widen the beam for flat/broad nodes so we explore more branches when
+            // there are many children (e.g. XBRL financials with 100+ leaf nodes).
+            let effective_beam = if children.len() > 50 {
+                self.config.beam_width * 4
+            } else if children.len() > 20 {
+                self.config.beam_width * 2
+            } else {
+                self.config.beam_width
+            };
+
+            // Keyword pre-filter: remove candidates whose summaries share no
+            // meaningful token with the query.  This shrinks the LLM prompt
+            // (sometimes eliminating the call entirely) and avoids wasting
+            // tokens on clearly irrelevant nodes.
+            //
+            // Uses the shared pipeline: tokenise → stop-words removal (400+
+            // English words via the `stop-words` crate) → English stemming
+            // (`rust_stemmers`).  "disability" → "disabl" matches "disabled",
+            // "disabling", etc.
+            let query_terms = extract_query_terms(query);
+            let candidates: Vec<NodeSummary> = {
+                let matched: Vec<_> = all_candidates
+                    .iter()
+                    .filter(|c| has_any_term(&c.summary, &query_terms))
+                    .cloned()
+                    .collect();
+                // Fall back to all candidates when the filter is too aggressive
+                // so we always have at least `effective_beam` candidates.
+                if matched.len() >= effective_beam.min(all_candidates.len()) {
+                    matched
+                } else {
+                    all_candidates.clone()
+                }
+            };
+
+            // If every remaining candidate is a leaf node AND they all fit
+            // within the beam, we can skip the LLM call and verify them directly.
+            if candidates.len() <= effective_beam
+                && candidates.iter().all(|c| {
+                    children
+                        .iter()
+                        .find(|n| n.id == c.id)
+                        .map(|n| n.is_leaf())
+                        .unwrap_or(false)
+                })
+            {
+                debug!(
+                    "All {} candidate(s) are leaves within beam — batch-verifying in one call",
+                    candidates.len()
+                );
+                let leaf_nodes: Vec<PageNode> = candidates
+                    .iter()
+                    .filter_map(|c| children.iter().find(|n| n.id == c.id).cloned())
+                    .collect();
+                self.batch_verify_nodes(
+                    query,
+                    &leaf_nodes,
+                    current_path,
+                    reasoning_trace,
+                    results,
+                    stats,
+                    cancel,
+                )
+                .await?;
+                return Ok(());
+            }
 
             // Increment LLM call count
             {
@@ -312,14 +390,14 @@ impl<R: ReasoningEngine + 'static> SearchEngine<R> {
 
             let decisions = self
                 .reasoner
-                .decide_next_step(query, &context, &candidates)
+                .decide_next_step(query, &context, &candidates, effective_beam)
                 .await?;
 
             // Filter by confidence threshold
             let selected: Vec<_> = decisions
                 .into_iter()
                 .filter(|d| d.confidence >= self.config.min_confidence)
-                .take(self.config.beam_width)
+                .take(effective_beam)
                 .collect();
 
             // Track pruned nodes
@@ -357,6 +435,38 @@ impl<R: ReasoningEngine + 'static> SearchEngine<R> {
                     );
                     return Ok(());
                 }
+            }
+
+            // If every selected node is a leaf, batch-verify them all in ONE
+            // LLM call instead of recursing into verify_leaf individually.
+            // This is the primary call-count reduction: N leaf verifications
+            // collapse from N calls → 1 call per `decide_next_step` result.
+            let all_selected_are_leaves = traces.iter().all(|(node, _)| node.is_leaf());
+
+            if all_selected_are_leaves && !traces.is_empty() {
+                debug!(
+                    "All {} selected node(s) are leaves — batch-verifying in one call",
+                    traces.len()
+                );
+                let leaf_nodes: Vec<PageNode> = traces.iter().map(|(n, _)| n.clone()).collect();
+                // Use the reasoning trace from the first entry; all leaves share
+                // the same parent path so the traces are essentially the same.
+                let rep_trace = traces
+                    .into_iter()
+                    .next()
+                    .map(|(_, t)| t)
+                    .unwrap_or_default();
+                self.batch_verify_nodes(
+                    query,
+                    &leaf_nodes,
+                    current_path,
+                    rep_trace,
+                    results,
+                    stats,
+                    cancel.clone(),
+                )
+                .await?;
+                return Ok(());
             }
 
             if self.config.parallel_branches && traces.len() > 1 {
@@ -428,7 +538,38 @@ impl<R: ReasoningEngine + 'static> SearchEngine<R> {
             }
         }
 
-        let content = node.get_content();
+        let raw_content = node.get_content();
+
+        // Keyword pre-filter: skip the LLM call entirely when neither the
+        // node's summary nor the first 500 chars of its content share any
+        // stemmed keyword with the query.  This is ~1µs and saves a full
+        // LLM round-trip for clearly irrelevant leaf nodes.
+        let query_terms = extract_query_terms(query);
+        if !query_terms.is_empty() {
+            let content_head = &raw_content[..raw_content.len().min(500)];
+            if !has_any_term(&node.summary, &query_terms)
+                && !has_any_term(content_head, &query_terms)
+            {
+                debug!(
+                    "Leaf '{}' has no keyword overlap — skipping verify_answer",
+                    node.title
+                );
+                return Ok(());
+            }
+        }
+
+        // Prepend a truncated version of the node's human-readable summary so
+        // the LLM can judge relevance even when the raw content is opaque (e.g.
+        // XBRL, JSON).  Capped at 300 chars to keep the prompt short.
+        let content_for_verification;
+        let content = if !node.summary.is_empty() && node.summary != raw_content {
+            let summary_prefix: String = node.summary.chars().take(300).collect();
+            content_for_verification =
+                format!("[Section summary: {}]\n\n{}", summary_prefix, raw_content);
+            content_for_verification.as_str()
+        } else {
+            raw_content
+        };
 
         // Increment LLM call count
         {
@@ -447,13 +588,106 @@ impl<R: ReasoningEngine + 'static> SearchEngine<R> {
             let result = SearchResult {
                 node_id: node.id.clone(),
                 title: node.title.clone(),
-                content: content.to_string(),
+                // Return the raw content (not the summary-prefixed verification text)
+                content: raw_content.to_string(),
                 confidence: verification.confidence,
                 path,
                 reasoning_trace,
             };
 
             results.lock().await.push(result);
+        }
+
+        Ok(())
+    }
+
+    /// Verify a **batch** of leaf nodes with a single LLM call.
+    ///
+    /// Pre-filters each candidate with the keyword check, builds
+    /// `BatchVerifyInput` entries, issues one `batch_verify_answers` call,
+    /// then pushes relevant results into `results`.
+    #[allow(clippy::too_many_arguments)]
+    async fn batch_verify_nodes(
+        &self,
+        query: &str,
+        nodes: &[PageNode],
+        path: Vec<String>,
+        reasoning_trace: Vec<ReasoningStep>,
+        results: Arc<Mutex<Vec<SearchResult>>>,
+        stats: Arc<Mutex<TraversalStats>>,
+        cancel: Arc<AtomicBool>,
+    ) -> Result<()> {
+        if nodes.is_empty() || cancel.load(Ordering::Relaxed) {
+            return Ok(());
+        }
+
+        // Keyword pre-filter each candidate before building the LLM prompt.
+        let query_terms = extract_query_terms(query);
+        let filtered: Vec<&PageNode> = nodes
+            .iter()
+            .filter(|n| {
+                if query_terms.is_empty() {
+                    return true;
+                }
+                let raw = n.get_content();
+                let head = &raw[..raw.len().min(500)];
+                has_any_term(&n.summary, &query_terms) || has_any_term(head, &query_terms)
+            })
+            .collect();
+
+        if filtered.is_empty() {
+            debug!(
+                "batch_verify_nodes: all {} nodes filtered by keyword check",
+                nodes.len()
+            );
+            return Ok(());
+        }
+
+        // Build BatchVerifyInput for each remaining candidate.
+        let inputs: Vec<BatchVerifyInput> = filtered
+            .iter()
+            .map(|n| {
+                let raw = n.get_content();
+                let content = if !n.summary.is_empty() && n.summary != raw {
+                    let prefix: String = n.summary.chars().take(300).collect();
+                    format!("[Section summary: {}]\n\n{}", prefix, raw)
+                } else {
+                    raw.to_string()
+                };
+                BatchVerifyInput {
+                    node_id: n.id.clone(),
+                    content,
+                }
+            })
+            .collect();
+
+        // Single LLM call for the whole batch.
+        {
+            let mut s = stats.lock().await;
+            s.llm_calls += 1;
+        }
+
+        let verifications = self.reasoner.batch_verify_answers(query, &inputs).await?;
+
+        // Align results with the filtered node list.
+        let min_conf = self.config.min_confidence;
+        for (node, verification) in filtered.iter().zip(verifications.iter()) {
+            debug!(
+                "Batch-verify '{}': relevant={} conf={}",
+                node.title, verification.is_relevant, verification.confidence
+            );
+            if verification.is_relevant && verification.confidence >= min_conf {
+                let raw = node.get_content();
+                let result = SearchResult {
+                    node_id: node.id.clone(),
+                    title: node.title.clone(),
+                    content: raw.to_string(),
+                    confidence: verification.confidence,
+                    path: path.clone(),
+                    reasoning_trace: reasoning_trace.clone(),
+                };
+                results.lock().await.push(result);
+            }
         }
 
         Ok(())

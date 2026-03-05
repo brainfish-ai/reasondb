@@ -116,7 +116,7 @@ export function DataTable<TData extends RowData>({
                 'border-b border-border/50 transition-colors',
                 onRowClick && 'cursor-pointer',
                 isSelected
-                  ? 'bg-mauve/10'
+                  ? 'bg-mauve/20'
                   : striped
                   ? idx % 2 === 0
                     ? 'bg-base hover:bg-surface-0/50'

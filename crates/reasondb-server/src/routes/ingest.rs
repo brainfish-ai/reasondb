@@ -7,59 +7,16 @@ use axum::{
     Json,
 };
 use reasondb_core::llm::ReasoningEngine;
-use reasondb_core::text_index::TextIndex;
-use reasondb_core::NodeStore;
-use reasondb_ingest::{IngestPipeline, PipelineConfig};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tempfile;
-use tracing::{debug, info};
+use tracing::info;
 use utoipa::ToSchema;
 
 use crate::{
     error::{ApiError, ApiResult, ErrorResponse},
-    jobs::{JobRequest, JobStatusResponse},
+    jobs::{IngestFileRequest, JobRequest, JobStatusResponse},
     state::AppState,
 };
-
-/// Index all nodes of a document in the text index for BM25 search.
-fn index_document_nodes(
-    text_index: &TextIndex,
-    store: &NodeStore,
-    document_id: &str,
-    table_id: &str,
-    tags: &[String],
-) -> Result<(), ApiError> {
-    // Get all nodes for this document
-    let nodes = store
-        .get_nodes_for_document(document_id)
-        .map_err(|e| ApiError::Internal(format!("Failed to get document nodes: {}", e)))?;
-
-    // Index each node that has content
-    for node in &nodes {
-        // Skip nodes without content
-        let content = match &node.content {
-            Some(c) => c.as_str(),
-            None => continue,
-        };
-
-        text_index
-            .index_node(document_id, &node.id, table_id, &node.title, content, tags)
-            .map_err(|e| ApiError::Internal(format!("Failed to index node: {}", e)))?;
-    }
-
-    // Commit the index
-    text_index
-        .commit()
-        .map_err(|e| ApiError::Internal(format!("Failed to commit text index: {}", e)))?;
-
-    debug!(
-        "Indexed {} nodes for document {} in BM25 index",
-        nodes.len(),
-        document_id
-    );
-    Ok(())
-}
 
 /// Response for ingestion operations
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -173,13 +130,14 @@ pub struct IngestUrlBody {
     pub generate_summaries: Option<bool>,
 }
 
-/// Core file ingestion logic — called after the table name/ID has been resolved.
+/// Core file ingestion logic — saves the upload to a persistent temp path, enqueues an
+/// async job, and returns immediately with a job ID for polling.
 async fn ingest_file_inner<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     state: Arc<AppState<R>>,
     filename: String,
     data: Vec<u8>,
     raw_table_id: String,
-) -> ApiResult<Json<IngestResponse>> {
+) -> ApiResult<Json<JobStatusResponse>> {
     let table_id = state
         .store
         .resolve_table_id(&raw_table_id)
@@ -191,53 +149,45 @@ async fn ingest_file_inner<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         .ok_or_else(|| ApiError::NotFound(format!("Table '{}' not found", raw_table_id)))?;
 
     info!(
-        "Ingesting file: {} ({} bytes) into table: {}",
+        "Queuing file ingestion: {} ({} bytes) into table: {}",
         filename,
         data.len(),
         table_id
     );
 
-    let temp_dir = tempfile::tempdir()
-        .map_err(|e| ApiError::Internal(format!("Failed to create temp dir: {}", e)))?;
-    let temp_path = temp_dir.path().join(&filename);
+    // Write the upload to a persistent temp path. A unique prefix ensures no
+    // collisions between concurrent uploads. The worker deletes the file after
+    // processing (success or failure).
+    let upload_id = uuid::Uuid::new_v4().simple().to_string();
+    let temp_path = std::env::temp_dir().join(format!("reasondb_{}_{}", upload_id, filename));
     std::fs::write(&temp_path, &data)
         .map_err(|e| ApiError::Internal(format!("Failed to write temp file: {}", e)))?;
 
-    let config = PipelineConfig {
-        generate_summaries: state.config.generate_summaries,
-        store_in_db: true,
-        ..Default::default()
+    let file_req = IngestFileRequest {
+        filename,
+        temp_path: temp_path
+            .to_str()
+            .ok_or_else(|| ApiError::Internal("Non-UTF8 temp path".to_string()))?
+            .to_string(),
+        table_id,
+        generate_summaries: Some(state.config.generate_summaries),
+        tags: None,
+        metadata: None,
     };
 
-    let pipeline = IngestPipeline::new((*state.reasoner).clone())
-        .with_config(config)
-        .with_plugins(state.plugin_manager.clone());
+    let enqueued_id = state
+        .job_queue
+        .enqueue(JobRequest::File(file_req))
+        .map_err(ApiError::Internal)?;
 
-    let result = pipeline
-        .ingest_and_store(&temp_path, &table_id, &state.store)
-        .await
-        .map_err(ApiError::from)?;
+    let status = state
+        .job_queue
+        .get_status(&enqueued_id)
+        .ok_or_else(|| ApiError::Internal("Job not found after enqueue".to_string()))?;
 
-    index_document_nodes(
-        &state.text_index,
-        &state.store,
-        &result.document.id,
-        &result.document.table_id,
-        &result.document.tags,
-    )?;
+    info!("File ingestion queued as job {}", enqueued_id);
 
-    debug!(
-        "Ingestion complete: {} nodes created",
-        result.stats.nodes_created
-    );
-
-    Ok(Json(IngestResponse {
-        document_id: result.document.id.clone(),
-        title: result.document.title.clone(),
-        total_nodes: result.document.total_nodes,
-        max_depth: result.document.max_depth as usize,
-        stats: result.stats.into(),
-    }))
+    Ok(Json(status))
 }
 
 /// Extract file bytes from a multipart request, enforcing the max upload size.
@@ -277,14 +227,16 @@ async fn extract_file_from_multipart<R: ReasoningEngine + Clone + Send + Sync + 
     file_data.ok_or_else(|| ApiError::BadRequest("No file provided".to_string()))
 }
 
-/// Ingest a file into a specific table (multipart upload)
+/// Ingest a file into a specific table (multipart upload — async)
 ///
-/// Upload a document file for ingestion. The target table is identified by
-/// its name or slug in the URL path. Supported formats depend on the
-/// registered extractor plugins (e.g. the built-in `markitdown` plugin
-/// covers PDF, Word, Excel, PowerPoint, images, audio, HTML, and more).
+/// Upload a document file for background ingestion. The file is saved and
+/// a job is enqueued immediately. Poll `GET /v1/jobs/{job_id}` for progress
+/// and the resulting document ID.
 ///
-/// The multipart body only needs the `file` field.
+/// Supported formats depend on the registered extractor plugins (e.g. the
+/// built-in `markitdown` plugin covers PDF, Word, Excel, PowerPoint,
+/// images, audio, HTML, and more). The multipart body only needs the `file`
+/// field.
 #[utoipa::path(
     post,
     path = "/v1/tables/{table_name}/ingest/file",
@@ -292,17 +244,17 @@ async fn extract_file_from_multipart<R: ReasoningEngine + Clone + Send + Sync + 
     params(("table_name" = String, Path, description = "Table name or slug")),
     request_body(content_type = "multipart/form-data", description = "File to ingest"),
     responses(
-        (status = 200, description = "File ingested successfully", body = IngestResponse),
+        (status = 202, description = "File ingestion job queued", body = JobStatusResponse),
         (status = 400, description = "Invalid request", body = ErrorResponse),
         (status = 404, description = "Table not found", body = ErrorResponse),
-        (status = 500, description = "Ingestion failed", body = ErrorResponse),
+        (status = 500, description = "Failed to queue ingestion", body = ErrorResponse),
     )
 )]
 pub async fn ingest_file_for_table<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     State(state): State<Arc<AppState<R>>>,
     Path(table_name): Path<String>,
     multipart: Multipart,
-) -> ApiResult<Json<IngestResponse>> {
+) -> ApiResult<Json<JobStatusResponse>> {
     let (filename, data) = extract_file_from_multipart(&state, multipart).await?;
     ingest_file_inner(state, filename, data, table_name).await
 }

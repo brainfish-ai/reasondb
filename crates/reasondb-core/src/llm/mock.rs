@@ -11,6 +11,7 @@ use super::{
     NodeSummary, ReasoningEngine, SummarizationContext, TraversalDecision, VerificationResult,
 };
 use crate::error::Result;
+use crate::query_decomposer::{DomainContext, SubQuery};
 
 /// A mock reasoning engine for testing.
 ///
@@ -155,6 +156,7 @@ impl ReasoningEngine for MockReasoner {
         query: &str,
         _current_context: &str,
         candidates: &[NodeSummary],
+        _max_selections: usize,
     ) -> Result<Vec<TraversalDecision>> {
         self.log_call(MockCall::DecideNextStep {
             query: query.to_string(),
@@ -275,6 +277,25 @@ impl ReasoningEngine for MockReasoner {
             .collect()
     }
 
+    async fn decompose_query(
+        &self,
+        query: &str,
+        _domain_context: Option<&DomainContext>,
+    ) -> Result<Vec<SubQuery>> {
+        Ok(vec![SubQuery {
+            text: query.to_string(),
+            rationale: "Mock passthrough".to_string(),
+        }])
+    }
+
+    async fn extract_domain_vocab(
+        &self,
+        _document_summary: &str,
+        _existing_vocab: &[String],
+    ) -> Result<Vec<String>> {
+        Ok(vec![])
+    }
+
     fn name(&self) -> &str {
         "MockReasoner"
     }
@@ -313,7 +334,7 @@ mod tests {
         ];
 
         let decisions = reasoner
-            .decide_next_step("test query", "", &candidates)
+            .decide_next_step("test query", "", &candidates, 3)
             .await
             .unwrap();
 
@@ -346,7 +367,7 @@ mod tests {
         ];
 
         let decisions = reasoner
-            .decide_next_step("query", "", &candidates)
+            .decide_next_step("query", "", &candidates, 3)
             .await
             .unwrap();
 
@@ -422,7 +443,7 @@ mod tests {
         }];
 
         let decisions = reasoner
-            .decide_next_step("specific query", "", &candidates)
+            .decide_next_step("specific query", "", &candidates, 3)
             .await
             .unwrap();
 

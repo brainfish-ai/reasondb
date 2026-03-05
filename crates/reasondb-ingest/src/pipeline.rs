@@ -147,9 +147,16 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
             path.display()
         );
 
-        // Extract document content
+        // Extract document content — run in a blocking thread so the plugin's
+        // subprocess polling loop doesn't starve the Tokio runtime.
         let extraction_start = std::time::Instant::now();
-        let extraction = self.extractor.extract(path)?;
+        let extractor = self.extractor.clone();
+        let path_buf = path.to_path_buf();
+        let extraction = tokio::task::spawn_blocking(move || extractor.extract(&path_buf))
+            .await
+            .map_err(|e| {
+                IngestError::TextExtraction(format!("Extraction task panicked: {}", e))
+            })??;
         stats.extraction_time_ms = extraction_start.elapsed().as_millis() as u64;
         stats.chars_extracted = extraction.char_count;
         stats.pages_extracted = 1; // MarkItDown doesn't give page counts
@@ -354,7 +361,8 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
 
             if !used_plugin {
                 if let Some(ref reasoner) = self.reasoner {
-                    let summarizer = BatchSummarizer::new(reasoner, 10);
+                    let summarizer =
+                        BatchSummarizer::new(reasoner, 10, self.config.summarizer.max_concurrent);
                     summarizer.summarize_batch(&mut nodes).await?;
                     stats.summaries_generated = nodes.len();
                 } else {
@@ -412,16 +420,22 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
     /// Ingest file and store in database
     ///
     /// The `table_id` must reference an existing table in the database.
+    /// Domain vocabulary extraction is spawned as a background task so this
+    /// method returns as soon as the document is safely stored.
     pub async fn ingest_and_store<P: AsRef<Path>>(
         &self,
         path: P,
         table_id: &str,
-        store: &NodeStore,
-    ) -> Result<IngestResult> {
+        store: Arc<NodeStore>,
+    ) -> Result<IngestResult>
+    where
+        R: Clone + Send + Sync + 'static,
+    {
         let result = self.ingest_file(path, table_id).await?;
 
         if self.config.store_in_db {
-            Self::store_result(&result, store)?;
+            Self::store_result(&result, &store)?;
+            self.spawn_vocab_update(&result, store);
         }
 
         Ok(result)
@@ -430,17 +444,22 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
     /// Ingest text and store in database
     ///
     /// The `table_id` must reference an existing table in the database.
+    /// Domain vocabulary extraction is spawned as a background task.
     pub async fn ingest_text_and_store(
         &self,
         title: &str,
         table_id: &str,
         text: &str,
-        store: &NodeStore,
-    ) -> Result<IngestResult> {
+        store: Arc<NodeStore>,
+    ) -> Result<IngestResult>
+    where
+        R: Clone + Send + Sync + 'static,
+    {
         let result = self.ingest_text(title, table_id, text).await?;
 
         if self.config.store_in_db {
-            Self::store_result(&result, store)?;
+            Self::store_result(&result, &store)?;
+            self.spawn_vocab_update(&result, store);
         }
 
         Ok(result)
@@ -449,19 +468,47 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
     /// Ingest URL and store in database
     ///
     /// The `table_id` must reference an existing table in the database.
+    /// Domain vocabulary extraction is spawned as a background task.
     pub async fn ingest_url_and_store(
         &self,
         url: &str,
         table_id: &str,
-        store: &NodeStore,
-    ) -> Result<IngestResult> {
+        store: Arc<NodeStore>,
+    ) -> Result<IngestResult>
+    where
+        R: Clone + Send + Sync + 'static,
+    {
         let result = self.ingest_url(url, table_id).await?;
 
         if self.config.store_in_db {
-            Self::store_result(&result, store)?;
+            Self::store_result(&result, &store)?;
+            self.spawn_vocab_update(&result, store);
         }
 
         Ok(result)
+    }
+
+    /// Fire-and-forget domain vocabulary extraction. The job completes immediately
+    /// after storage; vocab enrichment finishes in the background.
+    fn spawn_vocab_update(&self, result: &IngestResult, store: Arc<NodeStore>)
+    where
+        R: Clone + Send + Sync + 'static,
+    {
+        let Some(ref reasoner) = self.reasoner else {
+            return;
+        };
+        let Some(root) = result.nodes.iter().find(|n| n.depth == 0) else {
+            return;
+        };
+        if root.summary.is_empty() {
+            return;
+        }
+
+        let reasoner = reasoner.clone();
+        let table_id = result.document.table_id.clone();
+        let root_summary = root.summary.clone();
+
+        tokio::spawn(do_vocab_update(reasoner, table_id, root_summary, store));
     }
 
     /// Strip YAML frontmatter (`---` delimited block at the start of the file).
@@ -506,7 +553,79 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
     }
 }
 
+/// Background task: extract domain vocabulary and persist it to the table metadata.
+///
+/// Spawned with `tokio::spawn` so ingestion jobs complete without waiting for
+/// the LLM vocab call.
+async fn do_vocab_update<R>(
+    reasoner: R,
+    table_id: String,
+    root_summary: String,
+    store: Arc<NodeStore>,
+) where
+    R: ReasoningEngine + Send + Sync + 'static,
+{
+    let existing_vocab: Vec<String> = store
+        .get_table(&table_id)
+        .ok()
+        .flatten()
+        .and_then(|t| t.metadata.get("domain_vocab").cloned())
+        .and_then(|v| v.as_array().cloned())
+        .map(|arr| {
+            arr.into_iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    info!(
+        table_id = %table_id,
+        summary_len = root_summary.len(),
+        existing_terms = existing_vocab.len(),
+        "Extracting domain vocab from root node summary (background)"
+    );
+
+    match reasoner
+        .extract_domain_vocab(&root_summary, &existing_vocab)
+        .await
+    {
+        Ok(new_terms) if !new_terms.is_empty() => {
+            let mut all_terms = existing_vocab;
+            for term in new_terms {
+                let is_new = !all_terms
+                    .iter()
+                    .any(|t| t.to_lowercase() == term.to_lowercase());
+                if is_new {
+                    all_terms.push(term);
+                }
+            }
+
+            if let Ok(Some(mut table)) = store.get_table(&table_id) {
+                table.metadata.insert(
+                    "domain_vocab".to_string(),
+                    serde_json::Value::Array(
+                        all_terms
+                            .into_iter()
+                            .map(serde_json::Value::String)
+                            .collect(),
+                    ),
+                );
+                if let Err(e) = store.update_table(&table) {
+                    warn!("Failed to update domain vocab for table: {}", e);
+                } else {
+                    info!(table_id = %table_id, "Domain vocab updated (background)");
+                }
+            }
+        }
+        Ok(_) => {
+            debug!(table_id = %table_id, "Domain vocab extraction returned no new terms");
+        }
+        Err(e) => warn!("Domain vocab extraction failed: {}", e),
+    }
+}
+
 /// A no-op reasoner for when LLM is not needed
+#[derive(Clone)]
 pub struct NoOpReasoner;
 
 #[async_trait::async_trait]
@@ -516,6 +635,7 @@ impl ReasoningEngine for NoOpReasoner {
         _query: &str,
         _current_context: &str,
         _candidates: &[reasondb_core::llm::NodeSummary],
+        _max_selections: usize,
     ) -> reasondb_core::Result<Vec<reasondb_core::llm::TraversalDecision>> {
         Ok(vec![])
     }
@@ -543,6 +663,25 @@ impl ReasoningEngine for NoOpReasoner {
             context.title.as_deref().unwrap_or("Section"),
             preview
         ))
+    }
+
+    async fn decompose_query(
+        &self,
+        query: &str,
+        _domain_context: Option<&reasondb_core::query_decomposer::DomainContext>,
+    ) -> reasondb_core::Result<Vec<reasondb_core::query_decomposer::SubQuery>> {
+        Ok(vec![reasondb_core::query_decomposer::SubQuery {
+            text: query.to_string(),
+            rationale: "no-op passthrough".to_string(),
+        }])
+    }
+
+    async fn extract_domain_vocab(
+        &self,
+        _document_summary: &str,
+        _existing_vocab: &[String],
+    ) -> reasondb_core::Result<Vec<String>> {
+        Ok(vec![])
     }
 
     fn name(&self) -> &str {

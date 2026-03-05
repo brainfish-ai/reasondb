@@ -57,6 +57,22 @@ pub struct TextIndex {
     tags_field: Field,
 }
 
+/// A single node entry for bulk indexing via [`TextIndex::index_nodes_bulk`].
+pub struct NodeIndexEntry<'a> {
+    /// Parent document ID
+    pub document_id: &'a str,
+    /// Node ID
+    pub node_id: &'a str,
+    /// Table ID the document belongs to
+    pub table_id: &'a str,
+    /// Node title
+    pub title: &'a str,
+    /// Node content
+    pub content: &'a str,
+    /// Optional tags
+    pub tags: &'a [String],
+}
+
 /// A search result from the text index.
 #[derive(Debug, Clone)]
 pub struct TextSearchResult {
@@ -252,6 +268,41 @@ impl TextIndex {
         writer
             .add_document(doc)
             .map_err(|e| ReasonError::Internal(format!("Failed to add document: {}", e)))?;
+
+        Ok(())
+    }
+
+    /// Index multiple document nodes in a single write-lock acquisition.
+    ///
+    /// Prefer this over calling `index_node` in a loop — it avoids the overhead
+    /// of acquiring and releasing the `RwLock` N times and adds all documents in
+    /// one contiguous pass before committing.
+    pub fn index_nodes_bulk(&self, entries: &[NodeIndexEntry<'_>]) -> Result<()> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+
+        let writer = self
+            .writer
+            .write()
+            .map_err(|_| ReasonError::Internal("Failed to acquire write lock".to_string()))?;
+
+        for entry in entries {
+            let mut doc = TantivyDocument::default();
+            doc.add_text(self.document_id_field, entry.document_id);
+            doc.add_text(self.node_id_field, entry.node_id);
+            doc.add_text(self.table_id_field, entry.table_id);
+            doc.add_text(self.title_field, entry.title);
+            doc.add_text(self.content_field, entry.content);
+
+            if !entry.tags.is_empty() {
+                doc.add_text(self.tags_field, entry.tags.join(" "));
+            }
+
+            writer
+                .add_document(doc)
+                .map_err(|e| ReasonError::Internal(format!("Failed to add document: {}", e)))?;
+        }
 
         Ok(())
     }

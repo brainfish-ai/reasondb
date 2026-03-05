@@ -3,7 +3,7 @@
 //! Execute SQL-like queries against documents.
 
 use axum::{
-    extract::State,
+    extract::{Path, State},
     response::sse::{Event, Sse},
     Json,
 };
@@ -14,6 +14,7 @@ use reasondb_core::rql::{
     AggregateValue, DocumentMatch, FieldPath, FieldSelector, MatchedNode, MutationResult,
     PathSegment, Query, QueryResult, QueryStats, ReasonProgress, SelectClause, Statement,
 };
+use reasondb_core::trace::{QueryTrace, QueryTraceSummary};
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -54,6 +55,10 @@ pub struct QueryResponse {
     /// Query plan (for EXPLAIN queries)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub explain: Option<QueryPlanResponse>,
+
+    /// Trace ID for this query (set for REASON queries; use GET /tables/{id}/traces/{trace_id})
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trace_id: Option<String>,
 }
 
 /// Aggregate result in query response
@@ -237,6 +242,7 @@ impl From<QueryResult> for QueryResponse {
                 estimated_rows: p.estimated_rows,
                 indexes_used: p.indexes_used,
             }),
+            trace_id: r.trace_id,
         }
     }
 }
@@ -497,6 +503,7 @@ async fn execute_select_query<R: ReasoningEngine + Send + Sync + 'static>(
                 },
                 aggregates: None,
                 explain: None,
+                trace_id: None,
             })
         } else {
             let result = state
@@ -679,6 +686,7 @@ pub async fn execute_query_stream<R: ReasoningEngine + Clone + Send + Sync + 'st
                 },
                 aggregates: None,
                 explain: None,
+                trace_id: None,
             };
             let response = apply_projection(result.into(), &query.select);
             let event = Event::default()
@@ -879,4 +887,87 @@ fn resolve_path(doc: &serde_json::Value, path: &FieldPath) -> serde_json::Value 
         }
     }
     current.clone()
+}
+
+// ==================== Trace Endpoints ====================
+
+/// List recent query traces for a table (newest first).
+///
+/// Returns compact summaries. Use the `GET /tables/{id}/traces/{trace_id}` endpoint
+/// for the full structured trace.
+#[utoipa::path(
+    get,
+    path = "/v1/tables/{id}/traces",
+    params(
+        ("id" = String, Path, description = "Table ID or slug"),
+        ("limit" = Option<usize>, Query, description = "Max traces to return (default 50)"),
+    ),
+    responses(
+        (status = 200, description = "List of trace summaries"),
+        (status = 404, description = "Table not found"),
+    ),
+    tag = "query"
+)]
+pub async fn list_traces<R: ReasoningEngine + Clone + Send + Sync + 'static>(
+    State(state): State<Arc<AppState<R>>>,
+    Path(id): Path<String>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<Vec<QueryTraceSummary>>, ApiError> {
+    let table_id = state.store.resolve_table_id(&id).map_err(ApiError::from)?;
+
+    let limit: usize = params
+        .get("limit")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(50);
+
+    let summaries = state
+        .store
+        .list_traces(&table_id, limit)
+        .map_err(|e| ApiError::StorageError(e.to_string()))?;
+
+    Ok(Json(summaries))
+}
+
+/// Get the full structured trace for a single REASON query execution.
+///
+/// The trace captures every phase of the retrieval pipeline:
+/// - Phase 0: Query decomposition (sub-queries + domain context used)
+/// - Phase 1: BM25 candidate scores per document
+/// - Phase 2: Tree-grep structural filter scores
+/// - Phase 3: LLM summary ranking decisions
+/// - Phase 4: Beam search traversal with per-node LLM decisions
+#[utoipa::path(
+    get,
+    path = "/v1/tables/{id}/traces/{trace_id}",
+    params(
+        ("id" = String, Path, description = "Table ID or slug"),
+        ("trace_id" = String, Path, description = "Trace ID from query response"),
+    ),
+    responses(
+        (status = 200, description = "Full query trace"),
+        (status = 404, description = "Trace not found"),
+    ),
+    tag = "query"
+)]
+pub async fn get_trace<R: ReasoningEngine + Clone + Send + Sync + 'static>(
+    State(state): State<Arc<AppState<R>>>,
+    Path((id, trace_id)): Path<(String, String)>,
+) -> Result<Json<QueryTrace>, ApiError> {
+    // Resolve table to verify it exists and the trace belongs to it
+    let table_id = state.store.resolve_table_id(&id).map_err(ApiError::from)?;
+
+    let trace = state
+        .store
+        .get_trace(&trace_id)
+        .map_err(|e| ApiError::StorageError(e.to_string()))?
+        .ok_or_else(|| ApiError::NotFound(format!("Trace '{}' not found", trace_id)))?;
+
+    if trace.table_id != table_id {
+        return Err(ApiError::NotFound(format!(
+            "Trace '{}' not found for table '{}'",
+            trace_id, id
+        )));
+    }
+
+    Ok(Json(trace))
 }

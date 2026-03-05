@@ -19,11 +19,12 @@ use serde::Serialize;
 use tracing::{debug, error, info, warn};
 
 use super::{
-    BatchSummaryResult, DocumentRanking, DocumentRankings, DocumentSummary, NodeSummary,
-    ReasoningConfig, ReasoningEngine, SummarizationContext, TraversalDecision, TraversalDecisions,
-    VerificationResult, VerificationResultRaw,
+    BatchSummaryResult, DecomposedQueryResult, DocumentRanking, DocumentRankings, DocumentSummary,
+    DomainVocabResult, NodeSummary, ReasoningConfig, ReasoningEngine, SummarizationContext,
+    TraversalDecision, TraversalDecisions, VerificationResult, VerificationResultRaw,
 };
 use crate::error::{ReasonError, Result};
+use crate::query_decomposer::{DomainContext, SubQuery};
 
 /// Extract valid JSON from an LLM response that may contain markdown fences or prose.
 /// Tries (in order): raw parse, fence-stripped parse, brace/bracket extraction.
@@ -855,6 +856,7 @@ impl ReasoningEngine for Reasoner {
         query: &str,
         current_context: &str,
         candidates: &[NodeSummary],
+        max_selections: usize,
     ) -> Result<Vec<TraversalDecision>> {
         if candidates.is_empty() {
             return Ok(Vec::new());
@@ -874,16 +876,21 @@ Query: "{}"
 Available sections:
 {}
 
-Select up to {} sections most likely to contain a direct answer. A section that merely mentions a query keyword in a setup step, footnote, or unrelated context is NOT worth exploring — only select sections whose summary indicates they substantively address the query topic.
+Select up to {} sections most likely to contain a direct answer.
+- A section that merely mentions a query keyword in a footnote or unrelated context is NOT worth exploring.
+- For queries comparing multiple entities (e.g. "Compare Apple, Tesla, and Microsoft"): sections covering the queried metrics for ANY ONE of those entities are highly worth exploring — include them.
+- Only skip a section if its summary clearly shows it is about something entirely different from the query topic.
 
 Return JSON with this EXACT structure (each selection is a SEPARATE object in the array):
-{{"selections": [{{"node_id": "exact_id_from_list", "confidence": 0.9, "reasoning": "brief explanation"}}, {{"node_id": "another_id", "confidence": 0.7, "reasoning": "brief explanation"}}]}}
+{{"selections": [{{"node_id": "exact_id_from_list", "confidence": 0.9, "reasoning": "revenue data FY2023"}}, {{"node_id": "another_id", "confidence": 0.7, "reasoning": "disability benefit rules"}}]}}
+
+"reasoning" MUST be 3-6 words only — e.g. "revenue figures FY2023" or "disability benefit waiting period".
 
 If none seem relevant, return: {{"selections": []}}"#,
             query,
             context_part,
             self.format_candidates(candidates),
-            self.config.beam_width
+            max_selections
         );
 
         debug!("Deciding next step with {} candidates", candidates.len());
@@ -906,13 +913,14 @@ Content:
 {}
 
 Rules:
-- is_relevant: true ONLY if the content directly answers the query or provides key information needed to answer it
+- is_relevant: true if the content directly answers the query OR provides key information needed to answer any part of it
+- For queries comparing multiple entities (e.g. "Compare Apple, Tesla, and Microsoft revenue"): content about ONE of those entities is highly relevant if it covers the queried metric for that entity — mark is_relevant: true
 - A section that merely mentions a query keyword in passing (e.g. a Docker command in a monitoring setup guide when the query is about Docker support) is NOT relevant — set is_relevant: false
 - relevance_score: rate on an INTEGER scale from 1 to 10. Each level is distinct — choose carefully:
    10 = comprehensive, self-contained answer covering all aspects of the query
     9 = directly and completely answers the query with minor gaps
-    8 = strong answer with clear, actionable information
-    7 = good answer but missing important context or depth
+    8 = strong answer with clear, actionable information, or fully covers one entity in a multi-entity comparison
+    7 = good answer but missing some context, or covers most of one entity's data in a comparison
     6 = partially answers — provides useful info but leaves key questions open
     5 = related content that gives helpful context without answering directly
     4 = mentions the topic but doesn't provide a useful answer
@@ -927,6 +935,84 @@ Rules:
         let raw: VerificationResultRaw = self.extract(&prompt).await?;
 
         Ok(raw.into())
+    }
+
+    async fn batch_verify_answers(
+        &self,
+        query: &str,
+        candidates: &[crate::llm::BatchVerifyInput],
+    ) -> Result<Vec<VerificationResult>> {
+        if candidates.is_empty() {
+            return Ok(Vec::new());
+        }
+        // Single-item — reuse the well-tuned single verify_answer prompt
+        // to avoid spending tokens on batch scaffolding.
+        if candidates.len() == 1 {
+            return Ok(vec![
+                self.verify_answer(query, &candidates[0].content).await?,
+            ]);
+        }
+
+        // Build a compact section list; cap each entry at 800 chars so the
+        // total prompt stays well under the context limit even for 20+ leaves.
+        let sections: String = candidates
+            .iter()
+            .enumerate()
+            .map(|(i, c)| {
+                let snippet: String = c.content.chars().take(800).collect();
+                format!("[{}]\n{}", i, snippet)
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n---\n\n");
+
+        let prompt = format!(
+            r#"Score each numbered section for relevance to the query. Return JSON only.
+
+Query: "{}"
+
+Sections:
+{}
+
+Return JSON with a score for every section:
+{{"results": [{{"index": 0, "is_relevant": true, "relevance_score": 8}}, {{"index": 1, "is_relevant": false, "relevance_score": 2}}, ...]}}
+
+Rules:
+- is_relevant: true if the section directly answers the query OR provides key information needed to answer any part of it
+- relevance_score: INTEGER 1-10 (10 = comprehensive answer, 1 = completely unrelated)
+- You MUST include an entry for ALL {} sections (even irrelevant ones)
+- Keep reasoning implicit — scores only, no explanation text"#,
+            query,
+            sections,
+            candidates.len()
+        );
+
+        debug!(
+            "Batch-verifying {} candidates for query: {}",
+            candidates.len(),
+            query
+        );
+
+        let batch: crate::llm::BatchVerifyResponse = self.extract(&prompt).await?;
+
+        // Align results back to input positions; default to not-relevant for
+        // any index the LLM failed to return.
+        let mut out = vec![
+            VerificationResult {
+                is_relevant: false,
+                confidence: 0.0,
+            };
+            candidates.len()
+        ];
+        for score in batch.results {
+            if score.index < out.len() {
+                let raw = VerificationResultRaw {
+                    is_relevant: score.is_relevant,
+                    relevance_score: score.relevance_score,
+                };
+                out[score.index] = raw.into();
+            }
+        }
+        Ok(out)
     }
 
     async fn summarize(&self, content: &str, context: &SummarizationContext) -> Result<String> {
@@ -1101,6 +1187,116 @@ Format: {{"rankings": [{{"document_id": "...", "relevance": 0.9}}]}}"#,
         rankings.truncate(top_k);
 
         Ok(rankings)
+    }
+
+    async fn decompose_query(
+        &self,
+        query: &str,
+        domain_context: Option<&DomainContext>,
+    ) -> Result<Vec<SubQuery>> {
+        let description_line = domain_context
+            .and_then(|ctx| ctx.description.as_ref())
+            .map(|d| format!("Collection description: {}\n", d))
+            .unwrap_or_default();
+
+        let vocab_line = domain_context
+            .filter(|ctx| !ctx.vocab_hints.is_empty())
+            .map(|ctx| {
+                format!(
+                    "Known domain terms (use these when appropriate): {}\n",
+                    ctx.vocab_hints.join(", ")
+                )
+            })
+            .unwrap_or_default();
+
+        let table_name_line = domain_context
+            .map(|ctx| format!("Document collection: \"{}\"\n", ctx.table_name))
+            .unwrap_or_default();
+
+        let prompt = format!(
+            r#"You are a search query expert. A user is searching a document collection and may not know the domain-specific terminology used in the documents.
+
+{table_name_line}{description_line}{vocab_line}
+User query: "{query}"
+
+Generate 3 alternative search queries that:
+1. Preserve the original intent
+2. Use domain-specific terminology and jargon from the collection
+3. Cover different aspects or phrasings of the question
+4. Would improve recall against technical documents
+
+Include at least one query that closely mirrors the original phrasing.
+
+Return JSON:
+{{"sub_queries": [{{"text": "alternative query text", "rationale": "why this phrasing helps"}}, ...]}}
+
+If the original query already uses precise domain terminology, return fewer alternatives."#,
+        );
+
+        debug!("Decomposing query: {}", query);
+
+        let result: DecomposedQueryResult = self.extract(&prompt).await.unwrap_or_else(|e| {
+            tracing::warn!("Query decomposition failed, using passthrough: {}", e);
+            DecomposedQueryResult {
+                sub_queries: vec![super::SubQueryItem {
+                    text: query.to_string(),
+                    rationale: "Fallback to original query".to_string(),
+                }],
+            }
+        });
+
+        Ok(result
+            .sub_queries
+            .into_iter()
+            .map(|item| SubQuery {
+                text: item.text,
+                rationale: item.rationale,
+            })
+            .collect())
+    }
+
+    async fn extract_domain_vocab(
+        &self,
+        document_summary: &str,
+        existing_vocab: &[String],
+    ) -> Result<Vec<String>> {
+        let truncated: String = document_summary.chars().take(3000).collect();
+
+        let existing_line = if existing_vocab.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "\nAlready known terms (do NOT include these): {}\n",
+                existing_vocab.join(", ")
+            )
+        };
+
+        let prompt = format!(
+            r#"Extract domain-specific technical terms and jargon from this document summary.
+
+Focus on:
+- Technical product names and abbreviations (e.g. "TPD", "IBR", "PDS")
+- Domain-specific concepts a general user would not know to search for
+- Policy or procedural terms used by domain experts
+- Acronyms and their full forms
+
+Document summary:
+{truncated}{existing_line}
+
+Return up to 15 new unique terms. Return an empty array if the summary contains no domain-specific terminology.
+
+Return JSON:
+{{"terms": ["term1", "term2", ...]}}"#,
+        );
+
+        debug!("Extracting domain vocab from document summary");
+
+        let result: DomainVocabResult = self.extract(&prompt).await.unwrap_or_else(|e| {
+            tracing::warn!("Domain vocab extraction failed: {}", e);
+            DomainVocabResult { terms: vec![] }
+        });
+
+        Ok(result.terms)
     }
 
     fn name(&self) -> &str {

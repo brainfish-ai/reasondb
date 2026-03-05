@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
 use crate::model::PageNode;
+use crate::query_decomposer::{DomainContext, SubQuery};
 
 /// A summary of a node for LLM decision making
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -144,6 +145,56 @@ pub struct BatchSummaryResult {
     pub summaries: Vec<BatchSummaryItem>,
 }
 
+/// A single sub-query item returned by the LLM during decomposition.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SubQueryItem {
+    /// The expanded/rephrased search query text
+    pub text: String,
+    /// Brief explanation of why this phrasing helps retrieval
+    pub rationale: String,
+}
+
+/// Wrapper for the decompose_query LLM response.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DecomposedQueryResult {
+    /// List of alternative search queries
+    pub sub_queries: Vec<SubQueryItem>,
+}
+
+/// Wrapper for the extract_domain_vocab LLM response.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DomainVocabResult {
+    /// Extracted domain-specific terms
+    pub terms: Vec<String>,
+}
+
+/// One leaf node to score in a batch verification call.
+#[derive(Debug, Clone)]
+pub struct BatchVerifyInput {
+    /// Leaf node ID (echoed back in the response for alignment)
+    pub node_id: String,
+    /// Content to evaluate — already truncated / summary-prefixed by the caller
+    pub content: String,
+}
+
+/// Score returned for a single entry in a batch verification call.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct BatchVerifyScore {
+    /// 0-based index matching the request array position
+    pub index: usize,
+    /// Whether this section is relevant to the query
+    pub is_relevant: bool,
+    /// Relevance on a 1-10 scale (same scale as verify_answer)
+    pub relevance_score: u8,
+}
+
+/// Structured LLM response for batch verification.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct BatchVerifyResponse {
+    /// One score per input section (must cover every index)
+    pub results: Vec<BatchVerifyScore>,
+}
+
 /// Context for summarization during ingestion
 #[derive(Debug, Clone, Default)]
 pub struct SummarizationContext {
@@ -172,7 +223,7 @@ pub struct SummarizationContext {
 ///     query: &str,
 ///     candidates: &[NodeSummary],
 /// ) {
-///     let decisions = reasoner.decide_next_step(query, "", candidates).await.unwrap();
+///     let decisions = reasoner.decide_next_step(query, "", candidates, 4).await.unwrap();
 ///     for decision in decisions {
 ///         println!("Explore {} (confidence: {})", decision.node_id, decision.confidence);
 ///     }
@@ -199,6 +250,7 @@ pub trait ReasoningEngine: Send + Sync {
         query: &str,
         current_context: &str,
         candidates: &[NodeSummary],
+        max_selections: usize,
     ) -> Result<Vec<TraversalDecision>>;
 
     /// Verify if a leaf node's content is relevant to the query.
@@ -215,6 +267,28 @@ pub trait ReasoningEngine: Send + Sync {
     ///
     /// A verification result indicating relevance and confidence.
     async fn verify_answer(&self, query: &str, content: &str) -> Result<VerificationResult>;
+
+    /// Verify multiple leaf nodes in a **single** LLM call.
+    ///
+    /// This is the primary verification path: instead of issuing one
+    /// `verify_answer` round-trip per leaf (17 calls × 4 docs = 68 total),
+    /// the engine accumulates all leaves from a traversal level and calls
+    /// this method once, receiving scores for the whole batch.
+    ///
+    /// The default implementation falls back to sequential `verify_answer`
+    /// calls so every provider is automatically correct even before adding
+    /// an optimised override.
+    async fn batch_verify_answers(
+        &self,
+        query: &str,
+        candidates: &[BatchVerifyInput],
+    ) -> Result<Vec<VerificationResult>> {
+        let mut out = Vec::with_capacity(candidates.len());
+        for c in candidates {
+            out.push(self.verify_answer(query, &c.content).await?);
+        }
+        Ok(out)
+    }
 
     /// Generate a summary for a node during ingestion.
     ///
@@ -286,6 +360,58 @@ pub trait ReasoningEngine: Send + Sync {
                 reasoning: "Default ranking".to_string(),
             })
             .collect())
+    }
+
+    /// Decompose a user query into multiple domain-aligned sub-queries.
+    ///
+    /// For domain-specific corpora (e.g. insurance policies), users write natural
+    /// language queries that have no BM25 overlap with the document content.
+    /// This method expands the query into 3–5 semantically richer alternatives
+    /// using the table's domain context (description + known vocabulary).
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - The original user query
+    /// * `domain_context` - Optional domain context built from `Table.description`
+    ///   and `Table.metadata["domain_vocab"]`
+    ///
+    /// # Returns
+    ///
+    /// A list of sub-queries. The original query is always included.
+    /// Default implementation returns only the original query (no decomposition).
+    async fn decompose_query(
+        &self,
+        query: &str,
+        _domain_context: Option<&DomainContext>,
+    ) -> Result<Vec<SubQuery>> {
+        Ok(vec![SubQuery {
+            text: query.to_string(),
+            rationale: "Original query (decomposition not implemented)".to_string(),
+        }])
+    }
+
+    /// Extract domain-specific vocabulary terms from a document summary.
+    ///
+    /// Called after ingestion to automatically populate `Table.metadata["domain_vocab"]`
+    /// with jargon and technical terms that users are unlikely to search for directly
+    /// but that appear throughout the document collection.
+    ///
+    /// # Arguments
+    ///
+    /// * `document_summary` - The root node summary of the newly ingested document
+    /// * `existing_vocab` - Terms already in `Table.metadata["domain_vocab"]`
+    ///   (to avoid duplicates)
+    ///
+    /// # Returns
+    ///
+    /// New unique terms to append to the table vocabulary.
+    /// Default implementation returns an empty list.
+    async fn extract_domain_vocab(
+        &self,
+        _document_summary: &str,
+        _existing_vocab: &[String],
+    ) -> Result<Vec<String>> {
+        Ok(vec![])
     }
 
     /// Get the name of this reasoning engine (for logging/debugging)

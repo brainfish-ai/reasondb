@@ -92,7 +92,7 @@ impl DocumentType {
 }
 
 /// Result of document extraction
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ExtractionResult {
     pub title: String,
     pub markdown: String,
@@ -106,6 +106,7 @@ pub struct ExtractionResult {
 /// File and URL extraction is delegated entirely to registered extractor
 /// plugins. If no plugin handles the given format/URL, an error is returned
 /// telling the user to install an appropriate plugin.
+#[derive(Clone)]
 pub struct SmartExtractor {
     plugin_manager: Option<Arc<PluginManager>>,
 }

@@ -164,6 +164,7 @@ impl NodeStore {
                 stats,
                 aggregates: None,
                 explain: Some(plan),
+                trace_id: None,
             });
         }
 
@@ -179,6 +180,7 @@ impl NodeStore {
                 stats,
                 aggregates: Some(aggregates),
                 explain: None,
+                trace_id: None,
             });
         }
 
@@ -200,6 +202,7 @@ impl NodeStore {
             },
             aggregates: None,
             explain: None,
+            trace_id: None,
         })
     }
 
@@ -524,6 +527,7 @@ impl NodeStore {
             stats,
             aggregates: None,
             explain: Some(plan),
+            trace_id: None,
         })
     }
 
@@ -566,6 +570,7 @@ impl NodeStore {
             stats,
             aggregates: Some(aggregates),
             explain: None,
+            trace_id: None,
         })
     }
 
@@ -613,6 +618,7 @@ impl NodeStore {
             stats,
             aggregates: None,
             explain: None,
+            trace_id: None,
         })
     }
 

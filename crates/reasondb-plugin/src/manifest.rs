@@ -111,6 +111,16 @@ pub struct RunnerConfig {
     pub timeout_secs: u64,
     #[serde(default)]
     pub env: HashMap<String, String>,
+    /// Run as a persistent daemon instead of spawning per request.
+    ///
+    /// When `true`, the plugin process is started once and kept alive. It must
+    /// read newline-delimited JSON requests from stdin in a loop and write one
+    /// JSON response line per request to stdout.
+    ///
+    /// Set the env var `REASONDB_DAEMON=1` to help the plugin detect daemon
+    /// mode and enter its request loop.
+    #[serde(default)]
+    pub daemon: bool,
 }
 
 impl RunnerConfig {

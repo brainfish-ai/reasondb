@@ -8,11 +8,12 @@ use crate::state::AppState;
 use chrono::{DateTime, Utc};
 use reasondb_core::llm::ReasoningEngine;
 use reasondb_core::store::NodeStore;
+use reasondb_core::text_index::NodeIndexEntry;
 use reasondb_ingest::{IngestPipeline, PipelineConfig};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use utoipa::ToSchema;
 
 const JOB_EXPIRY_SECS: i64 = 3600; // 1 hour
@@ -43,10 +44,31 @@ impl JobStatus {
     }
 }
 
+/// Internal job-queue payload for file ingestion.
+///
+/// The uploaded file bytes are saved to `temp_path` by the HTTP handler.
+/// The worker reads from that path and deletes the file after processing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IngestFileRequest {
+    /// Original filename (used to detect document type via extension)
+    pub filename: String,
+    /// Absolute path to the saved temp file
+    pub temp_path: String,
+    /// Resolved table UUID
+    pub table_id: String,
+    #[serde(default)]
+    pub generate_summaries: Option<bool>,
+    #[serde(default)]
+    pub tags: Option<Vec<String>>,
+    #[serde(default)]
+    pub metadata: Option<std::collections::HashMap<String, serde_json::Value>>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum JobRequest {
     Text(IngestTextRequest),
     Url(IngestUrlRequest),
+    File(IngestFileRequest),
 }
 
 impl JobRequest {
@@ -54,6 +76,7 @@ impl JobRequest {
         match self {
             JobRequest::Text(r) => &r.title,
             JobRequest::Url(r) => &r.url,
+            JobRequest::File(r) => &r.filename,
         }
     }
 
@@ -61,6 +84,7 @@ impl JobRequest {
         match self {
             JobRequest::Text(r) => &r.table_id,
             JobRequest::Url(r) => &r.table_id,
+            JobRequest::File(r) => &r.table_id,
         }
     }
 }
@@ -294,10 +318,15 @@ pub async fn run_worker<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     state: Arc<AppState<R>>,
     mut rx: mpsc::Receiver<String>,
 ) {
+    // Default to 2× available CPU threads (capped at a minimum of 8) since ingestion
+    // is I/O-bound (LLM calls dominate) and benefits from high concurrency.
+    let default_workers = std::thread::available_parallelism()
+        .map(|n| (n.get() * 2).max(8))
+        .unwrap_or(8);
     let worker_count = std::env::var("REASONDB_WORKER_COUNT")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
-        .unwrap_or(4)
+        .unwrap_or(default_workers)
         .max(1);
 
     info!("Ingestion worker pool starting ({} workers)", worker_count);
@@ -390,6 +419,9 @@ async fn process_job<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         JobRequest::Url(r) => r
             .generate_summaries
             .unwrap_or(state.config.generate_summaries),
+        JobRequest::File(r) => r
+            .generate_summaries
+            .unwrap_or(state.config.generate_summaries),
     };
 
     let config = PipelineConfig {
@@ -405,7 +437,7 @@ async fn process_job<R: ReasoningEngine + Clone + Send + Sync + 'static>(
     let result = match &job.request {
         JobRequest::Text(req) => {
             let mut result = pipeline
-                .ingest_text_and_store(&req.title, &req.table_id, &req.content, &state.store)
+                .ingest_text_and_store(&req.title, &req.table_id, &req.content, state.store.clone())
                 .await
                 .map_err(|e| e.to_string())?;
 
@@ -431,9 +463,45 @@ async fn process_job<R: ReasoningEngine + Clone + Send + Sync + 'static>(
             result
         }
         JobRequest::Url(req) => pipeline
-            .ingest_url_and_store(&req.url, &req.table_id, &state.store)
+            .ingest_url_and_store(&req.url, &req.table_id, state.store.clone())
             .await
             .map_err(|e| e.to_string())?,
+        JobRequest::File(req) => {
+            let path = std::path::Path::new(&req.temp_path);
+            let ingest_result = pipeline
+                .ingest_and_store(path, &req.table_id, state.store.clone())
+                .await;
+
+            // Always clean up the temp file, regardless of pipeline outcome.
+            if let Err(e) = std::fs::remove_file(path) {
+                warn!(
+                    "Failed to remove temp file {} after ingestion: {}",
+                    req.temp_path, e
+                );
+            }
+
+            let mut result = ingest_result.map_err(|e| e.to_string())?;
+
+            let mut doc = result.document.clone();
+            let mut needs_update = false;
+            if let Some(tags) = &req.tags {
+                doc.tags = tags.clone();
+                needs_update = true;
+            }
+            if let Some(metadata) = &req.metadata {
+                doc.metadata = metadata.clone();
+                needs_update = true;
+            }
+            if needs_update {
+                state
+                    .store
+                    .update_document(&doc)
+                    .map_err(|e| e.to_string())?;
+                result.document = doc;
+            }
+
+            result
+        }
     };
 
     index_document_nodes(
@@ -464,20 +532,36 @@ fn index_document_nodes(
         .get_nodes_for_document(document_id)
         .map_err(|e| format!("Failed to get document nodes: {}", e))?;
 
-    for node in &nodes {
-        let content = match &node.content {
-            Some(c) => c.as_str(),
-            None => continue,
-        };
+    // Collect all indexable nodes first, then add them in a single write-lock
+    // acquisition instead of lock/unlock per node.
+    let entries: Vec<NodeIndexEntry<'_>> = nodes
+        .iter()
+        .filter_map(|node| {
+            let content = node.content.as_ref()?.as_str();
+            Some(NodeIndexEntry {
+                document_id,
+                node_id: &node.id,
+                table_id,
+                title: &node.title,
+                content,
+                tags,
+            })
+        })
+        .collect();
 
-        text_index
-            .index_node(document_id, &node.id, table_id, &node.title, content, tags)
-            .map_err(|e| format!("Failed to index node: {}", e))?;
-    }
+    text_index
+        .index_nodes_bulk(&entries)
+        .map_err(|e| format!("Failed to index nodes: {}", e))?;
 
     text_index
         .commit()
         .map_err(|e| format!("Failed to commit text index: {}", e))?;
+
+    debug!(
+        "Indexed {} nodes for document {} in BM25 index",
+        entries.len(),
+        document_id
+    );
 
     Ok(())
 }

@@ -5,9 +5,11 @@
 
 use std::io::Write;
 use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::sync::mpsc;
+use std::time::Duration;
 use tracing::{debug, warn};
 
+use crate::daemon::invoke_daemon;
 use crate::error::{PluginError, Result};
 use crate::manifest::PluginManifest;
 use crate::protocol::{PluginRequest, PluginResponse};
@@ -17,10 +19,21 @@ pub struct PluginRunner;
 impl PluginRunner {
     /// Invoke a plugin with the given request.
     ///
-    /// Spawns the plugin process, writes the JSON request to stdin,
-    /// reads the JSON response from stdout, and returns it.
+    /// If the manifest has `daemon = true`, the request is routed to a
+    /// persistent process via the global daemon pool (eliminating per-call
+    /// cold-start overhead). Otherwise a new subprocess is spawned per request.
     pub fn invoke(manifest: &PluginManifest, request: &PluginRequest) -> Result<PluginResponse> {
-        let start = Instant::now();
+        if manifest.runner.daemon {
+            return invoke_daemon(manifest, request);
+        }
+        Self::invoke_subprocess(manifest, request)
+    }
+
+    /// Spawn a fresh subprocess for this single request.
+    fn invoke_subprocess(
+        manifest: &PluginManifest,
+        request: &PluginRequest,
+    ) -> Result<PluginResponse> {
         let timeout = Duration::from_secs(manifest.runner.timeout_secs);
 
         let request_json =
@@ -64,40 +77,40 @@ impl PluginRunner {
             }
         })?;
 
-        // Write request to stdin
+        // Write request to stdin and close it (signals EOF to the plugin).
         if let Some(mut stdin) = child.stdin.take() {
             stdin.write_all(request_json.as_bytes()).map_err(|e| {
                 PluginError::Invocation(format!("Failed to write to plugin stdin: {}", e))
             })?;
-            // stdin is dropped here, closing it and signaling EOF to the plugin
+            // stdin dropped here → EOF
         }
 
-        // Wait for the process with timeout
-        let output = loop {
-            if start.elapsed() > timeout {
-                let _ = child.kill();
+        // Use a background thread to call wait_with_output(), which reads stdout/stderr
+        // into memory while waiting for the child to exit.
+        //
+        // The old try_wait() + wait_with_output() loop caused a pipe deadlock:
+        // if the plugin writes more than the OS pipe buffer (~64 KB) to stdout,
+        // the child blocks waiting for the parent to read, while the parent blocks
+        // waiting for the child to exit — neither side makes progress.
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            tx.send(child.wait_with_output()).ok();
+        });
+
+        let output = match rx.recv_timeout(timeout) {
+            Ok(Ok(out)) => out,
+            Ok(Err(e)) => {
+                return Err(PluginError::Invocation(format!(
+                    "Failed to read plugin output: {}",
+                    e
+                )));
+            }
+            Err(_elapsed) => {
+                // Child was moved into the thread; the process will be cleaned up
+                // when the thread eventually unblocks or the container restarts.
                 return Err(PluginError::Timeout(manifest.runner.timeout_secs));
             }
-
-            match child.try_wait() {
-                Ok(Some(_status)) => {
-                    break child.wait_with_output().map_err(|e| {
-                        PluginError::Invocation(format!("Failed to read plugin output: {}", e))
-                    })?;
-                }
-                Ok(None) => {
-                    std::thread::sleep(Duration::from_millis(10));
-                }
-                Err(e) => {
-                    return Err(PluginError::Invocation(format!(
-                        "Error waiting for plugin: {}",
-                        e
-                    )));
-                }
-            }
         };
-
-        let elapsed_ms = start.elapsed().as_millis();
 
         // Log stderr if non-empty
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -137,7 +150,6 @@ impl PluginRunner {
 
         debug!(
             plugin = %manifest.name,
-            elapsed_ms = elapsed_ms,
             status = ?response.status,
             "Plugin invocation complete"
         );
@@ -182,6 +194,7 @@ mod tests {
                 args: vec!["plugin.sh".to_string()],
                 timeout_secs: 5,
                 env: HashMap::new(),
+                daemon: false,
             },
             capabilities: crate::manifest::PluginCapabilities {
                 kind: crate::manifest::PluginKind::Extractor,
@@ -272,6 +285,7 @@ echo 'not json'
                 args: vec![],
                 timeout_secs: 5,
                 env: HashMap::new(),
+                daemon: false,
             },
             capabilities: crate::manifest::PluginCapabilities {
                 kind: crate::manifest::PluginKind::Extractor,
