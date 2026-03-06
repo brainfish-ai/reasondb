@@ -19,6 +19,7 @@ import { fetchOpinions } from "./fetchers/courtlistener.js";
 import { fetchPapers } from "./fetchers/arxiv.js";
 import { fetchWikiArticles } from "./fetchers/wikipedia.js";
 import { fetchFinancials } from "./fetchers/sec-edgar.js";
+import { fetchAiaInsurance } from "./fetchers/insurance.js";
 
 async function main() {
   console.log("ReasonDB Tutorials — Data Acquisition");
@@ -31,6 +32,7 @@ async function main() {
   await fetchPapers();
   await fetchWikiArticles();
   await fetchFinancials();
+  await fetchAiaInsurance();
 
   const elapsed = ((Date.now() - start) / 1000).toFixed(1);
   console.log(`\n✅ All done in ${elapsed}s`);
