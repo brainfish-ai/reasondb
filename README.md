@@ -403,4 +403,4 @@ ReasonDB is source-available under the [ReasonDB License v1.0](./LICENSE).
 - Offer ReasonDB as a hosted/managed database service (DBaaS)
 - Provide ReasonDB's functionality as a service to third parties
 
-For commercial licensing to offer ReasonDB as a service, please [contact us](mailto:ajainvivek16@gmail.com).
+Copyright (c) 2026-present [Brainfish Pty Ltd](https://brainfi.sh) — For commercial licensing, please [contact us](mailto:ajain@brainfi.sh).
