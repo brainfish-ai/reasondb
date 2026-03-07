@@ -7,7 +7,7 @@ use futures::stream::{FuturesUnordered, StreamExt};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use reasondb_core::llm::{ReasoningEngine, SummarizationContext};
 use reasondb_core::model::PageNode;
@@ -251,6 +251,9 @@ impl<'a, R: ReasoningEngine> BatchSummarizer<'a, R> {
     /// Depth levels are processed sequentially (bottom-up) so parent nodes always
     /// see completed child summaries. Within each depth level, all batches are
     /// dispatched in parallel bounded by `max_concurrent`.
+    ///
+    /// For leaf nodes, this also extracts cross-section references from the content
+    /// and resolves them to sibling node IDs stored in `node.metadata.cross_ref_node_ids`.
     pub async fn summarize_batch(&self, nodes: &mut [PageNode]) -> Result<()> {
         let max_depth = nodes.iter().map(|n| n.depth).max().unwrap_or(0);
 
@@ -259,6 +262,20 @@ impl<'a, R: ReasoningEngine> BatchSummarizer<'a, R> {
             .enumerate()
             .map(|(i, n)| (n.id.clone(), i))
             .collect();
+
+        // Build a title → node_id lookup for cross-reference resolution.
+        // We index both the full lowercase title and any leading numeric label.
+        let title_map: HashMap<String, String> = {
+            let mut m = HashMap::new();
+            for node in nodes.iter() {
+                let lower = node.title.to_lowercase();
+                m.insert(lower.clone(), node.id.clone());
+                if let Some(label) = Self::extract_label(&lower) {
+                    m.entry(label).or_insert_with(|| node.id.clone());
+                }
+            }
+            m
+        };
 
         info!(
             "Batch-summarizing {} nodes (batch_size: {}, max_concurrent: {})",
@@ -341,24 +358,40 @@ impl<'a, R: ReasoningEngine> BatchSummarizer<'a, R> {
                 let permit = semaphore.clone();
                 futures.push(async move {
                     let _permit = permit.acquire().await.unwrap();
-                    let summaries = self
+                    let results = self
                         .reasoner
-                        .summarize_batch(&batch_input)
+                        .summarize_batch_with_refs(&batch_input)
                         .await
                         .map_err(|e| IngestError::Summarization(e.to_string()))?;
-                    Ok::<(Vec<(usize, String)>, HashMap<String, String>), IngestError>((
+                    // Map: node_id → (summary, references)
+                    let result_map: HashMap<String, (String, Vec<String>)> = results
+                        .into_iter()
+                        .map(|(id, s, refs)| (id, (s, refs)))
+                        .collect();
+                    Ok::<(Vec<(usize, String)>, HashMap<String, (String, Vec<String>)>), IngestError>((
                         idx_map,
-                        summaries.into_iter().collect(),
+                        result_map,
                     ))
                 });
             }
 
-            // Collect results and write summaries back.
+            // Collect results and write summaries + resolved cross-refs back.
             while let Some(result) = futures.next().await {
-                let (idx_map, summary_map) = result?;
+                let (idx_map, result_map) = result?;
                 for (idx, node_id) in idx_map {
-                    if let Some(summary) = summary_map.get(&node_id) {
+                    if let Some((summary, raw_refs)) = result_map.get(&node_id) {
                         nodes[idx].summary = summary.clone();
+                        if !raw_refs.is_empty() {
+                            let resolved = Self::resolve_refs(raw_refs, &title_map, &nodes[idx].id);
+                            if !resolved.is_empty() {
+                                info!(
+                                    node = %node_id,
+                                    count = resolved.len(),
+                                    "Cross-refs resolved"
+                                );
+                            }
+                            nodes[idx].metadata.cross_ref_node_ids = resolved;
+                        }
                     } else {
                         nodes[idx].summary = format!("Section: {}", nodes[idx].title);
                     }
@@ -368,6 +401,110 @@ impl<'a, R: ReasoningEngine> BatchSummarizer<'a, R> {
 
         info!("Completed batch summarization");
         Ok(())
+    }
+
+    /// Extract a leading numeric/alpha label from a lowercase node title.
+    /// "3.2 Background" → Some("3.2"),  "Chapter 5: Methods" → Some("5"),
+    /// "About us" → None.
+    fn extract_label(lower_title: &str) -> Option<String> {
+        let stripped = lower_title
+            .trim_start_matches("section")
+            .trim_start_matches("chapter")
+            .trim_start_matches("appendix")
+            .trim_start_matches('§')
+            .trim();
+
+        let label: String = stripped
+            .chars()
+            .take_while(|c| c.is_ascii_digit() || *c == '.' || c.is_ascii_alphabetic())
+            .collect();
+
+        let label = label.trim_end_matches('.').to_string();
+        if label.is_empty()
+            || label
+                .chars()
+                .all(|c| c.is_ascii_alphabetic() && label.len() > 2)
+        {
+            None
+        } else {
+            Some(
+                label
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(".")
+                    .trim_end_matches('.')
+                    .to_lowercase()
+                    .to_string(),
+            )
+        }
+    }
+
+    /// Resolve a list of raw reference strings (as returned by the LLM) to node IDs.
+    ///
+    /// Tries, in order:
+    ///   1. Exact lowercase title match
+    ///   2. Numeric label extraction  (e.g. "Section 10.2" → label "10.2")
+    ///   3. Substring containment     (ref ⊂ title or title ⊂ ref, min length 4)
+    ///
+    /// Self-references and duplicates are filtered out.
+    fn resolve_refs(
+        raw_refs: &[String],
+        title_map: &HashMap<String, String>,
+        self_id: &str,
+    ) -> Vec<String> {
+        let mut resolved: Vec<String> = Vec::new();
+
+        for raw in raw_refs {
+            let lower = raw.to_lowercase();
+            let lower = lower.trim();
+
+            // 1. Exact match
+            if let Some(id) = title_map.get(lower) {
+                if id != self_id && !resolved.contains(id) {
+                    resolved.push(id.clone());
+                    continue;
+                }
+            }
+
+            // 2. Strip keyword prefix and try numeric label
+            let stripped = lower
+                .trim_start_matches("section")
+                .trim_start_matches("chapter")
+                .trim_start_matches("appendix")
+                .trim_start_matches('§')
+                .trim();
+
+            let label: String = stripped
+                .chars()
+                .take_while(|c| c.is_ascii_digit() || *c == '.')
+                .collect();
+            let label = label.trim_end_matches('.');
+            if !label.is_empty() {
+                if let Some(id) = title_map.get(label) {
+                    if id != self_id && !resolved.contains(id) {
+                        resolved.push(id.clone());
+                        continue;
+                    }
+                }
+            }
+
+            // 3. Substring match — skip very short strings to avoid false positives
+            if lower.len() >= 4 {
+                for (key, id) in title_map.iter() {
+                    if id == self_id || resolved.contains(id) {
+                        continue;
+                    }
+                    if key.contains(lower) || lower.contains(key.as_str()) {
+                        resolved.push(id.clone());
+                        break;
+                    }
+                }
+            } else {
+                warn!(ref_str = %raw, "Cross-ref too short to resolve safely, skipping");
+            }
+        }
+
+        resolved
     }
 
     fn get_content_for_node(

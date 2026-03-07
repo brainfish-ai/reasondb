@@ -136,6 +136,13 @@ impl ReasoningEngine for DynamicReasoner {
         self.ingestion().summarize_batch(items).await
     }
 
+    async fn summarize_batch_with_refs(
+        &self,
+        items: &[(String, String, SummarizationContext)],
+    ) -> Result<Vec<(String, String, Vec<String>)>> {
+        self.ingestion().summarize_batch_with_refs(items).await
+    }
+
     async fn rank_documents(
         &self,
         query: &str,

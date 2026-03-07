@@ -289,7 +289,7 @@ pub async fn execute_reason_query_with_progress<R: ReasoningEngine + Send + Sync
     let skip_threshold = target_docs + (target_docs / 2).max(2);
     let skipped_llm = phase3_input_count <= skip_threshold;
 
-    let (documents, phase3_rankings) = rank_documents_by_summary_with_trace(
+    let (ranked_candidates, phase3_rankings) = rank_documents_by_summary_with_trace(
         store,
         candidates,
         reason_query,
@@ -300,13 +300,13 @@ pub async fn execute_reason_query_with_progress<R: ReasoningEngine + Send + Sync
 
     let phase3_trace = LlmRankingTrace {
         input_count: phase3_input_count,
-        selected_count: documents.len(),
+        selected_count: ranked_candidates.len(),
         skipped_llm,
         rankings: phase3_rankings,
     };
 
     tracing::info!(
-        ranked_count = documents.len(),
+        ranked_count = ranked_candidates.len(),
         "REASON Phase 3 (LLM ranking): documents ranked"
     );
 
@@ -315,8 +315,8 @@ pub async fn execute_reason_query_with_progress<R: ReasoningEngine + Send + Sync
         ReasonProgress {
             phase: ReasonPhase::Ranking,
             status: ReasonPhaseStatus::Completed,
-            message: format!("Selected top {} documents", documents.len()),
-            detail: Some(serde_json::json!({ "count": documents.len() })),
+            message: format!("Selected top {} documents", ranked_candidates.len()),
+            detail: Some(serde_json::json!({ "count": ranked_candidates.len() })),
         },
     )
     .await;
@@ -329,8 +329,8 @@ pub async fn execute_reason_query_with_progress<R: ReasoningEngine + Send + Sync
         ReasonProgress {
             phase: ReasonPhase::Reasoning,
             status: ReasonPhaseStatus::Started,
-            message: format!("Deep reasoning on {} documents...", documents.len()),
-            detail: Some(serde_json::json!({ "total": documents.len() })),
+            message: format!("Deep reasoning on {} documents...", ranked_candidates.len()),
+            detail: Some(serde_json::json!({ "total": ranked_candidates.len() })),
         },
     )
     .await;
@@ -341,12 +341,13 @@ pub async fn execute_reason_query_with_progress<R: ReasoningEngine + Send + Sync
     // Phase 0 (decompose, ~5s LLM call) is overlapped with Phase 4
     // (deep beam search, ~5–10s).  Both run as independent futures
     // polled by a single tokio::join!.  Decompose results are used for
-    // trace enrichment; Phase 4 operates on original BM25 candidates.
+    // trace enrichment; Phase 4 uses ranked_candidates (which carry BM25
+    // node hits) to skip tree traversal for flat documents.
     // ---------------------------------------------------------------
     let ((all_matches, total_llm_calls, docs_processed, beam_doc_traces), sub_queries_result) = tokio::join!(
         execute_parallel_reasoning_with_trace(
             &engine,
-            documents,
+            ranked_candidates,
             reason_query,
             min_confidence,
             query,
@@ -745,7 +746,10 @@ async fn rank_documents_by_summary_with_trace<R: ReasoningEngine>(
     reason_query: &str,
     target_docs: usize,
     reasoner: &Arc<R>,
-) -> (Vec<Document>, Vec<crate::trace::DocumentRankingTrace>) {
+) -> (
+    Vec<CandidateDocument>,
+    Vec<crate::trace::DocumentRankingTrace>,
+) {
     let skip_threshold = target_docs + (target_docs / 2).max(2);
     if candidates.len() <= skip_threshold {
         let traces = candidates
@@ -758,12 +762,8 @@ async fn rank_documents_by_summary_with_trace<R: ReasoningEngine>(
                 reasoning: "Skipped LLM ranking (below threshold)".to_string(),
             })
             .collect();
-        let docs = candidates
-            .into_iter()
-            .take(target_docs)
-            .map(|c| c.document)
-            .collect();
-        return (docs, traces);
+        let ranked = candidates.into_iter().take(target_docs).collect();
+        return (ranked, traces);
     }
 
     let doc_summaries: Vec<DocumentSummary> = candidates
@@ -782,12 +782,8 @@ async fn rank_documents_by_summary_with_trace<R: ReasoningEngine>(
         .collect();
 
     if doc_summaries.is_empty() {
-        let docs = candidates
-            .into_iter()
-            .take(target_docs)
-            .map(|c| c.document)
-            .collect();
-        return (docs, vec![]);
+        let ranked = candidates.into_iter().take(target_docs).collect();
+        return (ranked, vec![]);
     }
 
     let rankings = reasoner
@@ -823,21 +819,25 @@ async fn rank_documents_by_summary_with_trace<R: ReasoningEngine>(
 
     let ranked_ids: std::collections::HashSet<_> =
         rankings.iter().map(|r| r.document_id.as_str()).collect();
-    let docs = candidates
+    let ranked = candidates
         .into_iter()
         .filter(|c| ranked_ids.contains(c.document.id.as_str()))
-        .map(|c| c.document)
         .collect();
 
-    (docs, ranking_traces)
+    (ranked, ranking_traces)
 }
 
 // ==================== Phase 4: Parallel Reasoning ====================
 
 /// Phase 4: Execute deep reasoning on documents in parallel, collecting beam trace data.
+///
+/// For documents where Phase 1 already found specific BM25 node hits, we
+/// directly verify those hits (sorted by BM25 score) instead of traversing
+/// the entire document tree.  This skips the expensive decide_next_step call
+/// for flat documents and ensures we score the most BM25-relevant nodes.
 async fn execute_parallel_reasoning_with_trace<R: ReasoningEngine + Send + Sync + 'static>(
     engine: &SearchEngine<R>,
-    documents: Vec<Document>,
+    candidates: Vec<CandidateDocument>,
     reason_query: &str,
     min_confidence: Option<f32>,
     query: &Query,
@@ -845,24 +845,37 @@ async fn execute_parallel_reasoning_with_trace<R: ReasoningEngine + Send + Sync 
 ) -> (Vec<DocumentMatch>, usize, usize, Vec<BeamDocumentTrace>) {
     use std::sync::atomic::{AtomicBool, Ordering};
 
-    let total_docs = documents.len();
+    let total_docs = candidates.len();
     let mut all_matches: Vec<DocumentMatch> = Vec::new();
     let mut total_llm_calls = 1;
     let mut docs_completed: usize = 0;
     let mut beam_doc_traces: Vec<BeamDocumentTrace> = Vec::new();
     let target_results = query.limit.as_ref().map(|l| l.count).unwrap_or(10);
 
+    // Maximum BM25 node hits to send directly to batch_verify per document.
+    // Sorted by BM25 score so the most keyword-relevant nodes are picked first.
+    const MAX_BM25_DIRECT: usize = 25;
+
     let cancel = Arc::new(AtomicBool::new(false));
 
-    for chunk in documents.chunks(MAX_CONCURRENT) {
+    for chunk in candidates.chunks(MAX_CONCURRENT) {
         if cancel.load(Ordering::Relaxed) {
             break;
         }
 
         let futures: Vec<_> = chunk
             .iter()
-            .map(|doc| {
-                let doc = doc.clone();
+            .map(|candidate| {
+                let doc = candidate.document.clone();
+                // Sort BM25 node hits by score descending and convert to (id, score) pairs.
+                let mut bm25_hits: Vec<(String, f32)> = candidate
+                    .matched_nodes
+                    .iter()
+                    .map(|h| (h.node_id.clone(), h.score))
+                    .collect();
+                bm25_hits.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+                bm25_hits.truncate(MAX_BM25_DIRECT);
+
                 // Scope the query to this document so the beam search LLM evaluates
                 // nodes as "contributing to" the answer rather than "fully answering"
                 // it. This is critical for comparative queries (e.g. "Compare Apple,
@@ -878,9 +891,18 @@ async fn execute_parallel_reasoning_with_trace<R: ReasoningEngine + Send + Sync 
                 };
                 let cancel = cancel.clone();
                 async move {
-                    let result = engine
-                        .search_document_with_cancel(&doc_scoped_query, &doc.id, cancel)
-                        .await;
+                    let result = if !bm25_hits.is_empty() {
+                        // Fast path: BM25 already identified the best nodes.
+                        // Batch-verify them directly without tree traversal.
+                        engine
+                            .verify_bm25_hits(&doc_scoped_query, &doc.id, bm25_hits, cancel)
+                            .await
+                    } else {
+                        // Fallback: no BM25 node hits → full tree traversal.
+                        engine
+                            .search_document_with_cancel(&doc_scoped_query, &doc.id, cancel)
+                            .await
+                    };
                     (doc, result)
                 }
             })

@@ -136,6 +136,11 @@ pub struct BatchSummaryItem {
     pub node_id: String,
     /// The generated summary
     pub summary: String,
+    /// Verbatim cross-reference strings found in the content
+    /// (e.g. "Section 10.2", "the Exclusions section", "Chapter 5").
+    /// Empty array if no explicit references are present.
+    #[serde(default)]
+    pub references: Vec<String>,
 }
 
 /// Wrapper for batch summarization results (structured output extraction)
@@ -177,22 +182,23 @@ pub struct BatchVerifyInput {
     pub content: String,
 }
 
-/// Score returned for a single entry in a batch verification call.
+/// Score returned for a single entry in a sparse batch verification call.
+/// Only sections scoring >= 5 are included; unlisted sections are irrelevant.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct BatchVerifyScore {
     /// 0-based index matching the request array position
     pub index: usize,
-    /// Whether this section is relevant to the query
-    pub is_relevant: bool,
-    /// Relevance on a 1-10 scale (same scale as verify_answer)
-    pub relevance_score: u8,
+    /// Relevance on a 1-10 scale (only present for sections scoring >= 5)
+    pub score: u8,
 }
 
 /// Structured LLM response for batch verification.
+/// Sparse format: only relevant sections (score >= 5) are listed.
+/// Unlisted sections are treated as irrelevant (confidence = 0).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct BatchVerifyResponse {
-    /// One score per input section (must cover every index)
-    pub results: Vec<BatchVerifyScore>,
+    /// Relevant sections only — sections not listed score < 5
+    pub relevant: Vec<BatchVerifyScore>,
 }
 
 /// Context for summarization during ingestion
@@ -327,6 +333,29 @@ pub trait ReasoningEngine: Send + Sync {
             results.push((node_id.clone(), summary));
         }
         Ok(results)
+    }
+
+    /// Summarize nodes and extract cross-section references in a single LLM call.
+    ///
+    /// For each leaf node, the LLM produces a summary **and** a list of verbatim
+    /// cross-reference strings it finds in the content (e.g. `"Section 10.2"`,
+    /// `"the Exclusions section"`, `"Chapter 5"`).  The caller resolves those
+    /// strings to concrete node IDs using a title look-up table.
+    ///
+    /// # Returns
+    ///
+    /// `Vec<(node_id, summary, referenced_title_strings)>`
+    ///
+    /// Default implementation falls back to `summarize_batch` with empty refs.
+    async fn summarize_batch_with_refs(
+        &self,
+        items: &[(String, String, SummarizationContext)],
+    ) -> Result<Vec<(String, String, Vec<String>)>> {
+        let summaries = self.summarize_batch(items).await?;
+        Ok(summaries
+            .into_iter()
+            .map(|(id, s)| (id, s, vec![]))
+            .collect())
     }
 
     /// Rank documents by relevance to a query based on their summaries.

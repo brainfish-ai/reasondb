@@ -425,6 +425,23 @@ impl Reasoner {
             .join("\n")
     }
 
+    /// Like `extract` but caps output to `max_tokens` — used for compact
+    /// scoring tasks where verbose reasoning preamble must be suppressed.
+    async fn extract_compact<T>(&self, prompt: &str, max_tokens: u64) -> Result<T>
+    where
+        T: serde::de::DeserializeOwned + schemars::JsonSchema + Serialize + Send + Sync + 'static,
+    {
+        // Temporarily override max_tokens via a cloned reasoner options.
+        let mut opts_override = self.options.clone();
+        opts_override.max_tokens = Some(max_tokens);
+        let overridden = Reasoner {
+            provider: self.provider.clone(),
+            config: self.config.clone(),
+            options: opts_override,
+        };
+        overridden.extract::<T>(prompt).await
+    }
+
     /// Execute a completion request and extract structured output
     async fn extract<T>(&self, prompt: &str) -> Result<T>
     where
@@ -481,7 +498,7 @@ impl Reasoner {
                 debug!(
                     response_len = response.len(),
                     "Anthropic raw response (first 500 chars): {}",
-                    &response[..response.len().min(500)]
+                    response.chars().take(500).collect::<String>()
                 );
 
                 let json_str = extract_json_from_response(&response);
@@ -508,7 +525,7 @@ impl Reasoner {
                         warn!(
                             "Anthropic JSON parse failed: {}. Raw response: {}",
                             e,
-                            &json_str[..json_str.len().min(500)]
+                            json_str.chars().take(500).collect::<String>()
                         );
                         Err(ReasonError::Reasoning(format!(
                             "Failed to parse Anthropic JSON response: {}. Response was: {}",
@@ -953,49 +970,53 @@ Rules:
             ]);
         }
 
-        // Build a compact section list; cap each entry at 800 chars so the
-        // total prompt stays well under the context limit even for 20+ leaves.
+        // Build a compact section list; cap each entry at 120 chars to keep
+        // the total prompt small — the content is just a summary hint and
+        // doesn't need to be complete for relevance scoring.
         let sections: String = candidates
             .iter()
             .enumerate()
             .map(|(i, c)| {
-                let snippet: String = c.content.chars().take(800).collect();
-                format!("[{}]\n{}", i, snippet)
+                let snippet: String = c.content.chars().take(180).collect();
+                format!("[{}] {}", i, snippet)
             })
             .collect::<Vec<_>>()
-            .join("\n\n---\n\n");
+            .join("\n");
 
+        // Sparse-output format: only return sections with score >= 5 (moderate
+        // relevance). Score 5 means "contains relevant info", 7+ means "directly
+        // answers". Using 5 prevents false-negative misses on clause-embedded
+        // topics (e.g. hazardous activity exclusions, cancellation provisions).
         let prompt = format!(
-            r#"Score each numbered section for relevance to the query. Return JSON only.
+            r#"Score sections for relevance to the query. Return JSON only.
 
 Query: "{}"
 
 Sections:
 {}
 
-Return JSON with a score for every section:
-{{"results": [{{"index": 0, "is_relevant": true, "relevance_score": 8}}, {{"index": 1, "is_relevant": false, "relevance_score": 2}}, ...]}}
+Return ONLY sections with score >= 5:
+{{"relevant": [{{"index": 0, "score": 8}}, {{"index": 3, "score": 5}}]}}
 
 Rules:
-- is_relevant: true if the section directly answers the query OR provides key information needed to answer any part of it
-- relevance_score: INTEGER 1-10 (10 = comprehensive answer, 1 = completely unrelated)
-- You MUST include an entry for ALL {} sections (even irrelevant ones)
-- Keep reasoning implicit — scores only, no explanation text"#,
-            query,
-            sections,
-            candidates.len()
+- score: INTEGER 1-10 (10 = perfectly on-topic, 1 = completely unrelated)
+- Only list sections where score >= 5
+- Sections not listed are treated as irrelevant (score < 5)
+- Return empty array if nothing scores >= 5: {{"relevant": []}}"#,
+            query, sections,
         );
 
         debug!(
-            "Batch-verifying {} candidates for query: {}",
+            "Batch-verifying {} candidates (sparse output) for query: {}",
             candidates.len(),
             query
         );
 
-        let batch: crate::llm::BatchVerifyResponse = self.extract(&prompt).await?;
+        // Use compact mode (max 768 tokens) to prevent verbose reasoning text
+        // before the JSON — with threshold=5 more entries appear, ~30 tokens each.
+        let batch: crate::llm::BatchVerifyResponse = self.extract_compact(&prompt, 768).await?;
 
-        // Align results back to input positions; default to not-relevant for
-        // any index the LLM failed to return.
+        // Sparse response: unlisted = not relevant (confidence = 0).
         let mut out = vec![
             VerificationResult {
                 is_relevant: false,
@@ -1003,11 +1024,11 @@ Rules:
             };
             candidates.len()
         ];
-        for score in batch.results {
+        for score in batch.relevant {
             if score.index < out.len() {
                 let raw = VerificationResultRaw {
-                    is_relevant: score.is_relevant,
-                    relevance_score: score.relevance_score,
+                    is_relevant: score.score >= 5,
+                    relevance_score: score.score,
                 };
                 out[score.index] = raw.into();
             }
@@ -1112,6 +1133,74 @@ Return summaries for ALL {count} sections."#,
             .summaries
             .into_iter()
             .map(|item| (item.node_id, item.summary))
+            .collect())
+    }
+
+    async fn summarize_batch_with_refs(
+        &self,
+        items: &[(String, String, SummarizationContext)],
+    ) -> Result<Vec<(String, String, Vec<String>)>> {
+        if items.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        if items.len() == 1 {
+            let (id, content, ctx) = &items[0];
+            let summary = self.summarize(content, ctx).await?;
+            return Ok(vec![(id.clone(), summary, vec![])]);
+        }
+
+        info!(
+            provider = self.provider.provider_name(),
+            model = self.provider.model(),
+            batch_size = items.len(),
+            "LLM batch summarize+cross-ref request"
+        );
+
+        let nodes_formatted: String = items
+            .iter()
+            .map(|(node_id, content, ctx)| {
+                let truncated: String = content.chars().take(2000).collect();
+                let node_type = if ctx.is_leaf {
+                    "content"
+                } else {
+                    "section summaries"
+                };
+                let title = ctx.title.as_deref().unwrap_or("Untitled");
+                format!(
+                    "[node_id: \"{}\"] Title: \"{}\" ({})\n{}",
+                    node_id, title, node_type, truncated
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n---\n");
+
+        let prompt = format!(
+            r#"Summarize each section and identify any explicit cross-references to other sections.
+
+Sections:
+{nodes_formatted}
+
+Return a JSON object with a "summaries" array. Each element must have:
+- "node_id": the exact node_id from the section header
+- "summary": a 1-2 sentence summary covering topics, key facts, and what questions it answers
+- "references": list of verbatim cross-reference strings as they appear in the text
+  (e.g. "Section 10.2", "the Exclusions section", "Chapter 5", "Appendix A").
+  Copy the text EXACTLY as it appears. Use [] if no explicit references found.
+
+Only include EXPLICIT textual references (e.g. "see Section X", "refer to the Definitions clause") —
+NOT general topic overlaps. Return [] when a section has no such references.
+
+Return summaries for ALL {count} sections."#,
+            count = items.len()
+        );
+
+        let result: BatchSummaryResult = self.extract(&prompt).await?;
+
+        Ok(result
+            .summaries
+            .into_iter()
+            .map(|item| (item.node_id, item.summary, item.references))
             .collect())
     }
 

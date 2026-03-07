@@ -202,6 +202,11 @@ pub struct NodeMetadata {
 
     /// Custom key-value attributes
     pub attributes: HashMap<String, String>,
+
+    /// IDs of sibling nodes that this node references inline
+    /// (e.g., "see Section 3.2" detected during ingestion).
+    #[serde(default)]
+    pub cross_ref_node_ids: Vec<String>,
 }
 
 impl NodeMetadata {

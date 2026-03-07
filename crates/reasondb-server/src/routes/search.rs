@@ -3,6 +3,7 @@
 //! LLM-guided tree traversal search.
 
 use axum::{extract::State, Json};
+use futures::future::join_all;
 use reasondb_core::{
     engine::{SearchConfig, SearchEngine},
     llm::ReasoningEngine,
@@ -100,6 +101,21 @@ pub struct SearchResult {
     /// Confidence score (0.0 to 1.0)
     #[schema(example = 0.85)]
     pub confidence: f32,
+
+    /// Sibling sections that this result node explicitly references inline
+    /// (resolved from cross-section references detected during ingestion).
+    pub cross_ref_sections: Vec<CrossRefSectionResponse>,
+}
+
+/// A sibling section referenced inline by a search result node.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CrossRefSectionResponse {
+    /// Node ID of the referenced section
+    pub node_id: String,
+    /// Title of the referenced section
+    pub title: String,
+    /// Content of the referenced section
+    pub content: String,
 }
 
 /// Node in the traversal path
@@ -204,14 +220,36 @@ pub async fn search<R: ReasoningEngine + Send + Sync + 'static>(
             .find_documents(&filter)
             .map_err(|e| ApiError::StorageError(e.to_string()))?;
 
+        // Search all matching documents in parallel — avoids sequential
+        // per-document tree traversal which multiplies latency by doc count.
+        let futures: Vec<_> = documents
+            .iter()
+            .map(|doc| {
+                let engine = engine.clone();
+                let query = request.query.clone();
+                let doc_id = doc.id.clone();
+                async move {
+                    engine
+                        .search_document(&query, &doc_id)
+                        .await
+                        .map_err(|e| ApiError::SearchError(e.to_string()))
+                }
+            })
+            .collect();
+
+        let responses = join_all(futures).await;
+
         let mut all_results = Vec::new();
-        for doc in documents {
-            let doc_response = engine
-                .search_document(&request.query, &doc.id)
-                .await
-                .map_err(|e| ApiError::SearchError(e.to_string()))?;
-            all_results.extend(doc_response.results);
+        for resp in responses {
+            all_results.extend(resp?.results);
         }
+
+        // Sort by confidence descending so the best results surface first
+        all_results.sort_by(|a, b| {
+            b.confidence
+                .partial_cmp(&a.confidence)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Apply limit
         if let Some(limit) = request.limit {
@@ -262,6 +300,15 @@ pub async fn search<R: ReasoningEngine + Send + Sync + 'static>(
                     .collect(),
                 content: r.content,
                 confidence: r.confidence,
+                cross_ref_sections: r
+                    .cross_ref_sections
+                    .into_iter()
+                    .map(|s| CrossRefSectionResponse {
+                        node_id: s.node_id,
+                        title: s.title,
+                        content: s.content,
+                    })
+                    .collect(),
             }
         })
         .collect();

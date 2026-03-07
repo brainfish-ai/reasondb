@@ -59,6 +59,20 @@ pub struct SearchResult {
     pub path: Vec<String>,
     /// The reasoning trace showing decisions made
     pub reasoning_trace: Vec<ReasoningStep>,
+    /// Sibling sections that this node explicitly references inline
+    /// (resolved from cross_ref_node_ids stored during ingestion).
+    pub cross_ref_sections: Vec<CrossRefSection>,
+}
+
+/// A sibling section that was referenced inline by a search result node.
+#[derive(Debug, Clone)]
+pub struct CrossRefSection {
+    /// Node ID of the referenced section
+    pub node_id: String,
+    /// Title of the referenced section
+    pub title: String,
+    /// Full content of the referenced section
+    pub content: String,
 }
 
 /// A step in the reasoning trace
@@ -101,6 +115,16 @@ pub struct SearchEngine<R: ReasoningEngine + 'static> {
     store: Arc<NodeStore>,
     reasoner: Arc<R>,
     config: SearchConfig,
+}
+
+impl<R: ReasoningEngine + 'static> Clone for SearchEngine<R> {
+    fn clone(&self) -> Self {
+        Self {
+            store: Arc::clone(&self.store),
+            reasoner: Arc::clone(&self.reasoner),
+            config: self.config.clone(),
+        }
+    }
 }
 
 impl<R: ReasoningEngine + 'static> SearchEngine<R> {
@@ -184,6 +208,85 @@ impl<R: ReasoningEngine + 'static> SearchEngine<R> {
         let cancel = Arc::new(AtomicBool::new(false));
         self.search_document_with_cancel(query, document_id, cancel)
             .await
+    }
+
+    /// Fast-path: verify pre-selected BM25 node hits directly without tree traversal.
+    ///
+    /// `bm25_hits` is a list of `(node_id, bm25_score)` pairs already sorted
+    /// descending by BM25 score from Phase 1.  We load the actual nodes, then
+    /// run `batch_verify_nodes` on them.  This avoids the expensive
+    /// `decide_next_step` call for flat documents where BM25 already identified
+    /// the relevant leaf nodes.
+    pub async fn verify_bm25_hits(
+        &self,
+        query: &str,
+        document_id: &str,
+        bm25_hits: Vec<(String, f32)>,
+        cancel: Arc<AtomicBool>,
+    ) -> Result<SearchResponse> {
+        if cancel.load(Ordering::Relaxed) || bm25_hits.is_empty() {
+            return Ok(SearchResponse {
+                results: Vec::new(),
+                stats: TraversalStats::default(),
+            });
+        }
+
+        // Load the actual PageNodes for each BM25 hit.
+        let mut nodes: Vec<PageNode> = Vec::with_capacity(bm25_hits.len());
+        for (node_id, _score) in &bm25_hits {
+            if let Ok(Some(node)) = self.store.get_node(node_id) {
+                // Only include nodes belonging to this document.
+                if node.document_id == document_id {
+                    nodes.push(node);
+                }
+            }
+        }
+
+        if nodes.is_empty() {
+            // BM25 hits don't map to loadable nodes — fall back to tree traversal.
+            return self
+                .search_document_with_cancel(query, document_id, cancel)
+                .await;
+        }
+
+        let results = Arc::new(Mutex::new(Vec::new()));
+        let stats = Arc::new(Mutex::new(TraversalStats {
+            nodes_visited: nodes.len(),
+            ..Default::default()
+        }));
+
+        self.batch_verify_nodes(
+            query,
+            &nodes,
+            vec![],
+            vec![],
+            results.clone(),
+            stats.clone(),
+            cancel,
+        )
+        .await?;
+
+        let mut final_results = results.lock().await.clone();
+        let final_stats = stats.lock().await.clone();
+
+        final_results.sort_by(|a, b| {
+            b.confidence
+                .partial_cmp(&a.confidence)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        final_results.truncate(self.config.max_results);
+
+        info!(
+            "BM25 fast-path: {} hits → {} relevant for doc {}",
+            bm25_hits.len(),
+            final_results.len(),
+            document_id
+        );
+
+        Ok(SearchResponse {
+            results: final_results,
+            stats: final_stats,
+        })
     }
 
     /// Search a document with a shared cancellation flag.
@@ -352,9 +455,13 @@ impl<R: ReasoningEngine + 'static> SearchEngine<R> {
 
             // If every remaining candidate is a leaf node we can skip
             // decide_next_step entirely and verify them directly in one batch
-            // call.  Cap at MAX_LEAF_DIRECT to keep prompt size reasonable.
-            const MAX_LEAF_DIRECT: usize = 30;
-            if candidates.len() <= MAX_LEAF_DIRECT
+            // call. batch_verify_nodes internally caps at 30 highest-signal
+            // candidates, so prompt size stays bounded regardless of how many
+            // candidates there are.
+            //
+            // Guard: leaf children live at depth+1, so only verify them when
+            // that level is still within the configured max depth.
+            if depth < self.config.max_depth
                 && candidates.iter().all(|c| {
                     children
                         .iter()
@@ -384,6 +491,45 @@ impl<R: ReasoningEngine + 'static> SearchEngine<R> {
                 return Ok(());
             }
 
+            // Cap candidates passed to decide_next_step to keep the prompt
+            // small. Sort by keyword-match count (highest first) so the most
+            // relevant nodes appear regardless of document order.  Non-leaf
+            // nodes (tree branches) are given a bonus to ensure they are
+            // included for deeper traversal.
+            const MAX_DECIDE_CANDIDATES: usize = 30;
+            let capped_candidates: Vec<NodeSummary> = if candidates.len() > MAX_DECIDE_CANDIDATES {
+                let mut scored: Vec<(NodeSummary, usize)> = candidates
+                    .into_iter()
+                    .map(|c| {
+                        let kw_score = if query_terms.is_empty() {
+                            0
+                        } else {
+                            query_terms
+                                .iter()
+                                .filter(|t| c.summary.contains(t.as_str()))
+                                .count()
+                        };
+                        // Give non-leaf nodes a +100 bonus so they're always
+                        // preferred over leaf nodes in the decide_next_step list.
+                        let is_leaf = children
+                            .iter()
+                            .find(|n| n.id == c.id)
+                            .map(|n| n.is_leaf())
+                            .unwrap_or(true);
+                        let total_score = kw_score + if is_leaf { 0 } else { 100 };
+                        (c, total_score)
+                    })
+                    .collect();
+                scored.sort_by(|a, b| b.1.cmp(&a.1));
+                scored
+                    .into_iter()
+                    .take(MAX_DECIDE_CANDIDATES)
+                    .map(|(c, _)| c)
+                    .collect()
+            } else {
+                candidates
+            };
+
             // Increment LLM call count
             {
                 let mut s = stats.lock().await;
@@ -392,7 +538,7 @@ impl<R: ReasoningEngine + 'static> SearchEngine<R> {
 
             let decisions = self
                 .reasoner
-                .decide_next_step(query, &context, &candidates, effective_beam)
+                .decide_next_step(query, &context, &capped_candidates, effective_beam)
                 .await?;
 
             // Filter by confidence threshold
@@ -443,9 +589,12 @@ impl<R: ReasoningEngine + 'static> SearchEngine<R> {
             // LLM call instead of recursing into verify_leaf individually.
             // This is the primary call-count reduction: N leaf verifications
             // collapse from N calls → 1 call per `decide_next_step` result.
+            //
+            // Guard: same depth constraint as above — leaf children are at
+            // depth+1, so skip when that would exceed max_depth.
             let all_selected_are_leaves = traces.iter().all(|(node, _)| node.is_leaf());
 
-            if all_selected_are_leaves && !traces.is_empty() {
+            if depth < self.config.max_depth && all_selected_are_leaves && !traces.is_empty() {
                 debug!(
                     "All {} selected node(s) are leaves — batch-verifying in one call",
                     traces.len()
@@ -548,9 +697,9 @@ impl<R: ReasoningEngine + 'static> SearchEngine<R> {
         // LLM round-trip for clearly irrelevant leaf nodes.
         let query_terms = extract_query_terms(query);
         if !query_terms.is_empty() {
-            let content_head = &raw_content[..raw_content.len().min(500)];
+            let content_head: String = raw_content.chars().take(500).collect();
             if !has_any_term(&node.summary, &query_terms)
-                && !has_any_term(content_head, &query_terms)
+                && !has_any_term(&content_head, &query_terms)
             {
                 debug!(
                     "Leaf '{}' has no keyword overlap — skipping verify_answer",
@@ -587,6 +736,7 @@ impl<R: ReasoningEngine + 'static> SearchEngine<R> {
         );
 
         if verification.is_relevant && verification.confidence >= self.config.min_confidence {
+            let cross_ref_sections = self.resolve_cross_refs(node);
             let result = SearchResult {
                 node_id: node.id.clone(),
                 title: node.title.clone(),
@@ -595,6 +745,7 @@ impl<R: ReasoningEngine + 'static> SearchEngine<R> {
                 confidence: verification.confidence,
                 path,
                 reasoning_trace,
+                cross_ref_sections,
             };
 
             results.lock().await.push(result);
@@ -623,41 +774,24 @@ impl<R: ReasoningEngine + 'static> SearchEngine<R> {
             return Ok(());
         }
 
-        // Keyword pre-filter each candidate before building the LLM prompt.
-        let query_terms = extract_query_terms(query);
-        let filtered: Vec<&PageNode> = nodes
-            .iter()
-            .filter(|n| {
-                if query_terms.is_empty() {
-                    return true;
-                }
-                let raw = n.get_content();
-                let head = &raw[..raw.len().min(500)];
-                has_any_term(&n.summary, &query_terms) || has_any_term(head, &query_terms)
-            })
-            .collect();
+        // Nodes arrive pre-ranked by BM25 score (from verify_bm25_hits) or by
+        // tree position (from the decide_next_step fallback path). We cap at
+        // MAX_BATCH_INPUTS to bound prompt size; callers are responsible for
+        // passing the most relevant nodes first.
+        const MAX_BATCH_INPUTS: usize = 25;
+        let top: Vec<&PageNode> = nodes.iter().take(MAX_BATCH_INPUTS).collect();
 
-        if filtered.is_empty() {
-            debug!(
-                "batch_verify_nodes: all {} nodes filtered by keyword check",
-                nodes.len()
-            );
-            return Ok(());
-        }
-
-        // Build BatchVerifyInput for each remaining candidate.
-        // Use summary-only content (capped at 400 chars) to keep prompt size
-        // small — this cuts ~60% of input tokens vs sending full raw content.
-        // Full content is still returned in SearchResult; only the scoring
-        // prompt is condensed.
-        let inputs: Vec<BatchVerifyInput> = filtered
+        // Build BatchVerifyInput using summary-only content (200 chars max).
+        // Full content is still returned in SearchResult; only scoring uses the
+        // condensed version to keep prompt tokens low.
+        let inputs: Vec<BatchVerifyInput> = top
             .iter()
             .map(|n| {
                 let raw = n.get_content();
                 let content: String = if !n.summary.is_empty() {
-                    n.summary.chars().take(400).collect()
+                    n.summary.chars().take(200).collect()
                 } else {
-                    raw.chars().take(300).collect()
+                    raw.chars().take(180).collect()
                 };
                 BatchVerifyInput {
                     node_id: n.id.clone(),
@@ -666,7 +800,7 @@ impl<R: ReasoningEngine + 'static> SearchEngine<R> {
             })
             .collect();
 
-        // Single LLM call for the whole batch.
+        // Single LLM call for the whole batch (sparse-output format).
         {
             let mut s = stats.lock().await;
             s.llm_calls += 1;
@@ -674,15 +808,16 @@ impl<R: ReasoningEngine + 'static> SearchEngine<R> {
 
         let verifications = self.reasoner.batch_verify_answers(query, &inputs).await?;
 
-        // Align results with the filtered node list.
+        // Align results with the top-N node list.
         let min_conf = self.config.min_confidence;
-        for (node, verification) in filtered.iter().zip(verifications.iter()) {
+        for (node, verification) in top.iter().zip(verifications.iter()) {
             debug!(
                 "Batch-verify '{}': relevant={} conf={}",
                 node.title, verification.is_relevant, verification.confidence
             );
             if verification.is_relevant && verification.confidence >= min_conf {
                 let raw = node.get_content();
+                let cross_ref_sections = self.resolve_cross_refs(node);
                 let result = SearchResult {
                     node_id: node.id.clone(),
                     title: node.title.clone(),
@@ -690,12 +825,36 @@ impl<R: ReasoningEngine + 'static> SearchEngine<R> {
                     confidence: verification.confidence,
                     path: path.clone(),
                     reasoning_trace: reasoning_trace.clone(),
+                    cross_ref_sections,
                 };
                 results.lock().await.push(result);
             }
         }
 
         Ok(())
+    }
+
+    /// Resolve `node.metadata.cross_ref_node_ids` to `CrossRefSection` values
+    /// by fetching each referenced node from the store.
+    ///
+    /// IDs that no longer exist in the store are silently skipped so that
+    /// stale references after a document update don't cause errors.
+    fn resolve_cross_refs(&self, node: &PageNode) -> Vec<CrossRefSection> {
+        node.metadata
+            .cross_ref_node_ids
+            .iter()
+            .filter_map(|id| {
+                self.store
+                    .get_node(id)
+                    .ok()
+                    .flatten()
+                    .map(|ref_node| CrossRefSection {
+                        node_id: ref_node.id.clone(),
+                        title: ref_node.title.clone(),
+                        content: ref_node.get_content().to_string(),
+                    })
+            })
+            .collect()
     }
 }
 
