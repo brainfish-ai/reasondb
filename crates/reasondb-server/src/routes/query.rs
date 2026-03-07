@@ -503,7 +503,7 @@ async fn execute_select_query<R: ReasoningEngine + Send + Sync + 'static>(
                 },
                 aggregates: None,
                 explain: None,
-                trace_id: None,
+                trace_id: cached.trace_id.clone(),
             })
         } else {
             let result = state
@@ -551,6 +551,7 @@ async fn execute_select_query<R: ReasoningEngine + Send + Sync + 'static>(
                 matches: cached_matches,
                 cached_at: Instant::now(),
                 llm_calls_saved: result.stats.llm_calls,
+                trace_id: result.trace_id.clone(),
             };
 
             state
@@ -686,7 +687,7 @@ pub async fn execute_query_stream<R: ReasoningEngine + Clone + Send + Sync + 'st
                 },
                 aggregates: None,
                 explain: None,
-                trace_id: None,
+                trace_id: cached.trace_id.clone(),
             };
             let response = apply_projection(result.into(), &query.select);
             let event = Event::default()
@@ -772,6 +773,7 @@ pub async fn execute_query_stream<R: ReasoningEngine + Clone + Send + Sync + 'st
                             matches: cached_matches,
                             cached_at: Instant::now(),
                             llm_calls_saved: result.stats.llm_calls,
+                            trace_id: result.trace_id.clone(),
                         };
                         let q = cache_entry.query.clone();
                         let t = cache_entry.table_id.clone();

@@ -217,6 +217,7 @@ export default function QueryEditor({ onExecute, tabId, initialQuery = '', onQue
               rows: result.rows || [],
               rowCount: result.rowCount || result.rows?.length || 0,
               executionTime,
+              traceId: result.traceId,
             })
 
             addToHistory({
