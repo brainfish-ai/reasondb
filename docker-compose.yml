@@ -18,6 +18,8 @@ services:
       REASONDB_LLM_API_KEY: "${REASONDB_LLM_API_KEY:-}"
       REASONDB_MODEL: "${REASONDB_MODEL:-}"
       REASONDB_LLM_BASE_URL: "${REASONDB_LLM_BASE_URL:-}"
+      # Chunking strategy: "agentic" (LLM-guided, default) or "markdown_aware" (deterministic)
+      REASONDB_CHUNK_STRATEGY: "${REASONDB_CHUNK_STRATEGY:-agentic}"
       REASONDB_RATE_LIMIT_RPM: "300"
       REASONDB_RATE_LIMIT_RPH: "5000"
       REASONDB_RATE_LIMIT_BURST: "30"

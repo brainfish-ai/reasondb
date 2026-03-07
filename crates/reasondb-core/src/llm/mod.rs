@@ -173,6 +173,24 @@ pub struct DomainVocabResult {
     pub terms: Vec<String>,
 }
 
+/// A single chunk group identified by the LLM during agentic chunking.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ChunkGroup {
+    /// 1-based start line number (inclusive)
+    pub start_line: usize,
+    /// 1-based end line number (inclusive)
+    pub end_line: usize,
+    /// Optional heading / topic label for this group
+    pub heading: Option<String>,
+}
+
+/// Structured LLM response for agentic document chunking.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ChunkGroupResult {
+    /// Contiguous, non-overlapping groups that cover all lines
+    pub groups: Vec<ChunkGroup>,
+}
+
 /// One leaf node to score in a batch verification call.
 #[derive(Debug, Clone)]
 pub struct BatchVerifyInput {
@@ -441,6 +459,33 @@ pub trait ReasoningEngine: Send + Sync {
         _existing_vocab: &[String],
     ) -> Result<Vec<String>> {
         Ok(vec![])
+    }
+
+    /// Agentic chunking: ask the LLM to divide numbered document lines into
+    /// semantically coherent groups.
+    ///
+    /// For large documents the caller should pass a sliding window of lines and
+    /// call this method per window, then merge the results. The default
+    /// implementation returns a single group spanning all lines (i.e. no-op),
+    /// which causes the pipeline to fall back to `MarkdownAware` chunking.
+    ///
+    /// # Arguments
+    ///
+    /// * `lines` - All (or a window of) document lines
+    /// * `window_offset` - 1-based line number of `lines[0]` in the full document
+    async fn chunk_document(
+        &self,
+        lines: &[String],
+        window_offset: usize,
+    ) -> Result<ChunkGroupResult> {
+        let end = window_offset + lines.len().saturating_sub(1);
+        Ok(ChunkGroupResult {
+            groups: vec![ChunkGroup {
+                start_line: window_offset,
+                end_line: end,
+                heading: None,
+            }],
+        })
     }
 
     /// Get the name of this reasoning engine (for logging/debugging)

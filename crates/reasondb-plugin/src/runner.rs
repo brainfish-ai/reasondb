@@ -79,9 +79,18 @@ impl PluginRunner {
 
         // Write request to stdin and close it (signals EOF to the plugin).
         if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(request_json.as_bytes()).map_err(|e| {
-                PluginError::Invocation(format!("Failed to write to plugin stdin: {}", e))
-            })?;
+            // Ignore broken-pipe errors: the child may have already exited before
+            // reading stdin (e.g. due to a startup error).  We still want to fall
+            // through and inspect the exit status, which surfaces the real error.
+            if let Err(e) = stdin.write_all(request_json.as_bytes()) {
+                if e.kind() != std::io::ErrorKind::BrokenPipe {
+                    return Err(PluginError::Invocation(format!(
+                        "Failed to write to plugin stdin: {}",
+                        e
+                    )));
+                }
+                warn!(plugin = %manifest.name, "Broken pipe writing to plugin stdin (child likely exited early)");
+            }
             // stdin dropped here → EOF
         }
 

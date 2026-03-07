@@ -19,9 +19,10 @@ use serde::Serialize;
 use tracing::{debug, error, info, warn};
 
 use super::{
-    BatchSummaryResult, DecomposedQueryResult, DocumentRanking, DocumentRankings, DocumentSummary,
-    DomainVocabResult, NodeSummary, ReasoningConfig, ReasoningEngine, SummarizationContext,
-    TraversalDecision, TraversalDecisions, VerificationResult, VerificationResultRaw,
+    BatchSummaryResult, ChunkGroup, ChunkGroupResult, DecomposedQueryResult, DocumentRanking,
+    DocumentRankings, DocumentSummary, DomainVocabResult, NodeSummary, ReasoningConfig,
+    ReasoningEngine, SummarizationContext, TraversalDecision, TraversalDecisions,
+    VerificationResult, VerificationResultRaw,
 };
 use crate::error::{ReasonError, Result};
 use crate::query_decomposer::{DomainContext, SubQuery};
@@ -1386,6 +1387,69 @@ Return JSON:
         });
 
         Ok(result.terms)
+    }
+
+    async fn chunk_document(
+        &self,
+        lines: &[String],
+        window_offset: usize,
+    ) -> Result<ChunkGroupResult> {
+        if lines.is_empty() {
+            return Ok(ChunkGroupResult { groups: vec![] });
+        }
+
+        let end_line = window_offset + lines.len() - 1;
+
+        let numbered_lines: String = lines
+            .iter()
+            .enumerate()
+            .map(|(i, line)| format!("{}: {}", window_offset + i, line))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let prompt = format!(
+            r#"You are a document chunking assistant. Analyze the following numbered lines of text and group them into semantically coherent chunks.
+
+Rules:
+- Each chunk must cover a single topic, concept, or logical section
+- Chunks must be self-contained and meaningful on their own
+- Respect natural topic boundaries — do NOT split a topic across chunks
+- Aim for chunks of 10–60 lines; avoid very short (< 5 lines) or very long (> 100 lines) groups
+- Groups must be contiguous, non-overlapping, and together cover ALL lines from {window_offset} to {end_line}
+
+Lines:
+{numbered_lines}
+
+Return JSON exactly:
+{{"groups": [{{"start_line": 1, "end_line": 23, "heading": "Introduction"}}, ...]}}
+
+- "start_line" and "end_line" are the EXACT line numbers shown above (1-based)
+- "heading" is a short descriptive label (3–8 words) for the chunk's main topic
+- Every line from {window_offset} to {end_line} must be covered exactly once"#,
+        );
+
+        debug!(
+            "Agentic chunking: {} lines (offset {}–{})",
+            lines.len(),
+            window_offset,
+            end_line
+        );
+
+        let result: ChunkGroupResult = self.extract(&prompt).await.unwrap_or_else(|e| {
+            warn!(
+                "Agentic chunking LLM call failed (falling back to single group): {}",
+                e
+            );
+            ChunkGroupResult {
+                groups: vec![ChunkGroup {
+                    start_line: window_offset,
+                    end_line,
+                    heading: None,
+                }],
+            }
+        });
+
+        Ok(result)
     }
 
     fn name(&self) -> &str {

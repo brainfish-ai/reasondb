@@ -31,11 +31,11 @@ import type {
 // ==================== Constants ====================
 
 const PHASE_COLORS: Record<number, { border: string; text: string; bar: string }> = {
-  0: { border: "border-l-gray-400",   text: "text-gray-500",   bar: "bg-gray-400"   },
-  1: { border: "border-l-purple-400", text: "text-purple-600", bar: "bg-purple-400" },
-  2: { border: "border-l-blue-400",   text: "text-blue-600",   bar: "bg-blue-400"   },
-  3: { border: "border-l-orange-400", text: "text-orange-500", bar: "bg-orange-400" },
-  4: { border: "border-l-green-500",  text: "text-green-600",  bar: "bg-green-500"  },
+  0: { border: "border-l-gray-500",    text: "text-gray-600",    bar: "bg-gray-500"    },
+  1: { border: "border-l-violet-600",  text: "text-violet-700",  bar: "bg-violet-600"  },
+  2: { border: "border-l-blue-600",    text: "text-blue-700",    bar: "bg-blue-600"    },
+  3: { border: "border-l-amber-600",   text: "text-amber-700",   bar: "bg-amber-600"   },
+  4: { border: "border-l-emerald-600", text: "text-emerald-700", bar: "bg-emerald-600" },
 }
 
 // ==================== Utilities ====================
@@ -56,7 +56,7 @@ function CountBar({ count, max, colorClass }: { count: number; max: number; colo
   return (
     <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden mx-3">
       <div
-        className={cn("h-full rounded-full transition-all opacity-50", colorClass)}
+        className={cn("h-full rounded-full transition-all", colorClass)}
         style={{ width: `${w}%` }}
       />
     </div>
@@ -65,7 +65,7 @@ function CountBar({ count, max, colorClass }: { count: number; max: number; colo
 
 function Chip({ value, fmt = "pct" }: { value: number; fmt?: "pct" | "score" }) {
   const pct = value * 100
-  const color = pct >= 70 ? "text-green-600" : pct >= 40 ? "text-yellow-600" : "text-gray-400"
+  const color = pct >= 70 ? "text-emerald-700" : pct >= 40 ? "text-amber-700" : "text-gray-500"
   return (
     <span className={cn("font-mono text-[10px] tabular-nums", color)}>
       {fmt === "pct" ? confPct(value) : value.toFixed(2)}
@@ -419,11 +419,11 @@ function BeamChildren({ trace }: { trace: QueryTrace }) {
 
 function FunnelStrip({ trace }: { trace: QueryTrace }) {
   const stages = [
-    { label: "Candidates", count: trace.bm25_selection.total_candidates, color: "bg-purple-400" },
-    { label: "Structural", count: trace.structural_filter.filtered_count, color: "bg-blue-400" },
-    { label: "Ranked",     count: trace.llm_ranking.selected_count,       color: "bg-yellow-400" },
-    { label: "Beam",       count: trace.beam_reasoning.documents_processed, color: "bg-green-500" },
-    { label: "Results",    count: trace.final_results.length,              color: "bg-teal-500" },
+    { label: "Candidates", count: trace.bm25_selection.total_candidates,    color: "bg-violet-600" },
+    { label: "Structural", count: trace.structural_filter.filtered_count,  color: "bg-blue-600"   },
+    { label: "Ranked",     count: trace.llm_ranking.selected_count,        color: "bg-amber-600"  },
+    { label: "Beam",       count: trace.beam_reasoning.documents_processed, color: "bg-emerald-600" },
+    { label: "Results",    count: trace.final_results.length,              color: "bg-teal-600"   },
   ]
   const max = stages[0].count || 1
 
@@ -437,7 +437,7 @@ function FunnelStrip({ trace }: { trace: QueryTrace }) {
           <div key={i} className="flex items-center gap-px">
             <div className="flex flex-col items-start gap-0.5" title={`${s.label}: ${s.count}`}>
               <div
-                className={cn("h-4 rounded-sm transition-all min-w-[4px] opacity-50", s.color)}
+                className={cn("h-4 rounded-sm transition-all min-w-[4px]", s.color)}
                 style={{ width: `${Math.max(w * 0.8, 4)}px` }}
               />
               <span className="text-[9px] font-mono tabular-nums text-gray-400 whitespace-nowrap">

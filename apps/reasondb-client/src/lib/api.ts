@@ -559,17 +559,21 @@ export interface QueryTraceSummary {
 }
 
 // Ingestion
+export type ChunkStrategy = 'agentic' | 'markdown_aware'
+
 export interface IngestTextRequest {
   title: string
   content: string
   generate_summaries?: boolean
   tags?: string[]
   metadata?: Record<string, unknown>
+  chunk_strategy?: ChunkStrategy
 }
 
 export interface IngestUrlRequest {
   url: string
   generate_summaries?: boolean
+  chunk_strategy?: ChunkStrategy
 }
 
 export interface IngestStats {

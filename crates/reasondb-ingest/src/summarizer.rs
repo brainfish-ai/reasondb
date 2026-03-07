@@ -11,6 +11,7 @@ use tracing::{debug, info, warn};
 
 use reasondb_core::llm::{ReasoningEngine, SummarizationContext};
 use reasondb_core::model::PageNode;
+use reasondb_core::NodeStore;
 
 use crate::error::{IngestError, Result};
 
@@ -228,10 +229,15 @@ impl MockSummarizer {
 /// per depth level. Bottom-up ordering is preserved so parent nodes
 /// always have access to child summaries. Within each depth level, all
 /// batches are dispatched concurrently (bounded by `max_concurrent`).
+///
+/// When `node_store` is set, each depth level's results are flushed to the
+/// database immediately after completion so that a server restart can
+/// resume from the last completed depth level.
 pub struct BatchSummarizer<'a, R: ReasoningEngine> {
     reasoner: &'a R,
     batch_size: usize,
     max_concurrent: usize,
+    node_store: Option<Arc<NodeStore>>,
 }
 
 impl<'a, R: ReasoningEngine> BatchSummarizer<'a, R> {
@@ -243,7 +249,15 @@ impl<'a, R: ReasoningEngine> BatchSummarizer<'a, R> {
             reasoner,
             batch_size,
             max_concurrent: max_concurrent.max(1),
+            node_store: None,
         }
+    }
+
+    /// Attach a node store so that summaries are flushed to the DB after each
+    /// depth-level batch, enabling resume on server restart.
+    pub fn with_store(mut self, store: Arc<NodeStore>) -> Self {
+        self.node_store = Some(store);
+        self
     }
 
     /// Summarize all nodes in a document tree using batched LLM requests.
@@ -376,6 +390,8 @@ impl<'a, R: ReasoningEngine> BatchSummarizer<'a, R> {
             }
 
             // Collect results and write summaries + resolved cross-refs back.
+            // Track which node indices were updated this depth level for the flush.
+            let mut updated_indices: Vec<usize> = Vec::new();
             while let Some(result) = futures.next().await {
                 let (idx_map, result_map) = result?;
                 for (idx, node_id) in idx_map {
@@ -395,7 +411,19 @@ impl<'a, R: ReasoningEngine> BatchSummarizer<'a, R> {
                     } else {
                         nodes[idx].summary = format!("Section: {}", nodes[idx].title);
                     }
+                    updated_indices.push(idx);
                 }
+            }
+
+            // Checkpoint: flush this depth level's summaries to DB so a restart
+            // can resume from the last completed depth rather than from scratch.
+            if let Some(store) = &self.node_store {
+                for idx in updated_indices {
+                    if let Err(e) = store.update_node(&nodes[idx]) {
+                        warn!("Checkpoint flush failed for node {}: {}", nodes[idx].id, e);
+                    }
+                }
+                debug!("Checkpoint: flushed depth-{} summaries to DB", depth);
             }
         }
 

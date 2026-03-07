@@ -84,6 +84,9 @@ pub struct IngestTextRequest {
     pub tags: Option<Vec<String>>,
     #[serde(default)]
     pub metadata: Option<std::collections::HashMap<String, serde_json::Value>>,
+    /// Chunking strategy override: "agentic" or "markdown_aware"
+    #[serde(default)]
+    pub chunk_strategy: Option<String>,
 }
 
 /// Body for table-scoped text ingestion (table name comes from the URL path)
@@ -106,6 +109,10 @@ pub struct IngestTextBody {
     #[serde(default)]
     #[schema(example = json!({"contract_type": "nda", "value_usd": 50000}))]
     pub metadata: Option<std::collections::HashMap<String, serde_json::Value>>,
+    /// Chunking strategy: "agentic" (default) or "markdown_aware"
+    #[serde(default)]
+    #[schema(example = "agentic")]
+    pub chunk_strategy: Option<String>,
 }
 
 /// Internal job-queue payload for URL ingestion.
@@ -117,6 +124,9 @@ pub struct IngestUrlRequest {
     pub table_id: String,
     #[serde(default)]
     pub generate_summaries: Option<bool>,
+    /// Chunking strategy override: "agentic" or "markdown_aware"
+    #[serde(default)]
+    pub chunk_strategy: Option<String>,
 }
 
 /// Body for table-scoped URL ingestion (table name comes from the URL path)
@@ -128,6 +138,10 @@ pub struct IngestUrlBody {
     /// Whether to generate LLM summaries (default: true)
     #[serde(default)]
     pub generate_summaries: Option<bool>,
+    /// Chunking strategy: "agentic" (default) or "markdown_aware"
+    #[serde(default)]
+    #[schema(example = "agentic")]
+    pub chunk_strategy: Option<String>,
 }
 
 /// Core file ingestion logic — saves the upload to a persistent temp path, enqueues an
@@ -173,6 +187,7 @@ async fn ingest_file_inner<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         generate_summaries: Some(state.config.generate_summaries),
         tags: None,
         metadata: None,
+        chunk_strategy: None,
     };
 
     let enqueued_id = state
@@ -337,6 +352,7 @@ pub async fn ingest_text_for_table<R: ReasoningEngine + Clone + Send + Sync + 's
             generate_summaries: body.generate_summaries,
             tags: body.tags,
             metadata: body.metadata,
+            chunk_strategy: body.chunk_strategy,
         },
     )
     .await
@@ -361,6 +377,10 @@ pub struct BatchIngestItem {
     /// Custom metadata (key-value pairs)
     #[serde(default)]
     pub metadata: Option<std::collections::HashMap<String, serde_json::Value>>,
+    /// Chunking strategy: "agentic" (default) or "markdown_aware"
+    #[serde(default)]
+    #[schema(example = "agentic")]
+    pub chunk_strategy: Option<String>,
 }
 
 /// Body for table-scoped batch ingestion (table name comes from the URL path)
@@ -426,6 +446,7 @@ async fn ingest_batch_inner<R: ReasoningEngine + Clone + Send + Sync + 'static>(
             generate_summaries: item.generate_summaries,
             tags: item.tags,
             metadata: item.metadata,
+            chunk_strategy: item.chunk_strategy,
         };
 
         let job_id = state
@@ -542,6 +563,7 @@ pub async fn ingest_url_for_table<R: ReasoningEngine + Clone + Send + Sync + 'st
             url: body.url,
             table_id: table_name,
             generate_summaries: body.generate_summaries,
+            chunk_strategy: body.chunk_strategy,
         },
     )
     .await

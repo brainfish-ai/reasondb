@@ -47,9 +47,7 @@
 
 <br>
 
-<p align="center">
-    <img width="100%" src="./assets/ReasonDB_DEMO.gif" alt="ReasonDB Demo">
-</p>
+<video src="./assets/ReasonDB_Client_Demo.mp4" controls width="100%"></video>
 
 <br>
 
@@ -74,6 +72,7 @@ ReasonDB introduces **Hierarchical Reasoning Retrieval (HRR)**, a fundamentally 
 - [What is ReasonDB?](#what-is-reasondb)
 - [The Problem](#the-problem)
 - [Benchmark](#benchmark)
+- [Insurance Policy Analyser — Live Demo](#insurance-policy-analyser--live-demo)
 - [How It Works](#how-it-works)
 - [Quick Start](#quick-start)
 - [Query with RQL](#query-with-rql)
@@ -134,6 +133,14 @@ ReasonDB detects and follows **intra-document cross-references** during ingestio
 | Avg recall, primary content only | 62% |
 | Avg recall, primary + cross-refs | **80%** (+18 pp) |
 | Example gain | Recurrent disability query: 67% → **100%** once cross-referenced policy schedule clause is included |
+
+### Insurance Policy Analyser — Live Demo
+
+The benchmark above is powered by this tutorial app. It queries four AIA insurance policy documents using `REASON` and shows the full traversal trace — which nodes the LLM visited, why it selected them, and how it synthesized the final answer.
+
+<video src="./assets/Insurance_Policy_Analyser_Demo.mp4" controls width="100%"></video>
+
+> Full tutorial source: [`tutorials/06-insurance/`](./tutorials/06-insurance/)
 
 <h2>How It Works</h2>
 

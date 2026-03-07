@@ -194,7 +194,7 @@ export function TableBrowser() {
         apiKey: activeConnection.apiKey,
         useSsl: activeConnection.ssl,
       })
-      await client.deleteTable(deletingTable.id)
+      await client.deleteTable(deletingTable.id, true)
       deleteTableFromStore(deletingTable.id)
       setDeletingTable(null)
     } catch (err) {

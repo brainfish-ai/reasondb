@@ -41,10 +41,24 @@ pub struct TextChunk {
     pub end_page: Option<usize>,
 }
 
+/// Chunking strategy to use during document ingestion
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum ChunkStrategy {
+    /// Use the LLM to decide which lines belong together (agentic chunking).
+    /// Falls back to `MarkdownAware` if no LLM is configured.
+    #[default]
+    Agentic,
+    /// Split at CommonMark structural boundaries (headings, paragraphs, code blocks).
+    /// Fully deterministic — no LLM required.
+    MarkdownAware,
+}
+
 /// Configuration for the chunker
 #[derive(Debug, Clone)]
 pub struct ChunkerConfig {
-    /// Target chunk size in characters
+    /// Chunking strategy
+    pub strategy: ChunkStrategy,
+    /// Target chunk size in characters (used by MarkdownAware)
     pub target_chunk_size: usize,
     /// Minimum chunk size
     pub min_chunk_size: usize,
@@ -54,16 +68,23 @@ pub struct ChunkerConfig {
     pub overlap: usize,
     /// Whether to detect headings
     pub detect_headings: bool,
+    /// Lines per LLM window for agentic chunking (large docs are split into windows)
+    pub agentic_window_size: usize,
+    /// Maximum number of concurrent LLM window calls during agentic chunking
+    pub agentic_concurrency: usize,
 }
 
 impl Default for ChunkerConfig {
     fn default() -> Self {
         Self {
+            strategy: ChunkStrategy::Agentic,
             target_chunk_size: 1500,
             min_chunk_size: 500,
             max_chunk_size: 3000,
             overlap: 100,
             detect_headings: true,
+            agentic_window_size: 150,
+            agentic_concurrency: 10,
         }
     }
 }
@@ -297,6 +318,7 @@ mod tests {
             max_chunk_size: 400,
             overlap: 0,
             detect_headings: false,
+            ..Default::default()
         });
 
         let text = "This is a test sentence. ".repeat(50);
@@ -326,6 +348,7 @@ mod tests {
             max_chunk_size: 600,
             overlap: 0,
             detect_headings: true,
+            ..Default::default()
         });
 
         let text = r#"# Setup
@@ -416,6 +439,7 @@ Final thoughts on the matter."#;
             max_chunk_size: 500,
             overlap: 0,
             detect_headings: false,
+            ..Default::default()
         });
 
         let text = "Visit https://example.com/path/to/page.html for more info. Also see http://docs.rs/text-splitter/latest/text_splitter/ for the API docs.";

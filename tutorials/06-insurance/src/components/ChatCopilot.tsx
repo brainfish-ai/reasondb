@@ -3,6 +3,7 @@ import { useState, useRef, useEffect, useCallback } from "react"
 import ReactMarkdown from "react-markdown"
 import { ArrowUp, Plus, Clock, X, Sparkles, Loader2, Code2, FileText, RefreshCw, ChevronDown } from "lucide-react"
 import type { QueryResult, MatchedNode } from "@/lib/api"
+import { RqlHighlight } from "@/components/RqlHighlight"
 
 const POLICIES = [
   { slug: "",                                label: "All Policies",                     desc: "Search across all 4 AIA documents" },
@@ -123,21 +124,19 @@ function MessageBubble({ msg, onResetPolicy }: { msg: Message; onResetPolicy?: (
 
       {/* Generated RQL — with optional "Interpreted as:" annotation */}
       {msg.rqlQuery && (
-        <div className="ml-8 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-slate-200 bg-slate-100">
-            <Code2 className="h-3 w-3 text-slate-500" />
-            <span className="text-[10px] font-medium text-slate-600 uppercase tracking-wide">Generated RQL</span>
+        <div className="ml-8 rounded-lg border border-slate-700/40 bg-[#1a1f2e] overflow-hidden">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-slate-700/40 bg-[#151a27]">
+            <Code2 className="h-3 w-3 text-slate-400" />
+            <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">Generated RQL</span>
           </div>
           {/* Show contextual question if it differs from original */}
           {msg.contextualQuestion && msg.contextualQuestion !== msg.content && (
-            <div className="px-3 pt-2 pb-1 flex items-start gap-1.5 border-b border-slate-200">
+            <div className="px-3 pt-2 pb-1 flex items-start gap-1.5 border-b border-slate-700/30 bg-[#1a1f2e]">
               <span className="text-[10px] text-slate-500 font-medium mt-0.5 shrink-0">Interpreted as:</span>
-              <span className="text-[11px] text-slate-700 italic leading-relaxed">{msg.contextualQuestion}</span>
+              <span className="text-[11px] text-slate-300 italic leading-relaxed">{msg.contextualQuestion}</span>
             </div>
           )}
-          <pre className="px-3 py-2 text-[11px] font-mono text-slate-700 leading-relaxed whitespace-pre-wrap overflow-x-auto">
-            {msg.rqlQuery}
-          </pre>
+          <RqlHighlight code={msg.rqlQuery} />
         </div>
       )}
 
