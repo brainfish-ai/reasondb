@@ -1,3 +1,117 @@
+// ==================== Trace Types (mirrors crates/reasondb-core/src/trace.rs) ====================
+
+export interface SubQueryTrace {
+  text: string
+  rationale: string
+  bm25_hits: number
+}
+
+export interface DomainContextTrace {
+  table_name: string
+  description?: string
+  vocab_hints: string[]
+}
+
+export interface DecompositionTrace {
+  domain_context?: DomainContextTrace
+  sub_queries: SubQueryTrace[]
+}
+
+export interface Bm25HitTrace {
+  document_id: string
+  document_title: string
+  score: number
+  matched_node_count: number
+  sub_query_index: number
+}
+
+export interface Bm25SelectionTrace {
+  total_candidates: number
+  hits: Bm25HitTrace[]
+}
+
+export interface TreeGrepScoreTrace {
+  document_id: string
+  document_title: string
+  combined_score: number
+  matched_sections: string[]
+}
+
+export interface StructuralFilterTrace {
+  terms: string[]
+  filtered_count: number
+  scores: TreeGrepScoreTrace[]
+}
+
+export interface DocumentRankingTrace {
+  document_id: string
+  document_title: string
+  relevance: number
+  reasoning: string
+}
+
+export interface LlmRankingTrace {
+  input_count: number
+  selected_count: number
+  skipped_llm: boolean
+  rankings: DocumentRankingTrace[]
+}
+
+export interface BeamReasoningStep {
+  node_title: string
+  decision: string
+  confidence: number
+}
+
+export interface LeafVerificationTrace {
+  node_id: string
+  node_title: string
+  is_relevant: boolean
+  confidence: number
+  path: string[]
+  reasoning_steps: BeamReasoningStep[]
+}
+
+export interface BeamDocumentTrace {
+  document_id: string
+  document_title: string
+  nodes_visited: number
+  nodes_pruned: number
+  llm_calls: number
+  relevant_leaves: LeafVerificationTrace[]
+}
+
+export interface BeamReasoningTrace {
+  documents_processed: number
+  total_llm_calls: number
+  documents: BeamDocumentTrace[]
+}
+
+export interface FinalResultTrace {
+  document_id: string
+  document_title: string
+  node_id: string
+  node_title: string
+  confidence: number
+  path: string[]
+}
+
+export interface QueryTrace {
+  trace_id: string
+  query: string
+  table_id: string
+  created_at: string
+  duration_ms: number
+  decomposition?: DecompositionTrace
+  bm25_selection: Bm25SelectionTrace
+  structural_filter: StructuralFilterTrace
+  llm_ranking: LlmRankingTrace
+  beam_reasoning: BeamReasoningTrace
+  final_results: FinalResultTrace[]
+}
+
+// ==================== Job / Query types ====================
+
 export interface JobStatus {
   job_id: string
   status: "queued" | "processing" | "completed" | "failed"
@@ -23,6 +137,7 @@ export interface QueryResult {
   executionTimeMs: number
   matchedNodes?: MatchedNode[]
   question?: string
+  trace_id?: string
 }
 
 interface QueryServerResponse {
@@ -30,6 +145,7 @@ interface QueryServerResponse {
   total_count?: number
   execution_time_ms: number
   aggregates?: Array<{ name: string; value: unknown }>
+  trace_id?: string
 }
 
 export interface IngestJobResponse {
@@ -164,6 +280,15 @@ export class ReasonDBClient {
     })
   }
 
+  async fetchTrace(tableId: string, traceId: string): Promise<QueryTrace> {
+    const res = await fetch(
+      `${this.baseUrl}/v1/tables/${encodeURIComponent(tableId)}/traces/${encodeURIComponent(traceId)}`,
+      { headers: this.headers }
+    )
+    if (!res.ok) throw new Error(`Failed to fetch trace ${traceId}: ${res.status}`)
+    return res.json()
+  }
+
   private transformResponse(data: QueryServerResponse, query?: string): QueryResult {
     if (data.documents && data.documents.length > 0) {
       const matchedNodes: MatchedNode[] = []
@@ -180,6 +305,7 @@ export class ReasonDBClient {
         rows: data.documents,
         rowCount: data.total_count ?? data.documents.length,
         executionTimeMs: data.execution_time_ms,
+        trace_id: data.trace_id,
         ...(matchedNodes.length > 0 && {
           matchedNodes,
           question: query ? extractReasonQuestion(query) : undefined,
@@ -194,9 +320,10 @@ export class ReasonDBClient {
         rows: [row],
         rowCount: 1,
         executionTimeMs: data.execution_time_ms,
+        trace_id: data.trace_id,
       }
     }
-    return { columns: [], rows: [], rowCount: 0, executionTimeMs: data.execution_time_ms }
+    return { columns: [], rows: [], rowCount: 0, executionTimeMs: data.execution_time_ms, trace_id: data.trace_id }
   }
 }
 

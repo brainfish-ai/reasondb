@@ -15,6 +15,9 @@ interface OpenRouterModel {
 
 interface Props {
   result: QueryResult | null
+  /** When false, skip auto-generating the AI answer (source cards are still shown).
+   *  Defaults to true. Set to false when the chat panel already handles answer streaming. */
+  autoGenerate?: boolean
 }
 
 function ConfidenceBar({ value }: { value: number }) {
@@ -137,7 +140,7 @@ function CitationBadge({
   )
 }
 
-export function AnswerPanel({ result }: Props) {
+export function AnswerPanel({ result, autoGenerate = true }: Props) {
   const [answer, setAnswer] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -231,6 +234,7 @@ export function AnswerPanel({ result }: Props) {
 
   const prevResultKeyRef = useRef("")
   useEffect(() => {
+    if (!autoGenerate) return
     const key = `${question ?? ""}|${nodes?.length ?? 0}`
     if (!nodes?.length || !question) { prevResultKeyRef.current = ""; return }
     if (key === prevResultKeyRef.current) return
@@ -240,7 +244,7 @@ export function AnswerPanel({ result }: Props) {
     setHighlightedIdx(null)
     setSelectedSourceIdx(null)
     generateFnRef.current()
-  }, [result]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [result, autoGenerate]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!nodes || nodes.length === 0 || !question) return null
 

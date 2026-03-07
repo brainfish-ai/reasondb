@@ -1,8 +1,20 @@
 "use client"
 import { useState, useRef, useEffect, useCallback } from "react"
 import ReactMarkdown from "react-markdown"
-import { ArrowUp, Plus, Clock, X, Sparkles, Loader2, Code2, FileText } from "lucide-react"
+import { ArrowUp, Plus, Clock, X, Sparkles, Loader2, Code2, FileText, RefreshCw, ChevronDown } from "lucide-react"
 import type { QueryResult, MatchedNode } from "@/lib/api"
+
+const POLICIES = [
+  { slug: "",                                label: "All Policies",                     desc: "Search across all 4 AIA documents" },
+  { slug: "income-care-plus",                label: "Income Care Plus",                 desc: "2011 personal income protection policy" },
+  { slug: "priority-protection-pds",         label: "Priority Protection PDS",          desc: "Nov 2025 Product Disclosure Statement" },
+  { slug: "priority-protection-ibr",         label: "Priority Protection IBR",          desc: "Nov 2025 Incorporated by Reference" },
+  { slug: "priority-protection-enhancement", label: "Priority Protection Enhancement",  desc: "Nov 2025 enhancement summary" },
+]
+
+function policyLabel(slug: string): string {
+  return POLICIES.find((p) => p.slug === slug)?.label ?? "All Policies"
+}
 
 interface Message {
   id: string
@@ -17,6 +29,8 @@ interface Message {
   question?: string
   answer?: string
   answerLoading?: boolean
+  /** Set when REASON query returned 0 results — carries the active policy label for the hint */
+  noResultsPolicy?: string
 }
 
 interface Props {
@@ -67,7 +81,7 @@ function docLabel(node: MatchedNode): string {
   return root.split(" ").slice(0, 3).join(" ")
 }
 
-function MessageBubble({ msg }: { msg: Message }) {
+function MessageBubble({ msg, onResetPolicy }: { msg: Message; onResetPolicy?: () => void }) {
   if (msg.role === "user") {
     return (
       <div className="flex justify-end">
@@ -127,7 +141,7 @@ function MessageBubble({ msg }: { msg: Message }) {
         </div>
       )}
 
-      {/* Answering spinner */}
+      {/* Answering spinner — shown before first token arrives */}
       {msg.status === "answering" && !msg.answer && (
         <div className="ml-8 flex items-center gap-2 text-xs text-muted-foreground">
           <Loader2 className="h-3 w-3 animate-spin shrink-0" />
@@ -171,8 +185,11 @@ function MessageBubble({ msg }: { msg: Message }) {
               {msg.answer ?? ""}
             </ReactMarkdown>
           </div>
-          {msg.answerLoading && (
-            <span className="inline-block w-1 h-4 bg-blue-500 animate-pulse rounded-sm align-text-bottom ml-0.5" />
+          {msg.answerLoading && msg.answer && (
+            <div className="flex items-center gap-1.5 mt-2 text-xs text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+              <span>Generating…</span>
+            </div>
           )}
         </div>
       )}
@@ -195,10 +212,32 @@ function MessageBubble({ msg }: { msg: Message }) {
         </div>
       )}
 
-      {/* Error */}
+      {/* Error / no-results */}
       {msg.status === "error" && !msg.answer && (
-        <div className="ml-8 text-[13px] text-destructive">
-          Something went wrong. Please try again.
+        <div className="ml-8 space-y-1">
+          {msg.noResultsPolicy !== undefined ? (
+            <>
+              <p className="text-[13px] text-muted-foreground">
+                No matching sections found
+                {msg.noResultsPolicy ? (
+                  <> in <span className="font-semibold text-foreground">{msg.noResultsPolicy}</span></>
+                ) : null}
+                .
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                Try rephrasing, or switch to{" "}
+                <button
+                  className="underline hover:text-foreground transition-colors"
+                  onClick={onResetPolicy}
+                >
+                  All Policies
+                </button>{" "}
+                for cross-document comparisons.
+              </p>
+            </>
+          ) : (
+            <p className="text-[13px] text-destructive">Something went wrong. Please try again.</p>
+          )}
         </div>
       )}
     </div>
@@ -218,11 +257,57 @@ export function ChatCopilot({
   const [messages, setMessages] = useState<Message[]>([])
   const [inputValue, setInputValue] = useState("")
   const [pendingMsgId, setPendingMsgId] = useState<string | null>(null)
+  const [selectedPolicy, setSelectedPolicy] = useState<string | null>(null)
+
+  // Model selector
+  const [selectedModel, setSelectedModel] = useState<string>("")
+  const [availableModels, setAvailableModels] = useState<Array<{ id: string; name: string }>>([])
+  const [modelMenuOpen, setModelMenuOpen] = useState(false)
+  const modelMenuRef = useRef<HTMLDivElement>(null)
+
+  const handleSelectModel = (modelId: string) => {
+    setSelectedModel(modelId)
+    if (modelId) {
+      localStorage.setItem("reasondb_answer_model", modelId)
+    } else {
+      localStorage.removeItem("reasondb_answer_model")
+    }
+    setModelMenuOpen(false)
+  }
+
+  // Hydrate selectedModel from localStorage after mount (avoids SSR/CSR mismatch)
+  useEffect(() => {
+    const stored = localStorage.getItem("reasondb_answer_model")
+    if (stored) setSelectedModel(stored)
+  }, [])
+
+  // Fetch available models once on mount
+  useEffect(() => {
+    fetch("/api/models")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data?.models) setAvailableModels(data.models)
+      })
+      .catch(() => {})
+  }, [])
+
+  // Close model menu when clicking outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (modelMenuRef.current && !modelMenuRef.current.contains(e.target as Node)) {
+        setModelMenuOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const prevResultRef = useRef<QueryResult | null>(null)
   const prevRunningRef = useRef(false)
   const answerAbortRef = useRef<AbortController | null>(null)
+  // Stores the fallback (all-policies) RQL to fire when a scoped query returns 0 nodes
+  const pendingRetryRef = useRef<string | null>(null)
   // Keep a live ref to messages so async callbacks can read current state
   const messagesRef = useRef<Message[]>([])
   useEffect(() => { messagesRef.current = messages }, [messages])
@@ -265,6 +350,7 @@ export function ChatCopilot({
             confidence: n.confidence,
             path: n.path,
           })),
+          ...(selectedModel ? { model: selectedModel } : {}),
         }),
         signal: ctrl.signal,
       })
@@ -303,7 +389,8 @@ export function ChatCopilot({
         )
       }
     }
-  }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedModel])
 
   // Update assistant message as query runs, then trigger answer streaming
   useEffect(() => {
@@ -332,9 +419,11 @@ export function ChatCopilot({
     // Query finished — result arrived
     if (!isRunning && prevRunningRef.current && result !== prevResultRef.current) {
       const nodes = result?.matchedNodes ?? []
-      const question = result?.question ?? ""
+      // Prefer result.question, fall back to the contextualQuestion stored on the pending message
+      const pendingMsg = messagesRef.current.find((m) => m.id === pendingMsgId)
+      const question = result?.question || pendingMsg?.contextualQuestion || pendingMsg?.content || ""
 
-      if (nodes.length > 0 && question) {
+      if (nodes.length > 0) {
         // Store matched nodes in the message, then stream the answer
         setMessages((prev) =>
           prev.map((m) =>
@@ -342,15 +431,44 @@ export function ChatCopilot({
           )
         )
         const msgId = pendingMsgId
+        pendingRetryRef.current = null
         setPendingMsgId(null)
         streamAnswer(msgId, question, nodes)
-      } else {
-        // No results
+      } else if (pendingRetryRef.current) {
+        // Already retried with all-policies — still no results
+        pendingRetryRef.current = null
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === pendingMsgId ? { ...m, status: "error", noResultsPolicy: undefined } : m
+          )
+        )
+        setPendingMsgId(null)
+      } else if (selectedPolicy !== null) {
+        // Scoped query returned 0 nodes — auto-retry without policy filter
+        // Read contextualQuestion from the pending message (result?.question can be empty)
+        const pendingMsg = messagesRef.current.find((m) => m.id === pendingMsgId)
+        const fallbackQ = pendingMsg?.contextualQuestion || pendingMsg?.content || ""
+        const fallbackRql = `SELECT * FROM ${tableName} REASON '${fallbackQ}' LIMIT 10`
+        pendingRetryRef.current = fallbackRql
         setMessages((prev) =>
           prev.map((m) =>
             m.id === pendingMsgId
-              ? { ...m, status: "error" }
+              ? {
+                  ...m,
+                  status: "building",
+                  rqlQuery: fallbackRql,
+                  contextualQuestion: m.contextualQuestion,
+                  progressMsg: "No results in selected policy — broadening to all policies…",
+                }
               : m
+          )
+        )
+        onQuery(fallbackRql, fallbackQ)
+      } else {
+        // No results at all — show hint
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === pendingMsgId ? { ...m, status: "error", noResultsPolicy: undefined } : m
           )
         )
         setPendingMsgId(null)
@@ -359,7 +477,7 @@ export function ChatCopilot({
 
     prevRunningRef.current = isRunning
     prevResultRef.current = result
-  }, [isRunning, progressMsg, result, pendingMsgId, streamAnswer])
+  }, [isRunning, progressMsg, result, pendingMsgId, streamAnswer, selectedPolicy, tableName, onQuery])
 
   const sendQuestion = useCallback(
     async (question: string) => {
@@ -386,21 +504,48 @@ export function ChatCopilot({
       ])
       setInputValue("")
 
-      // Call /api/contextualize — falls back to raw question on any error
+      // Call /api/contextualize — the LLM decides:
+      //   { intent: "query", contextualQuestion }  → search ReasonDB
+      //   { intent: "direct_answer", answer }       → respond from conversation context
+      let intent: "query" | "direct_answer" = "query"
       let contextualQuestion = raw
+      let directAnswer = ""
+
+      const activePolicyName = selectedPolicy !== null ? policyLabel(selectedPolicy) : ""
+
       try {
         const res = await fetch("/api/contextualize", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ history, question: raw }),
+          body: JSON.stringify({ history, question: raw, policyName: activePolicyName || undefined }),
         })
         if (res.ok) {
           const data = await res.json()
-          contextualQuestion = (data.contextualQuestion ?? raw).trim()
+          intent = data.intent ?? "query"
+          if (intent === "direct_answer") {
+            directAnswer = (data.answer ?? "").trim()
+          } else {
+            contextualQuestion = (data.contextualQuestion ?? raw).trim()
+          }
         }
-      } catch { /* fall back gracefully */ }
+      } catch { /* fall back gracefully to query */ }
 
-      const rqlQuery = `SELECT * FROM ${tableName} REASON '${contextualQuestion}' LIMIT 5`
+      // --- Branch: direct answer (no ReasonDB needed) ---
+      if (intent === "direct_answer") {
+        setMessages((msgs) =>
+          msgs.map((m) =>
+            m.id === assistantMsgId
+              ? { ...m, status: "done", answer: directAnswer || "I'm not sure how to help with that. Try asking a question about AIA insurance policies." }
+              : m
+          )
+        )
+        return
+      }
+
+      // --- Branch: query ReasonDB ---
+      const whereClause = selectedPolicy ? `WHERE metadata.policy = '${selectedPolicy}' ` : ""
+      const limit = selectedPolicy ? 10 : 5
+      const rqlQuery = `SELECT * FROM ${tableName} ${whereClause}REASON '${contextualQuestion}' LIMIT ${limit}`
 
       // Update assistant message: transition to "building" with RQL + contextual question
       setMessages((msgs) =>
@@ -411,9 +556,10 @@ export function ChatCopilot({
         )
       )
       setPendingMsgId(assistantMsgId)
+      pendingRetryRef.current = null
       onQuery(rqlQuery, contextualQuestion)
     },
-    [tableName, isRunning, onQuery]
+    [tableName, isRunning, onQuery, selectedPolicy]
   )
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -423,14 +569,33 @@ export function ChatCopilot({
     }
   }
 
-  const canSend = inputValue.trim().length > 0 && !isRunning && isDataReady
+  const selectPolicy = useCallback((policy: typeof POLICIES[number]) => {
+    setSelectedPolicy(policy.slug)
+    const greeting = policy.slug
+      ? `I'll answer your questions about **${policy.label}**. What would you like to know?`
+      : `I'll search across **all 4 AIA insurance documents**. What would you like to know?`
+    setMessages([{
+      id: crypto.randomUUID(),
+      role: "assistant",
+      content: "",
+      status: "done",
+      answer: greeting,
+    }])
+  }, [])
+
+  const resetPolicy = useCallback(() => {
+    setSelectedPolicy(null)
+    setMessages([])
+  }, [])
+
+  const canSend = inputValue.trim().length > 0 && !isRunning && isDataReady && selectedPolicy !== null
   const isEmpty = messages.length === 0
 
   return (
     <div className="flex flex-col h-full border-l bg-white">
       {/* Header — Figma 33:1908 */}
       <div className="flex items-center justify-between px-3 py-2.5 border-b bg-white shrink-0">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           {/* Gradient sparkle logo */}
           <div
             className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 shadow-sm"
@@ -438,11 +603,28 @@ export function ChatCopilot({
           >
             <Sparkles className="w-3.5 h-3.5 text-white drop-shadow-sm" />
           </div>
-          <span className="text-[12px] font-medium text-foreground">Brainfish Assist</span>
+          <span className="text-[12px] font-medium text-foreground shrink-0">Brainfish Assist</span>
+          {/* Active policy badge */}
+          {selectedPolicy !== null && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-[10px] font-medium text-blue-700 truncate max-w-[120px]">
+              <FileText className="h-2.5 w-2.5 shrink-0" />
+              <span className="truncate">{policyLabel(selectedPolicy)}</span>
+            </span>
+          )}
         </div>
 
         {/* Control buttons — Figma 33:1913 */}
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-0.5 shrink-0">
+          {/* Change policy button — only shown when policy is selected */}
+          {selectedPolicy !== null && (
+            <button
+              onClick={resetPolicy}
+              className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+              title="Change policy"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+            </button>
+          )}
           <button
             onClick={() => setMessages([])}
             className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
@@ -471,34 +653,110 @@ export function ChatCopilot({
         </div>
       </div>
 
-      {/* Messages area */}
-      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-4 min-h-0">
-        {isEmpty ? (
-          /* Empty state — show suggested questions (Figma 33:1899 style) */
-          <div className="h-full flex flex-col justify-end gap-2 pb-2">
-            {!isDataReady && (
-              <p className="text-center text-xs text-muted-foreground mb-4 px-4">
-                Load the insurance dataset first, then ask any policy question.
-              </p>
-            )}
-            <div className="flex flex-col items-end gap-2">
-              {suggestedQuestions.map((q, i) => (
+      {/* Answer model selector */}
+      <div className="px-3 py-1.5 border-b bg-muted/30 shrink-0 flex items-center justify-between gap-2">
+        <span className="text-[11px] text-muted-foreground shrink-0">Answer model</span>
+        <div className="relative" ref={modelMenuRef}>
+          <button
+            onClick={() => setModelMenuOpen((v) => !v)}
+            className="flex items-center gap-1 text-[11px] font-medium text-foreground hover:bg-muted rounded px-2 py-1 transition-colors max-w-[200px]"
+          >
+            <span className="truncate">
+              {selectedModel
+                ? (availableModels.find((m) => m.id === selectedModel)?.name ?? selectedModel.split("/").pop())
+                : (process.env.NEXT_PUBLIC_OPENROUTER_MODEL ?? "gemini-2.0-flash (default)")}
+            </span>
+            <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
+          </button>
+          {modelMenuOpen && (
+            <div className="absolute right-0 top-full mt-1 z-50 w-72 max-h-72 overflow-y-auto rounded-lg border bg-white shadow-lg">
+              {/* Default option */}
+              <button
+                className={`w-full text-left px-3 py-2 text-[12px] hover:bg-muted transition-colors ${selectedModel === "" ? "bg-blue-50 text-blue-700 font-medium" : ""}`}
+                onClick={() => handleSelectModel("")}
+              >
+                <span className="font-medium">Default</span>
+                <span className="text-muted-foreground ml-1">(gemini-2.0-flash)</span>
+              </button>
+              <div className="border-t" />
+              {availableModels.length === 0 && (
+                <div className="px-3 py-3 text-[11px] text-muted-foreground flex items-center gap-1.5">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Loading models…
+                </div>
+              )}
+              {availableModels.map((m) => (
                 <button
-                  key={i}
-                  onClick={() => sendQuestion(q)}
-                  disabled={!isDataReady || isRunning}
-                  className="max-w-[90%] text-right px-3 py-2 rounded-full border border-[#e5e5e5] bg-white text-[12px] text-black leading-snug hover:bg-muted/40 transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-left"
+                  key={m.id}
+                  className={`w-full text-left px-3 py-2 text-[11px] hover:bg-muted transition-colors ${selectedModel === m.id ? "bg-blue-50 text-blue-700 font-medium" : ""}`}
+                  onClick={() => handleSelectModel(m.id)}
                 >
-                  {q}
+                  <span className="block font-medium truncate">{m.name}</span>
+                  <span className="block text-[10px] text-muted-foreground truncate">{m.id}</span>
                 </button>
               ))}
             </div>
+          )}
+        </div>
+      </div>
+
+      {/* Messages area */}
+      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-4 min-h-0">
+        {/* Policy picker — shown until user selects a policy */}
+        {isEmpty && selectedPolicy === null ? (
+          <div className="h-full flex flex-col justify-center gap-4 px-1">
+            {!isDataReady ? (
+              <p className="text-center text-xs text-muted-foreground px-4">
+                Load the insurance dataset first, then choose a policy to ask about.
+              </p>
+            ) : (
+              <>
+                <p className="text-[12px] font-semibold text-foreground text-center">
+                  Which policy are you asking about?
+                </p>
+                <div className="flex flex-col gap-2">
+                  {POLICIES.map((policy) => (
+                    <button
+                      key={policy.slug || "all"}
+                      onClick={() => selectPolicy(policy)}
+                      className="w-full text-left px-3 py-2.5 rounded-xl border border-[#e5e5e5] bg-white hover:bg-blue-50 hover:border-blue-200 transition-colors group"
+                    >
+                      <p className="text-[12px] font-medium text-foreground group-hover:text-blue-700 leading-tight">
+                        {policy.label}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">
+                        {policy.desc}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         ) : (
-          messages.map((msg) => <MessageBubble key={msg.id} msg={msg} />)
+          <>
+            {messages.map((msg) => <MessageBubble key={msg.id} msg={msg} onResetPolicy={resetPolicy} />)}
+
+          </>
         )}
         <div ref={messagesEndRef} />
       </div>
+
+      {/* Suggested questions — above the input, until first user message */}
+      {selectedPolicy !== null && !isRunning &&
+        messages.filter((m) => m.role === "user").length === 0 && (
+        <div className="shrink-0 px-2 pb-1 flex flex-col items-end gap-1.5">
+          {suggestedQuestions.map((q, i) => (
+            <button
+              key={i}
+              onClick={() => sendQuestion(q)}
+              disabled={!isDataReady || isRunning}
+              className="max-w-[90%] px-3 py-1.5 rounded-full border border-[#e5e5e5] bg-white text-[12px] text-black leading-snug hover:bg-muted/40 transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-left"
+            >
+              {q}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Input — Figma 33:1919 gradient border prompt */}
       <div className="shrink-0 px-2 pb-2">
@@ -515,8 +773,12 @@ export function ChatCopilot({
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={isDataReady ? "What can we help with today?" : "Load dataset to start…"}
-                disabled={!isDataReady || isRunning}
+                placeholder={
+                  !isDataReady ? "Load dataset to start…"
+                  : selectedPolicy === null ? "Choose a policy above to start…"
+                  : "What can we help with today?"
+                }
+                disabled={!isDataReady || isRunning || selectedPolicy === null}
                 rows={1}
                 className="w-full resize-none bg-transparent text-[16px] leading-6 text-foreground placeholder:text-[#737373] outline-none disabled:opacity-50 min-h-[32px] max-h-[120px]"
                 style={{ fontFamily: "inherit" }}

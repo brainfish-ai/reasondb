@@ -91,6 +91,7 @@ fn v1_routes<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         // Documents
         .route("/documents", get(documents::list_documents::<R>))
         .route("/documents/:id", get(documents::get_document::<R>))
+        .route("/documents/:id", patch(documents::update_document::<R>))
         .route("/documents/:id", delete(documents::delete_document::<R>))
         .route(
             "/documents/:id/nodes",

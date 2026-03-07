@@ -5,7 +5,6 @@ import {
   X,
   Table as TableIcon,
   Code,
-  TreeStructure,
   FileCode,
   CircleNotch,
 } from '@phosphor-icons/react'
@@ -39,7 +38,7 @@ function LazyFallback() {
 }
 
 export function MainPanel() {
-  const [resultView, setResultView] = useState<'table' | 'json' | 'tree'>('table')
+  const [resultView, setResultView] = useState<'table' | 'json'>('table')
   const { results, activeResultIndex } = useQueryStore()
   const activeResult = results.length > 0 ? (results[activeResultIndex] ?? results[0]) : null
   const totalStats = results.length > 0
@@ -349,19 +348,6 @@ export function MainPanel() {
                     >
                       <Code size={16} weight="bold" aria-hidden="true" />
                     </button>
-                    <button
-                      onClick={() => setResultView('tree')}
-                      className={cn(
-                        'p-1.5 rounded transition-colors',
-                        resultView === 'tree'
-                          ? 'bg-surface-1 text-text'
-                          : 'text-overlay-0 hover:text-text hover:bg-surface-0'
-                      )}
-                      aria-label="Tree view"
-                      aria-pressed={resultView === 'tree'}
-                    >
-                      <TreeStructure size={16} weight="bold" aria-hidden="true" />
-                    </button>
                   </div>
                 </div>
 
@@ -372,11 +358,6 @@ export function MainPanel() {
                       data={activeResult?.rows}
                       emptyMessage="Run a query to see results"
                     />
-                  )}
-                  {resultView === 'tree' && (
-                    <div className="flex items-center justify-center h-full text-overlay-0 text-sm">
-                      Tree view coming soon...
-                    </div>
                   )}
                 </div>
               </div>

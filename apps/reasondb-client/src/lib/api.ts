@@ -923,6 +923,23 @@ class ReasonDBClient {
   }
 
   /**
+   * Update a document's title, tags, and/or metadata (merge patch).
+   * Only the supplied fields are changed; metadata keys are merged, not replaced.
+   */
+  async updateDocument(
+    documentId: string,
+    updates: { title?: string; tags?: string[]; metadata?: Record<string, unknown> }
+  ): Promise<{ updated: boolean; document_id: string }> {
+    return this.request<{ updated: boolean; document_id: string }>(
+      `/v1/documents/${encodeURIComponent(documentId)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      }
+    )
+  }
+
+  /**
    * Delete a document
    */
   async deleteDocument(documentId: string): Promise<void> {

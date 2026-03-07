@@ -10,6 +10,7 @@ import { Panel, Group, Separator } from 'react-resizable-panels'
 import { FilterBuilder } from '@/components/search'
 import { JsonDetailSidebar } from '../JsonDetailSidebar'
 import { AddDocumentDialog } from '../AddDocumentDialog'
+import { EditDocumentDialog } from '../EditDocumentDialog'
 import type { Document } from '@/stores/tableStore'
 import {
   Dialog,
@@ -48,6 +49,7 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
   const [deleteTarget, setDeleteTarget] = useState<Document | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [showAddDocument, setShowAddDocument] = useState(false)
+  const [editTarget, setEditTarget] = useState<Document | null>(null)
 
   const {
     documents,
@@ -171,11 +173,7 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
   }, [deleteTarget, activeConnection, fetchDocuments])
 
   const handleEditDocument = useCallback((doc: Document) => {
-    setSelectedCell({
-      title: `${doc.data.title || doc.id}`,
-      path: 'document',
-      data: doc.data,
-    })
+    setEditTarget(doc)
   }, [])
 
   if (!tableId) {
@@ -273,6 +271,12 @@ export function DocumentViewer({ tableId }: DocumentViewerProps) {
         open={showAddDocument}
         onOpenChange={setShowAddDocument}
         tableId={tableId}
+      />
+
+      <EditDocumentDialog
+        open={editTarget !== null}
+        onOpenChange={(open) => { if (!open) setEditTarget(null) }}
+        document={editTarget}
       />
 
       <Dialog

@@ -6,6 +6,7 @@ use axum::{
     extract::{Path, State},
     Json,
 };
+use chrono::Utc;
 use reasondb_core::llm::ReasoningEngine;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -253,6 +254,64 @@ pub async fn get_document<R: ReasoningEngine + Send + Sync + 'static>(
         created_at: document.created_at.to_rfc3339(),
         updated_at: document.updated_at.to_rfc3339(),
     }))
+}
+
+/// Update document metadata, title, or tags (merge patch)
+///
+/// Merges the provided fields into the document. Only supplied fields are
+/// changed; `metadata` is merged key-by-key, not replaced wholesale.
+#[utoipa::path(
+    patch,
+    path = "/v1/documents/{id}",
+    tag = "documents",
+    params(
+        ("id" = String, Path, description = "Document ID")
+    ),
+    request_body = UpdateDocumentRequest,
+    responses(
+        (status = 200, description = "Document updated"),
+        (status = 404, description = "Document not found", body = ErrorResponse),
+        (status = 500, description = "Storage error", body = ErrorResponse),
+    )
+)]
+pub async fn update_document<R: ReasoningEngine + Send + Sync + 'static>(
+    State(state): State<Arc<AppState<R>>>,
+    Path(id): Path<String>,
+    Json(request): Json<UpdateDocumentRequest>,
+) -> ApiResult<Json<serde_json::Value>> {
+    info!("Updating document: {}", id);
+
+    let mut doc = state
+        .store
+        .get_document(&id)
+        .map_err(|e| ApiError::StorageError(e.to_string()))?
+        .ok_or_else(|| ApiError::NotFound(format!("Document not found: {}", id)))?;
+
+    if let Some(title) = request.title {
+        doc.title = title;
+    }
+    if let Some(table_id) = request.table_id {
+        doc.table_id = table_id;
+    }
+    if let Some(tags) = request.tags {
+        doc.tags = tags;
+    }
+    if let Some(metadata) = request.metadata {
+        for (key, value) in metadata {
+            doc.metadata.insert(key, value);
+        }
+    }
+    doc.updated_at = Utc::now();
+
+    state
+        .store
+        .update_document(&doc)
+        .map_err(|e| ApiError::StorageError(e.to_string()))?;
+
+    Ok(Json(serde_json::json!({
+        "updated": true,
+        "document_id": id
+    })))
 }
 
 /// Delete a document
