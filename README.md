@@ -47,9 +47,7 @@
 
 <br>
 
-<p align="center">
-    <img width="100%" src="./assets/ReasonDB_DEMO.gif" alt="ReasonDB Demo">
-</p>
+<video src="./assets/ReasonDB_Client_Demo.mp4" controls width="100%"></video>
 
 <br>
 
