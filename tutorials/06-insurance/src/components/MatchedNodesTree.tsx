@@ -194,8 +194,13 @@ function TreeNodeRow({ node, selectedId, onSelect, defaultExpanded = false }: Tr
           {node.match.content && (
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Content</p>
-              <p className="text-[12px] leading-relaxed text-foreground line-clamp-6">
-                {node.match.content}
+              <p className="text-[12px] leading-relaxed text-foreground">
+                {node.match.content.split(/\n+/).map((line, i) => (
+                  <span key={i}>
+                    {i > 0 && <br />}
+                    {line}
+                  </span>
+                ))}
               </p>
             </div>
           )}

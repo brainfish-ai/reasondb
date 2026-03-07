@@ -99,6 +99,11 @@ pub struct Job {
     pub request: JobRequest,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Set after chunking + tree building complete (before summarization).
+    /// Preserved across restarts so the job can resume summarization
+    /// rather than re-chunking from scratch.
+    #[serde(default)]
+    pub checkpoint_doc_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -155,6 +160,7 @@ impl JobQueue {
             request,
             created_at: now,
             updated_at: now,
+            checkpoint_doc_id: None,
         };
 
         let data = Self::serialize_job(&job);
@@ -233,8 +239,24 @@ impl JobQueue {
         }
     }
 
+    /// Record a checkpoint doc_id on the job so that if the server restarts
+    /// mid-summarization the job can resume from where it left off.
+    pub fn set_checkpoint(&self, job_id: &str, doc_id: &str) {
+        if let Ok(Some(data)) = self.store.get_job(job_id) {
+            if let Some(mut job) = Self::deserialize_job(&data) {
+                job.checkpoint_doc_id = Some(doc_id.to_string());
+                job.updated_at = Utc::now();
+                let new_data = Self::serialize_job(&job);
+                if let Err(e) = self.store.update_job(job_id, &new_data) {
+                    error!("Failed to persist checkpoint for job {}: {}", job_id, e);
+                }
+            }
+        }
+    }
+
     /// Resume incomplete jobs on startup.
     /// Resets any Processing jobs back to Queued and returns the count of recovered jobs.
+    /// `checkpoint_doc_id` is preserved so the job can resume summarization.
     pub fn resume_incomplete_jobs(&self) -> usize {
         let all_jobs = match self.store.get_all_jobs() {
             Ok(jobs) => jobs,
@@ -249,8 +271,15 @@ impl JobQueue {
             if let Some(mut job) = Self::deserialize_job(&data) {
                 match &job.status {
                     JobStatus::Processing { .. } => {
-                        // Was interrupted — reset to Queued
-                        info!("Recovering interrupted job {}: {}", id, job.request.title());
+                        // Was interrupted — reset to Queued, preserving any checkpoint.
+                        if job.checkpoint_doc_id.is_some() {
+                            info!(
+                                "Recovering interrupted job {} (resuming summarization for doc {:?}): {}",
+                                id, job.checkpoint_doc_id, job.request.title()
+                            );
+                        } else {
+                            info!("Recovering interrupted job {}: {}", id, job.request.title());
+                        }
                         job.status = JobStatus::Queued;
                         job.updated_at = Utc::now();
                         let new_data = Self::serialize_job(&job);
@@ -449,9 +478,51 @@ async fn process_job<R: ReasoningEngine + Clone + Send + Sync + 'static>(
         ..Default::default()
     };
 
+    // If a checkpoint doc_id exists, the server restarted mid-summarization.
+    // Resume from where it left off rather than re-chunking the whole document.
+    if let Some(ref doc_id) = job.checkpoint_doc_id {
+        info!(
+            "Resuming summarization from checkpoint for job {} (doc {})",
+            job.id, doc_id
+        );
+        let pipeline = IngestPipeline::new((*state.reasoner).clone())
+            .with_config(config)
+            .with_plugins(state.plugin_manager.clone());
+        let result = pipeline
+            .resume_summarization(doc_id, state.store.clone())
+            .await
+            .map_err(|e| e.to_string())?;
+        return Ok(IngestResponse {
+            document_id: result.document.id,
+            title: result.document.title,
+            total_nodes: result.nodes.len(),
+            max_depth: result
+                .nodes
+                .iter()
+                .map(|n| n.depth as usize)
+                .max()
+                .unwrap_or(0),
+            stats: crate::routes::ingest::IngestStats {
+                chars_extracted: result.stats.chars_extracted,
+                chunks_created: result.stats.chunks_created,
+                nodes_created: result.stats.nodes_created,
+                summaries_generated: result.stats.summaries_generated,
+                total_time_ms: result.stats.total_time_ms,
+            },
+        });
+    }
+
+    // Register a checkpoint callback so the job records the doc ID as soon as
+    // the tree is built and flushed — enabling restart-resume if the server
+    // goes down during the (potentially long) summarization phase.
+    let job_queue = state.job_queue.clone();
+    let job_id = job.id.clone();
     let pipeline = IngestPipeline::new((*state.reasoner).clone())
         .with_config(config)
-        .with_plugins(state.plugin_manager.clone());
+        .with_plugins(state.plugin_manager.clone())
+        .with_checkpoint_callback(move |doc_id| {
+            job_queue.set_checkpoint(&job_id, &doc_id);
+        });
 
     let result = match &job.request {
         JobRequest::Text(req) => {
@@ -827,6 +898,7 @@ mod tests {
             request: make_text_request("Roundtrip", "tbl_1"),
             created_at: now,
             updated_at: now,
+            checkpoint_doc_id: None,
         };
 
         let data = JobQueue::serialize_job(&job);

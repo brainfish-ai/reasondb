@@ -11,6 +11,9 @@ use std::path::Path;
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
+use futures::stream::{FuturesUnordered, StreamExt};
+use tokio::sync::Semaphore;
+
 use reasondb_core::llm::ReasoningEngine;
 use reasondb_core::model::{Document, PageNode};
 use reasondb_core::NodeStore;
@@ -61,7 +64,7 @@ pub struct IngestResult {
 }
 
 /// Statistics from ingestion
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct IngestStats {
     /// Number of pages extracted
     pub pages_extracted: usize,
@@ -91,6 +94,10 @@ pub struct IngestPipeline<R: ReasoningEngine> {
     tree_builder: TreeBuilder,
     reasoner: Option<R>,
     plugin_manager: Option<Arc<PluginManager>>,
+    /// Called with the new document ID after the early flush (doc + nodes written
+    /// to DB before summarization). Allows the job layer to record a checkpoint
+    /// so a restart can resume summarization rather than re-chunking.
+    checkpoint_callback: Option<Arc<dyn Fn(String) + Send + Sync + 'static>>,
 }
 
 impl<R: ReasoningEngine> IngestPipeline<R> {
@@ -103,6 +110,7 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
             tree_builder: TreeBuilder::new(),
             reasoner: Some(reasoner),
             plugin_manager: None,
+            checkpoint_callback: None,
         }
     }
 
@@ -118,6 +126,7 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
             tree_builder: TreeBuilder::new(),
             reasoner: None,
             plugin_manager: None,
+            checkpoint_callback: None,
         }
     }
 
@@ -125,6 +134,14 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
     pub fn with_plugins(mut self, manager: Arc<PluginManager>) -> Self {
         self.extractor = self.extractor.with_plugin_manager(Arc::clone(&manager));
         self.plugin_manager = Some(manager);
+        self
+    }
+
+    /// Register a callback invoked with the document ID after the early DB flush
+    /// (doc + nodes stored before summarization begins). The job layer uses this
+    /// to persist a resume checkpoint so a server restart can skip re-chunking.
+    pub fn with_checkpoint_callback(mut self, f: impl Fn(String) + Send + Sync + 'static) -> Self {
+        self.checkpoint_callback = Some(Arc::new(f));
         self
     }
 
@@ -412,45 +429,83 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
 
     /// Call the LLM to chunk `markdown` into semantically coherent groups,
     /// processing the document in overlapping windows of `agentic_window_size` lines.
+    /// Windows are dispatched concurrently (bounded by `agentic_concurrency`) so that
+    /// large documents do not block on sequential LLM round-trips.
     async fn agentic_chunk(&self, markdown: &str, reasoner: &R) -> Result<Vec<TextChunk>> {
         let all_lines: Vec<String> = markdown.lines().map(|l| l.to_string()).collect();
         let total_lines = all_lines.len();
         let window_size = self.config.chunker.agentic_window_size;
+        let concurrency = self.config.chunker.agentic_concurrency.max(1);
 
         if total_lines == 0 {
             return Ok(vec![]);
         }
 
-        // Process in windows with a small overlap to avoid cutting topics at boundaries.
+        // Pre-compute all windows with their offsets and cutoff values.
         let overlap = (window_size / 10).max(5);
-        let mut all_groups: Vec<reasondb_core::llm::ChunkGroup> = Vec::new();
-        let mut offset = 0usize; // 0-based index into all_lines
+        let mut windows: Vec<(usize, Vec<String>, usize, usize)> = Vec::new(); // (idx, lines, window_offset, cutoff)
+        let mut offset = 0usize;
 
         while offset < total_lines {
             let end = (offset + window_size).min(total_lines);
-            let window: Vec<String> = all_lines[offset..end].to_vec();
             let window_offset = offset + 1; // 1-based line numbers for the LLM
-
-            let result = reasoner.chunk_document(&window, window_offset).await?;
-
-            // Accept groups whose start_line is past the overlap zone (except first window).
             let cutoff = if offset == 0 {
                 window_offset
             } else {
                 window_offset + overlap
             };
-
-            for g in result.groups {
-                if g.start_line >= cutoff || offset == 0 {
-                    all_groups.push(g);
-                }
-            }
+            windows.push((
+                windows.len(),
+                all_lines[offset..end].to_vec(),
+                window_offset,
+                cutoff,
+            ));
 
             if end >= total_lines {
                 break;
             }
-            // Advance by window_size minus overlap so the next window re-sees the tail.
             offset += window_size.saturating_sub(overlap);
+        }
+
+        info!(
+            "Agentic chunking: {} windows, concurrency={}",
+            windows.len(),
+            concurrency
+        );
+
+        // Dispatch all windows concurrently, bounded by semaphore.
+        let semaphore = Arc::new(Semaphore::new(concurrency));
+        let mut futures = FuturesUnordered::new();
+
+        for (idx, window_lines, window_offset, cutoff) in windows {
+            let permit = semaphore.clone();
+            futures.push(async move {
+                let _permit = permit.acquire().await.unwrap();
+                // reasoner is &R (Copy), so it's implicitly copied into each async block.
+                reasoner
+                    .chunk_document(&window_lines, window_offset)
+                    .await
+                    .map_err(|e| IngestError::Chunking(e.to_string()))
+                    .map(|res| (idx, cutoff, res.groups))
+            });
+        }
+
+        // Collect results preserving per-window cutoff metadata.
+        let mut raw: Vec<(usize, usize, Vec<reasondb_core::llm::ChunkGroup>)> = Vec::new();
+        while let Some(result) = futures.next().await {
+            raw.push(result?);
+        }
+
+        // Sort by window index so cutoff filtering is deterministic.
+        raw.sort_by_key(|(idx, _, _)| *idx);
+
+        let mut all_groups: Vec<reasondb_core::llm::ChunkGroup> = Vec::new();
+        for (idx, cutoff, groups) in raw {
+            for g in groups {
+                if idx == 0 || g.start_line >= cutoff {
+                    all_groups.push(g);
+                }
+            }
         }
 
         if all_groups.is_empty() {
@@ -555,14 +610,45 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
     where
         R: Clone + Send + Sync + 'static,
     {
-        let result = self.ingest_file(path, table_id).await?;
-
-        if self.config.store_in_db {
-            Self::store_result(&result, &store)?;
-            self.spawn_vocab_update(&result, store);
+        if !self.config.store_in_db {
+            return self.ingest_file(path, table_id).await;
         }
 
-        Ok(result)
+        let path = path.as_ref();
+        let start = std::time::Instant::now();
+        let mut stats = IngestStats::default();
+
+        let doc_type = crate::extractor::DocumentType::from_path(path);
+        info!(
+            "Starting ingestion of {} file: {}",
+            doc_type.name(),
+            path.display()
+        );
+
+        let extraction_start = std::time::Instant::now();
+        let extractor = self.extractor.clone();
+        let path_buf = path.to_path_buf();
+        let extraction = tokio::task::spawn_blocking(move || extractor.extract(&path_buf))
+            .await
+            .map_err(|e| {
+                IngestError::TextExtraction(format!("Extraction task panicked: {}", e))
+            })??;
+        stats.extraction_time_ms = extraction_start.elapsed().as_millis() as u64;
+        stats.chars_extracted = extraction.char_count;
+        stats.pages_extracted = 1;
+
+        let result = self
+            .ingest_checkpointed(
+                &extraction.title,
+                table_id,
+                &extraction.markdown,
+                store,
+                &mut stats,
+            )
+            .await?;
+
+        stats.total_time_ms = start.elapsed().as_millis() as u64;
+        Ok(IngestResult { stats, ..result })
     }
 
     /// Ingest text and store in database
@@ -579,14 +665,24 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
     where
         R: Clone + Send + Sync + 'static,
     {
-        let result = self.ingest_text(title, table_id, text).await?;
-
-        if self.config.store_in_db {
-            Self::store_result(&result, &store)?;
-            self.spawn_vocab_update(&result, store);
+        if !self.config.store_in_db {
+            return self.ingest_text(title, table_id, text).await;
         }
 
-        Ok(result)
+        let start = std::time::Instant::now();
+        let mut stats = IngestStats {
+            chars_extracted: text.chars().count(),
+            ..Default::default()
+        };
+
+        info!("Starting text ingestion: {}", title);
+
+        let result = self
+            .ingest_checkpointed(title, table_id, text, store, &mut stats)
+            .await?;
+
+        stats.total_time_ms = start.elapsed().as_millis() as u64;
+        Ok(IngestResult { stats, ..result })
     }
 
     /// Ingest URL and store in database
@@ -602,14 +698,302 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
     where
         R: Clone + Send + Sync + 'static,
     {
-        let result = self.ingest_url(url, table_id).await?;
-
-        if self.config.store_in_db {
-            Self::store_result(&result, &store)?;
-            self.spawn_vocab_update(&result, store);
+        if !self.config.store_in_db {
+            return self.ingest_url(url, table_id).await;
         }
 
-        Ok(result)
+        let start = std::time::Instant::now();
+        let mut stats = IngestStats::default();
+
+        info!("Starting URL ingestion: {}", url);
+
+        let extraction = self
+            .extractor
+            .extract_url(url)
+            .map_err(|e| IngestError::TextExtraction(e.to_string()))?;
+        stats.chars_extracted = extraction.char_count;
+
+        let result = self
+            .ingest_checkpointed(
+                &extraction.title,
+                table_id,
+                &extraction.markdown,
+                store,
+                &mut stats,
+            )
+            .await?;
+
+        stats.total_time_ms = start.elapsed().as_millis() as u64;
+        Ok(IngestResult { stats, ..result })
+    }
+
+    /// Core checkpointed ingestion: chunk + build tree → early DB flush → summarize with
+    /// incremental writes. The checkpoint callback is fired after the early flush so the
+    /// job layer can record the doc ID before summarization begins.
+    async fn ingest_checkpointed(
+        &self,
+        title: &str,
+        table_id: &str,
+        markdown: &str,
+        store: Arc<NodeStore>,
+        stats: &mut IngestStats,
+    ) -> Result<IngestResult>
+    where
+        R: Clone + Send + Sync + 'static,
+    {
+        // Phase 1: chunk + build tree (no summarization yet)
+        let (document, mut nodes) = self
+            .chunk_and_build(title, table_id, markdown, stats)
+            .await?;
+
+        // Phase 1 flush: write doc + nodes (empty summaries) to DB immediately.
+        // This protects the chunking work — a restart can resume summarization.
+        store
+            .insert_document(&document)
+            .map_err(IngestError::Storage)?;
+        store.insert_nodes(&nodes).map_err(IngestError::Storage)?;
+        info!(
+            "Checkpoint flush: stored doc {} ({} nodes) before summarization",
+            document.id,
+            nodes.len()
+        );
+
+        // Notify caller (job layer) so it can persist the checkpoint doc ID.
+        if let Some(ref cb) = self.checkpoint_callback {
+            cb(document.id.clone());
+        }
+
+        // Phase 2: summarize with incremental DB writes after each depth level.
+        self.summarize_nodes(&mut nodes, stats, Some(store.clone()))
+            .await?;
+
+        // The summarizer already called update_node for each summarized node.
+        // We only need to update nodes that were skipped (e.g., plugin or mock path).
+        // For the LLM path with a store, update_node was already called per depth level.
+
+        self.spawn_vocab_update(
+            &IngestResult {
+                document: document.clone(),
+                nodes: nodes.clone(),
+                stats: stats.clone(),
+            },
+            store,
+        );
+
+        Ok(IngestResult {
+            document,
+            nodes,
+            stats: stats.clone(),
+        })
+    }
+
+    /// Resume summarization for a document that was partially ingested.
+    ///
+    /// Called after a server restart when `checkpoint_doc_id` is set on the job.
+    /// Reads all nodes from the DB, identifies those with empty summaries, runs
+    /// the summarizer on the full node set (so parent nodes see child summaries),
+    /// and writes the new summaries back incrementally.
+    pub async fn resume_summarization(
+        &self,
+        doc_id: &str,
+        store: Arc<NodeStore>,
+    ) -> Result<IngestResult>
+    where
+        R: Clone + Send + Sync + 'static,
+    {
+        let document = store
+            .get_document(doc_id)
+            .map_err(IngestError::Storage)?
+            .ok_or_else(|| {
+                IngestError::InvalidInput(format!("Checkpoint doc {} not found in DB", doc_id))
+            })?;
+
+        let mut nodes = store
+            .get_nodes_for_document(doc_id)
+            .map_err(IngestError::Storage)?;
+
+        let pending = nodes.iter().filter(|n| n.summary.is_empty()).count();
+        info!(
+            "Resuming summarization for doc {} ({}/{} nodes still pending)",
+            doc_id,
+            pending,
+            nodes.len()
+        );
+
+        if pending == 0 {
+            info!("All nodes already summarized — nothing to resume");
+            let stats = IngestStats {
+                nodes_created: nodes.len(),
+                summaries_generated: nodes.len(),
+                ..Default::default()
+            };
+            return Ok(IngestResult {
+                document,
+                nodes,
+                stats,
+            });
+        }
+
+        let mut stats = IngestStats {
+            nodes_created: nodes.len(),
+            ..Default::default()
+        };
+
+        // Run summarization on all nodes (the summarizer handles depth ordering;
+        // already-summarized nodes keep their existing non-empty summaries).
+        self.summarize_nodes(&mut nodes, &mut stats, Some(store.clone()))
+            .await?;
+
+        self.spawn_vocab_update(
+            &IngestResult {
+                document: document.clone(),
+                nodes: nodes.clone(),
+                stats: stats.clone(),
+            },
+            store,
+        );
+
+        Ok(IngestResult {
+            document,
+            nodes,
+            stats,
+        })
+    }
+
+    /// Chunk the markdown and build the document tree without running summarization.
+    /// Returns `(Document, Vec<PageNode>)` with empty summaries ready for early flush.
+    async fn chunk_and_build(
+        &self,
+        title: &str,
+        table_id: &str,
+        markdown: &str,
+        stats: &mut IngestStats,
+    ) -> Result<(Document, Vec<PageNode>)> {
+        let mut processed = Self::strip_frontmatter(markdown);
+
+        if let Some(ref pm) = self.plugin_manager {
+            if pm.has_post_processors() {
+                match pm.run_post_processors(&processed, &std::collections::HashMap::new()) {
+                    Ok(result) => processed = result.markdown,
+                    Err(e) => warn!("Post-processor failed, using original: {}", e),
+                }
+            }
+        }
+
+        let chunking_start = std::time::Instant::now();
+        let chunks = if let Some(ref pm) = self.plugin_manager {
+            if pm.has_chunker() {
+                let config = reasondb_plugin::ChunkConfig {
+                    target_chunk_size: self.config.chunker.target_chunk_size,
+                    min_chunk_size: self.config.chunker.min_chunk_size,
+                    max_chunk_size: self.config.chunker.max_chunk_size,
+                    overlap: 100,
+                };
+                match pm.chunk(&processed, &config) {
+                    Ok(result) => result
+                        .chunks
+                        .into_iter()
+                        .map(|c| {
+                            let word_count = c.content.split_whitespace().count();
+                            TextChunk {
+                                id: uuid::Uuid::new_v4().to_string(),
+                                content: c.content,
+                                heading: c.heading.map(|text| DetectedHeading {
+                                    text,
+                                    level: c.level,
+                                    offset: 0,
+                                    page_number: None,
+                                }),
+                                char_count: c.char_count,
+                                word_count,
+                                start_page: None,
+                                end_page: None,
+                            }
+                        })
+                        .collect(),
+                    Err(e) => {
+                        warn!("Plugin chunker failed, falling back to built-in: {}", e);
+                        self.run_chunking_strategy(&processed).await?
+                    }
+                }
+            } else {
+                self.run_chunking_strategy(&processed).await?
+            }
+        } else {
+            self.run_chunking_strategy(&processed).await?
+        };
+        stats.chunking_time_ms = chunking_start.elapsed().as_millis() as u64;
+        stats.chunks_created = chunks.len();
+
+        let (document, nodes) = self.tree_builder.build(title, table_id, chunks)?;
+        stats.nodes_created = nodes.len();
+
+        Ok((document, nodes))
+    }
+
+    /// Run summarization on `nodes`, optionally flushing results to `store` after each
+    /// depth-level batch so that progress survives a server restart.
+    async fn summarize_nodes(
+        &self,
+        nodes: &mut [PageNode],
+        stats: &mut IngestStats,
+        store: Option<Arc<NodeStore>>,
+    ) -> Result<()>
+    where
+        R: Clone + Send + Sync + 'static,
+    {
+        if !self.config.generate_summaries {
+            return Ok(());
+        }
+
+        let summarization_start = std::time::Instant::now();
+        let mut used_plugin = false;
+
+        if let Some(ref pm) = self.plugin_manager {
+            if pm.has_summarizer() {
+                for node in nodes.iter_mut() {
+                    if let Some(ref content) = node.content {
+                        let context = std::collections::HashMap::from([(
+                            "title".to_string(),
+                            node.title.clone(),
+                        )]);
+                        match pm.summarize(content, &context) {
+                            Ok(result) => node.summary = result.summary,
+                            Err(e) => warn!("Plugin summarizer failed for '{}': {}", node.title, e),
+                        }
+                    }
+                }
+                // Flush plugin summaries to DB if store provided
+                if let Some(ref s) = store {
+                    for node in nodes.iter() {
+                        if let Err(e) = s.update_node(node) {
+                            warn!("Checkpoint flush failed for node {}: {}", node.id, e);
+                        }
+                    }
+                }
+                stats.summaries_generated = nodes.len();
+                used_plugin = true;
+            }
+        }
+
+        if !used_plugin {
+            if let Some(ref reasoner) = self.reasoner {
+                let mut summarizer =
+                    BatchSummarizer::new(reasoner, 10, self.config.summarizer.max_concurrent);
+                if let Some(s) = store {
+                    summarizer = summarizer.with_store(s);
+                }
+                summarizer.summarize_batch(nodes).await?;
+                stats.summaries_generated = nodes.len();
+            } else {
+                MockSummarizer::summarize_tree(nodes);
+                // Flush mock summaries if store provided
+                stats.summaries_generated = nodes.len();
+            }
+        }
+
+        stats.summarization_time_ms = summarization_start.elapsed().as_millis() as u64;
+        Ok(())
     }
 
     /// Fire-and-forget domain vocabulary extraction. The job completes immediately
@@ -656,24 +1040,6 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
         } else {
             text.to_string()
         }
-    }
-
-    /// Store an ingestion result (document + nodes) in a single batch transaction
-    fn store_result(result: &IngestResult, store: &NodeStore) -> Result<()> {
-        store
-            .insert_document(&result.document)
-            .map_err(IngestError::Storage)?;
-
-        store
-            .insert_nodes(&result.nodes)
-            .map_err(IngestError::Storage)?;
-
-        info!(
-            "Stored document {} with {} nodes (batch)",
-            result.document.id,
-            result.nodes.len()
-        );
-        Ok(())
     }
 }
 
@@ -882,6 +1248,7 @@ impl<R: ReasoningEngine> PipelineBuilder<R> {
             tree_builder: TreeBuilder::new(),
             reasoner: self.reasoner,
             plugin_manager: self.plugin_manager,
+            checkpoint_callback: None,
         }
     }
 }

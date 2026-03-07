@@ -70,6 +70,8 @@ pub struct ChunkerConfig {
     pub detect_headings: bool,
     /// Lines per LLM window for agentic chunking (large docs are split into windows)
     pub agentic_window_size: usize,
+    /// Maximum number of concurrent LLM window calls during agentic chunking
+    pub agentic_concurrency: usize,
 }
 
 impl Default for ChunkerConfig {
@@ -82,6 +84,7 @@ impl Default for ChunkerConfig {
             overlap: 100,
             detect_headings: true,
             agentic_window_size: 150,
+            agentic_concurrency: 10,
         }
     }
 }
