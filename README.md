@@ -75,6 +75,7 @@ ReasonDB introduces **Hierarchical Reasoning Retrieval (HRR)**, a fundamentally 
 - [Insurance Policy Analyser — Live Demo](#insurance-policy-analyser--live-demo)
 - [How It Works](#how-it-works)
 - [Quick Start](#quick-start)
+- [Interactive Tutorials](#interactive-tutorials)
 - [Query with RQL](#query-with-rql)
 - [Plugin Architecture](#plugin-architecture)
 - [Use Cases](#use-cases)
@@ -230,6 +231,13 @@ git clone https://github.com/reasondb/reasondb.git && cd reasondb
 cargo build --release
 ```
 
+To also set up the desktop app and tutorials, install JS dependencies from the repo root:
+
+```bash
+yarn install          # installs apps/, packages/, and tutorials/ in one step
+yarn build:packages   # builds the shared @reasondb/rql-editor package
+```
+
 #### Configure your LLM provider
 
 ```bash
@@ -272,16 +280,91 @@ make docker-ps        # Check health status
 
 #### ReasonDB Client (Desktop App)
 
+The repo uses a **Yarn workspace** — a single `yarn install` at the root installs all JS dependencies across `apps/`, `packages/`, and `tutorials/`.
+
 ```bash
-make client-install      # Install frontend dependencies
-make client-dev          # Start web dev server
-make client-app          # Run desktop app in dev mode (Tauri)
-make client-app-build    # Build desktop app for production
+# One-time setup from repo root
+yarn install
+yarn build:packages   # build the shared @reasondb/rql-editor package
+
+# Run the desktop app
+make client-app          # dev mode (Tauri + Vite)
+make client-app-build    # production build
+
+# Or use yarn workspace commands directly
+yarn workspace reasondb-client dev         # Vite web dev server only
+yarn workspace reasondb-client tauri dev   # full Tauri desktop app (dev)
+yarn workspace reasondb-client build       # production build
 ```
+
+#### Interactive Tutorials
+
+Six hands-on tutorial apps are included, each running a Next.js app against a live ReasonDB server:
+
+| Tutorial | Workspace name | Port |
+|----------|---------------|------|
+| 01 — RQL Basics | `tutorial-rql-basics` | 5000 |
+| 02 — Legal Search | `tutorial-legal-search` | 5001 |
+| 03 — Research Papers | `tutorial-research-papers` | 5002 |
+| 04 — Knowledge Base | `tutorial-knowledge-base` | 5003 |
+| 05 — PDF Financials | `tutorial-pdf-financials` | 5004 |
+| 06 — Insurance Analyser | `tutorial-insurance-demo` | 5005 |
+
+```bash
+# Start any tutorial by its workspace name
+yarn workspace tutorial-rql-basics dev
+yarn workspace tutorial-insurance-demo dev
+
+# Fetch sample data for all tutorials
+yarn tutorials:fetch-all
+```
+
+> All tutorials require a running ReasonDB server — start one with `reasondb serve` before launching a tutorial.
 
 <h2>Query with RQL</h2>
 
-ReasonDB uses **RQL** - a SQL-like query language with built-in `SEARCH` and `REASON` clauses:
+ReasonDB uses **RQL** - a SQL-like query language with built-in `SEARCH` and `REASON` clauses.
+
+Here's ReasonDB answering a question **about itself** — the README ingested as a document:
+
+```sql
+SELECT * FROM docs REASON 'What is ReasonDB?';
+```
+
+```json
+{
+  "documents": [
+    {
+      "title": "ReasonDB README",
+      "score": 0.97,
+      "matched_nodes": [
+        {
+          "title": "What is ReasonDB?",
+          "content": "ReasonDB is an AI-native document database built in Rust, designed to go beyond simple retrieval. It treats documents as knowledge to be understood — preserving document structure, enabling LLM-guided traversal, and extracting precise answers with full context.",
+          "path": ["ReasonDB README", "What is ReasonDB?"],
+          "confidence": 0.97,
+          "reasoning_trace": [
+            {
+              "node_title": "ReasonDB README",
+              "decision": "Introduction section directly addresses the query",
+              "confidence": 0.91
+            },
+            {
+              "node_title": "What is ReasonDB?",
+              "decision": "Node title matches query exactly — drilling into content",
+              "confidence": 0.97
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "total_count": 1,
+  "execution_time_ms": 4213
+}
+```
+
+Every answer includes the **matched node content**, the **path** through the document tree the LLM traversed, a **reasoning trace** explaining each navigation decision, and a **confidence score**. No black-box retrieval — full transparency.
 
 ```sql
 -- Fast keyword search (BM25, ~50ms)

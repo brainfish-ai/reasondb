@@ -46,6 +46,11 @@ scripts/results/
 
 # Build artifacts
 dist/
-docs/node_modules/
+node_modules/
 docs/.devdoc.json
 my-video/
+
+# Yarn
+.yarn/cache
+.yarn/install-state.gz
+yarn-error.log
