@@ -8,6 +8,7 @@ export interface QueryResult {
   rowCount: number
   executionTime: number
   error?: string
+  traceId?: string
 }
 
 export interface QueryHistoryItem {
