@@ -210,6 +210,8 @@ pub struct CachedQueryResult {
     pub cached_at: Instant,
     /// Number of LLM calls saved
     pub llm_calls_saved: usize,
+    /// Trace ID from the original execution (passed back on cache hits so the UI can show the Trace tab)
+    pub trace_id: Option<String>,
 }
 
 /// A cached matched node
@@ -452,6 +454,7 @@ mod tests {
             }],
             cached_at: Instant::now(),
             llm_calls_saved: 5,
+            trace_id: None,
         };
         cache.insert("What are penalties?", "legal", result);
 
@@ -478,6 +481,7 @@ mod tests {
             matches: vec![],
             cached_at: Instant::now(),
             llm_calls_saved: 1,
+            trace_id: None,
         };
 
         // Insert with extra whitespace and caps
