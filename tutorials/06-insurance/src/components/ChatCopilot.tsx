@@ -9,7 +9,9 @@ interface Message {
   role: "user" | "assistant"
   content: string
   rqlQuery?: string
-  status?: "building" | "running" | "answering" | "done" | "error"
+  /** LLM-rewritten version of content, contextualised against conversation history */
+  contextualQuestion?: string
+  status?: "contextualising" | "building" | "running" | "answering" | "done" | "error"
   progressMsg?: string
   nodes?: MatchedNode[]
   question?: string
@@ -89,6 +91,14 @@ function MessageBubble({ msg }: { msg: Message }) {
         <span className="text-[11px] font-medium text-muted-foreground">Brainfish Assist</span>
       </div>
 
+      {/* Status: contextualising */}
+      {msg.status === "contextualising" && (
+        <div className="ml-8 flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+          <span>Understanding context…</span>
+        </div>
+      )}
+
       {/* Status: building / searching */}
       {(msg.status === "building" || msg.status === "running") && (
         <div className="ml-8 flex items-center gap-2 text-xs text-muted-foreground">
@@ -97,13 +107,20 @@ function MessageBubble({ msg }: { msg: Message }) {
         </div>
       )}
 
-      {/* Generated RQL */}
+      {/* Generated RQL — with optional "Interpreted as:" annotation */}
       {msg.rqlQuery && (
         <div className="ml-8 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden">
           <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-slate-200 bg-slate-100">
             <Code2 className="h-3 w-3 text-slate-500" />
             <span className="text-[10px] font-medium text-slate-600 uppercase tracking-wide">Generated RQL</span>
           </div>
+          {/* Show contextual question if it differs from original */}
+          {msg.contextualQuestion && msg.contextualQuestion !== msg.content && (
+            <div className="px-3 pt-2 pb-1 flex items-start gap-1.5 border-b border-slate-200">
+              <span className="text-[10px] text-slate-500 font-medium mt-0.5 shrink-0">Interpreted as:</span>
+              <span className="text-[11px] text-slate-700 italic leading-relaxed">{msg.contextualQuestion}</span>
+            </div>
+          )}
           <pre className="px-3 py-2 text-[11px] font-mono text-slate-700 leading-relaxed whitespace-pre-wrap overflow-x-auto">
             {msg.rqlQuery}
           </pre>
@@ -206,6 +223,9 @@ export function ChatCopilot({
   const prevResultRef = useRef<QueryResult | null>(null)
   const prevRunningRef = useRef(false)
   const answerAbortRef = useRef<AbortController | null>(null)
+  // Keep a live ref to messages so async callbacks can read current state
+  const messagesRef = useRef<Message[]>([])
+  useEffect(() => { messagesRef.current = messages }, [messages])
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -342,21 +362,56 @@ export function ChatCopilot({
   }, [isRunning, progressMsg, result, pendingMsgId, streamAnswer])
 
   const sendQuestion = useCallback(
-    (question: string) => {
+    async (question: string) => {
       if (!question.trim() || isRunning) return
 
-      const rqlQuery = `SELECT * FROM ${tableName} REASON '${question.trim()}' LIMIT 5`
+      const raw = question.trim()
       const userMsgId = crypto.randomUUID()
       const assistantMsgId = crypto.randomUUID()
 
+      // Build conversation history from completed Q&A pairs BEFORE adding new messages
+      const history = messagesRef.current
+        .filter((m) => m.role === "user" || (m.role === "assistant" && m.answer))
+        .slice(-6)
+        .map((m) => ({
+          role: m.role as "user" | "assistant",
+          content: m.role === "user" ? m.content : (m.answer ?? ""),
+        }))
+
+      // Add user bubble + "Understanding context…" spinner immediately
       setMessages((prev) => [
         ...prev,
-        { id: userMsgId, role: "user", content: question.trim() },
-        { id: assistantMsgId, role: "assistant", content: "", rqlQuery, status: "building" },
+        { id: userMsgId, role: "user", content: raw },
+        { id: assistantMsgId, role: "assistant", content: "", status: "contextualising" },
       ])
-      setPendingMsgId(assistantMsgId)
       setInputValue("")
-      onQuery(rqlQuery, question.trim())
+
+      // Call /api/contextualize — falls back to raw question on any error
+      let contextualQuestion = raw
+      try {
+        const res = await fetch("/api/contextualize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ history, question: raw }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          contextualQuestion = (data.contextualQuestion ?? raw).trim()
+        }
+      } catch { /* fall back gracefully */ }
+
+      const rqlQuery = `SELECT * FROM ${tableName} REASON '${contextualQuestion}' LIMIT 5`
+
+      // Update assistant message: transition to "building" with RQL + contextual question
+      setMessages((msgs) =>
+        msgs.map((m) =>
+          m.id === assistantMsgId
+            ? { ...m, status: "building", rqlQuery, contextualQuestion }
+            : m
+        )
+      )
+      setPendingMsgId(assistantMsgId)
+      onQuery(rqlQuery, contextualQuestion)
     },
     [tableName, isRunning, onQuery]
   )
