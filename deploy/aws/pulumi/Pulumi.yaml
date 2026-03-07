@@ -41,5 +41,5 @@ config:
     default: ""
     description: Custom LLM base URL (for Ollama or compatible endpoints)
   reasondbImage:
-    default: ajainvivek/reasondb:latest
+    default: brainfishai/reasondb:latest
     description: Docker image to run

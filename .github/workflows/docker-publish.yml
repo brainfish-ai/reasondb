@@ -6,7 +6,7 @@ on:
       - 'v*'
 
 env:
-  REGISTRY_IMAGE: ajainvivek/reasondb
+  REGISTRY_IMAGE: brainfishai/reasondb
 
 jobs:
   docker:

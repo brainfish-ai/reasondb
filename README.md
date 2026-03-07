@@ -26,7 +26,7 @@
 </p>
 
 <p align="center">
-    <a href="https://hub.docker.com/r/ajainvivek/reasondb"><img src="https://img.shields.io/docker/pulls/ajainvivek/reasondb?label=docker%20pulls&style=flat-square" alt="Docker Pulls"></a>
+    <a href="https://hub.docker.com/r/brainfishai/reasondb"><img src="https://img.shields.io/docker/pulls/brainfishai/reasondb?label=docker%20pulls&style=flat-square" alt="Docker Pulls"></a>
     &nbsp;
     <a href="https://github.com/reasondb/reasondb"><img src="https://img.shields.io/github/stars/reasondb/reasondb?color=FFD700&style=flat-square&label=stars" alt="GitHub Stars"></a>
     &nbsp;
@@ -249,7 +249,7 @@ Server starts at **http://localhost:4444** with Swagger UI at **http://localhost
 docker run --rm --pull always --name reasondb -p 4444:4444 \
   -e REASONDB_LLM_PROVIDER=openai \
   -e REASONDB_LLM_API_KEY=sk-... \
-  ajainvivek/reasondb:latest serve
+  brainfishai/reasondb:latest serve
 ```
 
 Or use the Makefile for local development:

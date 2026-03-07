@@ -1,7 +1,7 @@
 services:
   reasondb:
     build: .
-    image: ajainvivek/reasondb:latest
+    image: brainfishai/reasondb:latest
     ports:
       - "4444:4444"
     volumes:
