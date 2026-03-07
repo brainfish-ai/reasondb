@@ -1,0 +1,22 @@
+{
+  "name": "reasondb-monorepo",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "tutorials/*"
+  ],
+  "scripts": {
+    "build": "yarn workspaces run build",
+    "build:packages": "yarn workspace @reasondb/rql-editor build",
+    "dev:client": "yarn workspace reasondb-client dev",
+    "lint": "yarn workspaces run lint --if-present",
+    "typecheck": "yarn workspaces run typecheck --if-present",
+    "tutorials:fetch-all": "tsx tutorials/scripts/fetch-all.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}
