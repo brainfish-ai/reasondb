@@ -47,7 +47,7 @@
 
 <br>
 
-<video src="https://github.com/brainfish-ai/reasondb/releases/download/v0.2.1/ReasonDB_Client_Demo.mp4" controls width="100%"></video>
+<img src="./assets/ReasonDB_Client_Demo.gif" alt="ReasonDB Client Demo" width="100%">
 
 <br>
 
@@ -138,7 +138,7 @@ ReasonDB detects and follows **intra-document cross-references** during ingestio
 
 The benchmark above is powered by this tutorial app. It queries four AIA insurance policy documents using `REASON` and shows the full traversal trace — which nodes the LLM visited, why it selected them, and how it synthesized the final answer.
 
-<video src="https://github.com/brainfish-ai/reasondb/releases/download/v0.2.1/Insurance_Policy_Analyser_Demo.mp4" controls width="100%"></video>
+<img src="./assets/Insurance_Policy_Analyser_Demo.gif" alt="Insurance Policy Analyser Demo" width="100%">
 
 > Full tutorial source: [`tutorials/06-insurance/`](./tutorials/06-insurance/)
 
