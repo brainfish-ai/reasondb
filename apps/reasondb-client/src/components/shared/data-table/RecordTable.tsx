@@ -300,16 +300,6 @@ export function RecordTable({
   const { activeConnectionId, connections } = useConnectionStore()
   const activeConnection = connections.find((c) => c.id === activeConnectionId)
 
-  const connectionConfig = useMemo(() => {
-    if (!activeConnection) return undefined
-    return {
-      host: activeConnection.host,
-      port: activeConnection.port,
-      apiKey: activeConnection.apiKey,
-      useSsl: activeConnection.ssl,
-    }
-  }, [activeConnection])
-
   // Close sidebars
   const closeSidebar = useCallback(() => {
     setSidebar(prev => ({ ...prev, isOpen: false }))
@@ -530,7 +520,6 @@ export function RecordTable({
         documentId={reasonSidebar.documentId}
         confidence={reasonSidebar.confidence}
         matchedNodes={reasonSidebar.matchedNodes}
-        connectionConfig={connectionConfig}
       />
     </div>
   )

@@ -1,21 +1,19 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import {
   X,
   ArrowsOut,
   ArrowsIn,
   CaretDown,
-  TreeStructure,
   Path,
-  CircleNotch,
-  WarningCircle,
   Target,
   Code,
   Eye,
+  GitBranch,
+  CheckCircle,
+  XCircle,
 } from '@phosphor-icons/react'
 import Markdown from 'react-markdown'
 import { cn } from '@/lib/utils'
-import { NodeSplitViewer, type TreeNode } from '@/components/shared/NodeSplitViewer'
-import { createClient } from '@/lib/api'
 import type { MatchedNodeResponse, ReasoningStepResponse } from '@/lib/api'
 
 // ==================== Types ====================
@@ -27,15 +25,9 @@ interface ReasonDetailSidebarProps {
   documentId: string
   confidence?: number
   matchedNodes: MatchedNodeResponse[]
-  connectionConfig?: {
-    host: string
-    port: number
-    apiKey?: string
-    useSsl?: boolean
-  }
 }
 
-type Tab = 'matched' | 'tree'
+type Tab = 'matched' | 'trace'
 
 const MIN_WIDTH = 500
 const MAX_WIDTH = window.innerWidth * 0.85
@@ -251,6 +243,197 @@ function TabButton({
   )
 }
 
+// ==================== Trace Path View ====================
+
+function TracePathNodeRow({
+  label,
+  isRoot,
+  isLeaf,
+  confidence,
+  decision,
+}: {
+  label: string
+  isRoot?: boolean
+  isLeaf?: boolean
+  confidence?: number
+  decision?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const pct = confidence != null ? Math.round(confidence * 100) : null
+
+  return (
+    <div className="flex gap-3">
+      {/* Left connector */}
+      <div className="flex flex-col items-center shrink-0">
+        <div
+          className={cn(
+            'w-3 h-3 rounded-full border-2 shrink-0',
+            isLeaf
+              ? 'bg-green/80 border-green'
+              : isRoot
+              ? 'bg-mauve/80 border-mauve'
+              : 'bg-surface-1 border-border'
+          )}
+        />
+        {!isLeaf && <div className="w-px flex-1 bg-border/50 mt-0.5" />}
+      </div>
+
+      {/* Content */}
+      <div className={cn('pb-3 flex-1 min-w-0', isLeaf && 'pb-0')}>
+        <div className="flex items-center gap-2">
+          <span
+            className={cn(
+              'text-xs font-medium truncate',
+              isLeaf ? 'text-green' : isRoot ? 'text-mauve' : 'text-text'
+            )}
+          >
+            {label}
+          </span>
+          {pct != null && (
+            <span
+              className={cn(
+                'text-[10px] font-mono px-1.5 py-0.5 rounded-full shrink-0',
+                pct >= 70
+                  ? 'bg-green/15 text-green'
+                  : pct >= 40
+                  ? 'bg-yellow/15 text-yellow'
+                  : 'bg-overlay-0/15 text-overlay-1'
+              )}
+            >
+              {pct}%
+            </span>
+          )}
+          {isRoot && (
+            <span className="text-[10px] text-overlay-0/50 font-mono shrink-0">root</span>
+          )}
+          {isLeaf && (
+            <span className="text-[10px] text-green/60 font-mono shrink-0">leaf</span>
+          )}
+          {decision && (
+            <button
+              onClick={() => setOpen(!open)}
+              className="text-[10px] text-overlay-0 hover:text-mauve ml-auto shrink-0"
+            >
+              {open ? 'hide' : 'why'}
+            </button>
+          )}
+        </div>
+        {open && decision && (
+          <p className="text-[11px] text-subtext-0 leading-relaxed mt-1">{decision}</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function NodeTracePath({ node, index }: { node: MatchedNodeResponse; index: number }) {
+  const [open, setOpen] = useState(index === 0)
+  const steps = node.reasoning_trace ?? []
+
+  // Prefer explicit path titles; fall back to reasoning_trace node titles
+  const pathSegments: Array<{ label: string; confidence?: number; decision?: string }> =
+    node.path.length > 0
+      ? node.path.map((segment, i) => ({
+          label: segment,
+          confidence: steps[i]?.confidence ?? (i === node.path.length - 1 ? node.confidence : undefined),
+          decision: steps[i]?.decision,
+        }))
+      : steps.length > 0
+      ? steps.map((step) => ({
+          label: step.node_title,
+          confidence: step.confidence,
+          decision: step.decision,
+        }))
+      : []
+
+  const hopLabel =
+    pathSegments.length > 0
+      ? `${pathSegments.length} step${pathSegments.length !== 1 ? 's' : ''}`
+      : 'direct match'
+
+  return (
+    <div className="rounded-xl border border-border bg-surface-0/50 overflow-hidden">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full px-4 py-3 flex items-center gap-2 text-left hover:bg-surface-0/80 transition-colors"
+      >
+        <CaretDown
+          size={12}
+          className={cn('shrink-0 text-overlay-0 transition-transform', !open && '-rotate-90')}
+        />
+        <span className="font-semibold text-sm text-text truncate flex-1">{node.title}</span>
+        <span className="text-[10px] font-mono text-overlay-0 shrink-0">{hopLabel}</span>
+        <ConfidenceBadge value={node.confidence} size="sm" />
+      </button>
+
+      {open && (
+        <div className="border-t border-border/40 px-4 py-3">
+          {pathSegments.length === 0 ? (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-start gap-2 rounded-lg bg-surface-1/50 border border-border/40 px-3 py-2.5">
+                <CheckCircle size={14} className="text-green shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-medium text-text">Found via direct text match</p>
+                  <p className="text-[11px] text-subtext-0 leading-relaxed mt-0.5">
+                    This node was identified directly by BM25 full-text search. No tree traversal was needed, so there are no intermediate reasoning steps.
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col">
+              {pathSegments.map((seg, i) => (
+                <TracePathNodeRow
+                  key={i}
+                  label={seg.label}
+                  isRoot={i === 0}
+                  isLeaf={i === pathSegments.length - 1}
+                  confidence={seg.confidence}
+                  decision={seg.decision}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Verdict */}
+          <div className={cn(
+            'mt-2 flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium',
+            node.confidence >= 0.7
+              ? 'bg-green/10 text-green border border-green/20'
+              : 'bg-yellow/10 text-yellow border border-yellow/20'
+          )}>
+            {node.confidence >= 0.7
+              ? <CheckCircle size={13} />
+              : <XCircle size={13} />}
+            Confidence: {Math.round(node.confidence * 100)}%
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TracePathView({ matchedNodes }: { matchedNodes: MatchedNodeResponse[] }) {
+  if (matchedNodes.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-32 text-overlay-0 text-sm">
+        No matched nodes
+      </div>
+    )
+  }
+
+  return (
+    <div className="p-4 flex flex-col gap-4">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-overlay-0 mb-1">
+        Agent Reasoning — {matchedNodes.length} matched node{matchedNodes.length !== 1 ? 's' : ''}
+      </p>
+      {matchedNodes.map((node, i) => (
+        <NodeTracePath key={node.node_id || i} node={node} index={i} />
+      ))}
+    </div>
+  )
+}
+
 // ==================== Main Component ====================
 
 export function ReasonDetailSidebar({
@@ -260,7 +443,6 @@ export function ReasonDetailSidebar({
   documentId,
   confidence,
   matchedNodes,
-  connectionConfig,
 }: ReasonDetailSidebarProps) {
   const [activeTab, setActiveTab] = useState<Tab>('matched')
   const [isExpanded, setIsExpanded] = useState(false)
@@ -268,21 +450,6 @@ export function ReasonDetailSidebar({
   const [width, setWidth] = useState(DEFAULT_WIDTH)
   const [isDragging, setIsDragging] = useState(false)
 
-  // Document tree lazy loading
-  const [treeData, setTreeData] = useState<TreeNode | null>(null)
-  const [treeLoading, setTreeLoading] = useState(false)
-  const [treeError, setTreeError] = useState<string | null>(null)
-  const fetchedDocIdRef = useRef<string | null>(null)
-
-  // Reset when document changes
-  useEffect(() => {
-    if (documentId !== fetchedDocIdRef.current) {
-      setTreeData(null)
-      setTreeError(null)
-      setTreeLoading(false)
-      fetchedDocIdRef.current = null
-    }
-  }, [documentId])
 
   // Reset to matched tab when opened with new data
   useEffect(() => {
@@ -291,34 +458,6 @@ export function ReasonDetailSidebar({
     }
   }, [isOpen, documentId])
 
-  const fetchTree = useCallback(async () => {
-    if (!connectionConfig || !documentId || fetchedDocIdRef.current === documentId) return
-
-    setTreeLoading(true)
-    setTreeError(null)
-    try {
-      const client = createClient({
-        host: connectionConfig.host,
-        port: connectionConfig.port,
-        apiKey: connectionConfig.apiKey,
-        useSsl: connectionConfig.useSsl,
-      })
-      const tree = await client.getDocumentTree(documentId)
-      setTreeData(tree)
-      fetchedDocIdRef.current = documentId
-    } catch (err) {
-      setTreeError(err instanceof Error ? err.message : 'Failed to load document tree')
-    } finally {
-      setTreeLoading(false)
-    }
-  }, [documentId, connectionConfig])
-
-  const handleTabChange = (tab: Tab) => {
-    setActiveTab(tab)
-    if (tab === 'tree' && fetchedDocIdRef.current !== documentId) {
-      fetchTree()
-    }
-  }
 
   // Open/close animation
   useEffect(() => {
@@ -424,16 +563,16 @@ export function ReasonDetailSidebar({
 
         {/* Tabs */}
         <div className="flex border-b border-border bg-mantle">
-          <TabButton active={activeTab === 'matched'} onClick={() => handleTabChange('matched')}>
+          <TabButton active={activeTab === 'matched'} onClick={() => setActiveTab('matched')}>
             <Target size={14} />
             Matched Nodes
             <span className="ml-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-surface-1 text-overlay-0">
               {matchedNodes.length}
             </span>
           </TabButton>
-          <TabButton active={activeTab === 'tree'} onClick={() => handleTabChange('tree')}>
-            <TreeStructure size={14} />
-            Document Tree
+          <TabButton active={activeTab === 'trace'} onClick={() => setActiveTab('trace')}>
+            <GitBranch size={14} />
+            Trace Path
           </TabButton>
         </div>
 
@@ -453,30 +592,10 @@ export function ReasonDetailSidebar({
             </div>
           )}
 
-          {activeTab === 'tree' && (
-            <div className="h-full">
-              {treeLoading ? (
-                <div className="flex flex-col items-center justify-center h-full gap-3">
-                  <CircleNotch size={24} className="animate-spin text-mauve" />
-                  <span className="text-sm text-overlay-0">Loading document tree...</span>
-                </div>
-              ) : treeError ? (
-                <div className="flex flex-col items-center justify-center h-full gap-3 p-4 text-center">
-                  <WarningCircle size={24} className="text-red" />
-                  <span className="text-sm text-red">{treeError}</span>
-                  <button onClick={fetchTree} className="text-xs text-mauve hover:underline">
-                    Retry
-                  </button>
-                </div>
-              ) : treeData ? (
-                <NodeSplitViewer treeData={treeData} />
-              ) : (
-                <div className="flex items-center justify-center h-full text-overlay-0 text-sm">
-                  No tree data available
-                </div>
-              )}
-            </div>
+          {activeTab === 'trace' && (
+            <TracePathView matchedNodes={matchedNodes} />
           )}
+
         </div>
       </div>
     </>

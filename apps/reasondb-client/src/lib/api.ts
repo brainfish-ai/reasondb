@@ -370,6 +370,7 @@ export interface QueryResult {
   columns: string[]
   rowCount: number
   executionTime: number
+  traceId?: string
 }
 
 export interface QueryValidationResult {
@@ -425,11 +426,136 @@ interface QueryServerResponse {
   }>
   total_count: number
   execution_time_ms: number
+  trace_id?: string
   aggregates?: Array<{
     name: string
     value: unknown
     group_key?: Array<[string, unknown]>
   }>
+}
+
+// ==================== Trace Types ====================
+
+export interface SubQueryTrace {
+  text: string
+  rationale: string
+  bm25_hits: number
+}
+
+export interface DomainContextTrace {
+  table_name: string
+  description?: string
+  vocab_hints: string[]
+}
+
+export interface DecompositionTrace {
+  domain_context?: DomainContextTrace
+  sub_queries: SubQueryTrace[]
+}
+
+export interface Bm25HitTrace {
+  document_id: string
+  document_title: string
+  score: number
+  matched_node_count: number
+  sub_query_index: number
+}
+
+export interface Bm25SelectionTrace {
+  total_candidates: number
+  hits: Bm25HitTrace[]
+}
+
+export interface TreeGrepScoreTrace {
+  document_id: string
+  document_title: string
+  combined_score: number
+  matched_sections: string[]
+}
+
+export interface StructuralFilterTrace {
+  terms: string[]
+  filtered_count: number
+  scores: TreeGrepScoreTrace[]
+}
+
+export interface DocumentRankingTrace {
+  document_id: string
+  document_title: string
+  relevance: number
+  reasoning: string
+}
+
+export interface LlmRankingTrace {
+  input_count: number
+  selected_count: number
+  skipped_llm: boolean
+  rankings: DocumentRankingTrace[]
+}
+
+export interface BeamReasoningStep {
+  node_title: string
+  decision: string
+  confidence: number
+}
+
+export interface LeafVerificationTrace {
+  node_id: string
+  node_title: string
+  is_relevant: boolean
+  confidence: number
+  path: string[]
+  reasoning_steps: BeamReasoningStep[]
+}
+
+export interface BeamDocumentTrace {
+  document_id: string
+  document_title: string
+  nodes_visited: number
+  nodes_pruned: number
+  llm_calls: number
+  relevant_leaves: LeafVerificationTrace[]
+}
+
+export interface BeamReasoningTrace {
+  documents_processed: number
+  total_llm_calls: number
+  documents: BeamDocumentTrace[]
+}
+
+export interface FinalResultTrace {
+  document_id: string
+  document_title: string
+  node_id: string
+  node_title: string
+  confidence: number
+  path: string[]
+}
+
+export interface QueryTrace {
+  trace_id: string
+  query: string
+  table_id: string
+  created_at: string
+  duration_ms: number
+  decomposition?: DecompositionTrace
+  bm25_selection: Bm25SelectionTrace
+  structural_filter: StructuralFilterTrace
+  llm_ranking: LlmRankingTrace
+  beam_reasoning: BeamReasoningTrace
+  final_results: FinalResultTrace[]
+}
+
+export interface QueryTraceSummary {
+  trace_id: string
+  query: string
+  table_id: string
+  created_at: string
+  duration_ms: number
+  result_count: number
+  sub_query_count: number
+  total_llm_calls: number
+  candidate_count: number
 }
 
 // Ingestion
@@ -964,6 +1090,8 @@ class ReasonDBClient {
   }
 
   private transformQueryResponse(response: QueryServerResponse): QueryResult {
+    const traceId = response.trace_id
+
     if (response.documents && response.documents.length > 0) {
       const firstDoc = response.documents[0]
       const columns = Object.keys(firstDoc)
@@ -972,6 +1100,7 @@ class ReasonDBClient {
         rows: response.documents,
         rowCount: response.total_count,
         executionTime: response.execution_time_ms,
+        traceId,
       }
     }
 
@@ -986,6 +1115,7 @@ class ReasonDBClient {
         rows: [row],
         rowCount: 1,
         executionTime: response.execution_time_ms,
+        traceId,
       }
     }
 
@@ -994,7 +1124,32 @@ class ReasonDBClient {
       rows: [],
       rowCount: 0,
       executionTime: response.execution_time_ms,
+      traceId,
     }
+  }
+
+  // ==================== Traces ====================
+
+  /**
+   * List recent query traces for a table (newest first).
+   */
+  async listTraces(tableId: string, limit = 50): Promise<QueryTraceSummary[]> {
+    return this.request<QueryTraceSummary[]>(
+      `/v1/tables/${encodeURIComponent(tableId)}/traces?limit=${limit}`,
+      {},
+      true,
+    )
+  }
+
+  /**
+   * Get full trace data for a specific trace ID.
+   */
+  async getTrace(tableId: string, traceId: string): Promise<QueryTrace> {
+    return this.request<QueryTrace>(
+      `/v1/tables/${encodeURIComponent(tableId)}/traces/${encodeURIComponent(traceId)}`,
+      {},
+      true,
+    )
   }
 
   // ==================== Ingestion ====================
