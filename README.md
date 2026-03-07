@@ -323,7 +323,48 @@ yarn tutorials:fetch-all
 
 <h2>Query with RQL</h2>
 
-ReasonDB uses **RQL** - a SQL-like query language with built-in `SEARCH` and `REASON` clauses:
+ReasonDB uses **RQL** - a SQL-like query language with built-in `SEARCH` and `REASON` clauses.
+
+Here's ReasonDB answering a question **about itself** — the README ingested as a document:
+
+```sql
+SELECT * FROM docs REASON 'What is ReasonDB?';
+```
+
+```json
+{
+  "documents": [
+    {
+      "title": "ReasonDB README",
+      "score": 0.97,
+      "matched_nodes": [
+        {
+          "title": "What is ReasonDB?",
+          "content": "ReasonDB is an AI-native document database built in Rust, designed to go beyond simple retrieval. It treats documents as knowledge to be understood — preserving document structure, enabling LLM-guided traversal, and extracting precise answers with full context.",
+          "path": ["ReasonDB README", "What is ReasonDB?"],
+          "confidence": 0.97,
+          "reasoning_trace": [
+            {
+              "node_title": "ReasonDB README",
+              "decision": "Introduction section directly addresses the query",
+              "confidence": 0.91
+            },
+            {
+              "node_title": "What is ReasonDB?",
+              "decision": "Node title matches query exactly — drilling into content",
+              "confidence": 0.97
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "total_count": 1,
+  "execution_time_ms": 4213
+}
+```
+
+Every answer includes the **matched node content**, the **path** through the document tree the LLM traversed, a **reasoning trace** explaining each navigation decision, and a **confidence score**. No black-box retrieval — full transparency.
 
 ```sql
 -- Fast keyword search (BM25, ~50ms)
