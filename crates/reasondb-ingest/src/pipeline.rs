@@ -16,7 +16,7 @@ use reasondb_core::model::{Document, PageNode};
 use reasondb_core::NodeStore;
 use reasondb_plugin::PluginManager;
 
-use crate::chunker::{ChunkerConfig, SemanticChunker};
+use crate::chunker::{ChunkStrategy, ChunkerConfig, DetectedHeading, SemanticChunker, TextChunk};
 use crate::error::{IngestError, Result};
 use crate::extractor::{DocumentType, SmartExtractor};
 use crate::summarizer::{BatchSummarizer, MockSummarizer, SummarizerConfig};
@@ -271,7 +271,7 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
             }
         }
 
-        // 2. Chunk (plugin chunker or built-in SemanticChunker)
+        // 2. Chunk (plugin chunker → agentic LLM → built-in MarkdownAware)
         let chunking_start = std::time::Instant::now();
         let chunks = if let Some(ref pm) = self.plugin_manager {
             if pm.has_chunker() {
@@ -288,10 +288,10 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
                         .into_iter()
                         .map(|c| {
                             let word_count = c.content.split_whitespace().count();
-                            crate::chunker::TextChunk {
+                            TextChunk {
                                 id: uuid::Uuid::new_v4().to_string(),
                                 content: c.content,
-                                heading: c.heading.map(|text| crate::chunker::DetectedHeading {
+                                heading: c.heading.map(|text| DetectedHeading {
                                     text,
                                     level: c.level,
                                     offset: 0,
@@ -310,10 +310,10 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
                     }
                 }
             } else {
-                self.chunker.chunk_text(&processed_markdown)?
+                self.run_chunking_strategy(&processed_markdown).await?
             }
         } else {
-            self.chunker.chunk_text(&processed_markdown)?
+            self.run_chunking_strategy(&processed_markdown).await?
         };
         stats.chunking_time_ms = chunking_start.elapsed().as_millis() as u64;
         stats.chunks_created = chunks.len();
@@ -386,6 +386,130 @@ impl<R: ReasoningEngine> IngestPipeline<R> {
         self.config = config.clone();
         self.chunker = SemanticChunker::new(config.chunker);
         self
+    }
+
+    /// Select the correct chunking path based on `config.chunker.strategy`.
+    ///
+    /// - `Agentic` — calls the LLM to group numbered lines; falls back to
+    ///   `MarkdownAware` when no reasoner is configured.
+    /// - `MarkdownAware` — deterministic CommonMark boundary splitting.
+    async fn run_chunking_strategy(&self, markdown: &str) -> Result<Vec<TextChunk>> {
+        match self.config.chunker.strategy {
+            ChunkStrategy::MarkdownAware => self.chunker.chunk_text(markdown),
+            ChunkStrategy::Agentic => {
+                if let Some(ref reasoner) = self.reasoner {
+                    self.agentic_chunk(markdown, reasoner).await
+                } else {
+                    warn!(
+                        "Agentic chunking requires an LLM; no reasoner configured — \
+                         falling back to MarkdownAware"
+                    );
+                    self.chunker.chunk_text(markdown)
+                }
+            }
+        }
+    }
+
+    /// Call the LLM to chunk `markdown` into semantically coherent groups,
+    /// processing the document in overlapping windows of `agentic_window_size` lines.
+    async fn agentic_chunk(&self, markdown: &str, reasoner: &R) -> Result<Vec<TextChunk>> {
+        let all_lines: Vec<String> = markdown.lines().map(|l| l.to_string()).collect();
+        let total_lines = all_lines.len();
+        let window_size = self.config.chunker.agentic_window_size;
+
+        if total_lines == 0 {
+            return Ok(vec![]);
+        }
+
+        // Process in windows with a small overlap to avoid cutting topics at boundaries.
+        let overlap = (window_size / 10).max(5);
+        let mut all_groups: Vec<reasondb_core::llm::ChunkGroup> = Vec::new();
+        let mut offset = 0usize; // 0-based index into all_lines
+
+        while offset < total_lines {
+            let end = (offset + window_size).min(total_lines);
+            let window: Vec<String> = all_lines[offset..end].to_vec();
+            let window_offset = offset + 1; // 1-based line numbers for the LLM
+
+            let result = reasoner.chunk_document(&window, window_offset).await?;
+
+            // Accept groups whose start_line is past the overlap zone (except first window).
+            let cutoff = if offset == 0 {
+                window_offset
+            } else {
+                window_offset + overlap
+            };
+
+            for g in result.groups {
+                if g.start_line >= cutoff || offset == 0 {
+                    all_groups.push(g);
+                }
+            }
+
+            if end >= total_lines {
+                break;
+            }
+            // Advance by window_size minus overlap so the next window re-sees the tail.
+            offset += window_size.saturating_sub(overlap);
+        }
+
+        if all_groups.is_empty() {
+            warn!("Agentic chunking returned no groups; falling back to MarkdownAware");
+            return self.chunker.chunk_text(markdown);
+        }
+
+        // Sort by start_line (LLM may occasionally return out-of-order groups).
+        all_groups.sort_by_key(|g| g.start_line);
+
+        // Build TextChunks from the line groups.
+        let mut chunks = Vec::with_capacity(all_groups.len());
+        for (i, group) in all_groups.iter().enumerate() {
+            let start_idx = group.start_line.saturating_sub(1);
+            let end_idx = group.end_line.min(total_lines);
+
+            if start_idx >= end_idx {
+                continue;
+            }
+
+            let content = all_lines[start_idx..end_idx].join("\n");
+            let content = content.trim().to_string();
+            if content.is_empty() {
+                continue;
+            }
+
+            let heading = group.heading.as_ref().map(|text| DetectedHeading {
+                text: text.clone(),
+                level: 1,
+                offset: start_idx,
+                page_number: None,
+            });
+
+            let char_count = content.chars().count();
+            let word_count = content.split_whitespace().count();
+
+            chunks.push(TextChunk {
+                id: format!("chunk_{}", i),
+                content,
+                heading,
+                char_count,
+                word_count,
+                start_page: None,
+                end_page: None,
+            });
+        }
+
+        if chunks.is_empty() {
+            warn!("Agentic chunking produced no valid chunks; falling back to MarkdownAware");
+            return self.chunker.chunk_text(markdown);
+        }
+
+        debug!(
+            "Agentic chunking produced {} chunks from {} lines",
+            chunks.len(),
+            total_lines
+        );
+
+        Ok(chunks)
     }
 
     /// Ingest from raw text (or markdown)

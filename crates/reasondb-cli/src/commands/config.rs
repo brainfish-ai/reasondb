@@ -21,6 +21,10 @@ pub struct ReasonDBConfig {
     /// Default table to use
     #[serde(default)]
     pub default_table: Option<String>,
+
+    /// Default chunking strategy: "agentic" or "markdown_aware"
+    #[serde(default)]
+    pub chunk_strategy: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -138,6 +142,10 @@ impl ReasonDBConfig {
             "llm.api_key" => self.llm.api_key.clone().map(|k| mask_key(&k)),
             "llm.model" => self.llm.model.clone(),
             "default_table" => self.default_table.clone(),
+            "chunk_strategy" => self
+                .chunk_strategy
+                .clone()
+                .or_else(|| Some("agentic".to_string())),
             _ => None,
         }
     }
@@ -153,6 +161,15 @@ impl ReasonDBConfig {
             "llm.api_key" => self.llm.api_key = Some(value.to_string()),
             "llm.model" => self.llm.model = Some(value.to_string()),
             "default_table" => self.default_table = Some(value.to_string()),
+            "chunk_strategy" => {
+                if value != "agentic" && value != "markdown_aware" {
+                    return Err(anyhow::anyhow!(
+                        "Invalid chunk_strategy '{}'. Valid values: agentic, markdown_aware",
+                        value
+                    ));
+                }
+                self.chunk_strategy = Some(value.to_string());
+            }
             _ => return Err(anyhow::anyhow!("Unknown config key: {}", key)),
         }
         Ok(())
@@ -165,6 +182,7 @@ impl ReasonDBConfig {
             "llm.api_key" => self.llm.api_key = None,
             "llm.model" => self.llm.model = None,
             "default_table" => self.default_table = None,
+            "chunk_strategy" => self.chunk_strategy = None,
             _ => return Err(anyhow::anyhow!("Cannot unset key: {}", key)),
         }
         Ok(())

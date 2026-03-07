@@ -58,6 +58,9 @@ pub struct IngestFileRequest {
     pub table_id: String,
     #[serde(default)]
     pub generate_summaries: Option<bool>,
+    /// Chunking strategy override: "agentic" or "markdown_aware"
+    #[serde(default)]
+    pub chunk_strategy: Option<String>,
     #[serde(default)]
     pub tags: Option<Vec<String>>,
     #[serde(default)]
@@ -424,9 +427,25 @@ async fn process_job<R: ReasoningEngine + Clone + Send + Sync + 'static>(
             .unwrap_or(state.config.generate_summaries),
     };
 
+    let chunk_strategy_str = match &job.request {
+        JobRequest::Text(r) => r.chunk_strategy.as_deref(),
+        JobRequest::Url(r) => r.chunk_strategy.as_deref(),
+        JobRequest::File(r) => r.chunk_strategy.as_deref(),
+    }
+    .or_else(|| Some(state.config.chunk_strategy.as_str()));
+
+    let chunk_strategy = match chunk_strategy_str {
+        Some("markdown_aware") => reasondb_ingest::ChunkStrategy::MarkdownAware,
+        _ => reasondb_ingest::ChunkStrategy::Agentic,
+    };
+
     let config = PipelineConfig {
         generate_summaries,
         store_in_db: true,
+        chunker: reasondb_ingest::ChunkerConfig {
+            strategy: chunk_strategy,
+            ..Default::default()
+        },
         ..Default::default()
     };
 
@@ -589,6 +608,7 @@ mod tests {
             tags: None,
             metadata: None,
             generate_summaries: None,
+            chunk_strategy: None,
         })
     }
 

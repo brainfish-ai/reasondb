@@ -9,8 +9,8 @@ use arc_swap::ArcSwap;
 use async_trait::async_trait;
 
 use super::{
-    DocumentRanking, DocumentSummary, NodeSummary, ReasoningEngine, SummarizationContext,
-    TraversalDecision, VerificationResult,
+    ChunkGroupResult, DocumentRanking, DocumentSummary, NodeSummary, ReasoningEngine,
+    SummarizationContext, TraversalDecision, VerificationResult,
 };
 use crate::error::Result;
 use crate::llm::config::{LlmModelConfig, LlmSettings};
@@ -172,6 +172,14 @@ impl ReasoningEngine for DynamicReasoner {
         self.ingestion()
             .extract_domain_vocab(document_summary, existing_vocab)
             .await
+    }
+
+    async fn chunk_document(
+        &self,
+        lines: &[String],
+        window_offset: usize,
+    ) -> Result<ChunkGroupResult> {
+        self.ingestion().chunk_document(lines, window_offset).await
     }
 
     fn name(&self) -> &str {

@@ -46,7 +46,9 @@ pub mod summarizer;
 pub mod tree_builder;
 
 // Re-export main types
-pub use chunker::{ChunkerConfig, DetectedHeading, SemanticChunker, TextChunk, TocExtractor};
+pub use chunker::{
+    ChunkStrategy, ChunkerConfig, DetectedHeading, SemanticChunker, TextChunk, TocExtractor,
+};
 pub use error::{IngestError, Result};
 pub use extractor::{DocumentType, ExtractionResult, SmartExtractor};
 pub use pipeline::{

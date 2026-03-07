@@ -235,6 +235,8 @@ pub async fn run_server() -> anyhow::Result<()> {
         max_upload_size: 100 * 1024 * 1024,
         enable_cors: true,
         generate_summaries: true,
+        chunk_strategy: std::env::var("REASONDB_CHUNK_STRATEGY")
+            .unwrap_or_else(|_| "agentic".to_string()),
         auth: auth_config,
         rate_limit: rate_limit_config,
         cluster: cluster_config,

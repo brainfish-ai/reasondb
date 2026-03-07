@@ -254,6 +254,8 @@ pub struct ServerConfig {
     pub enable_cors: bool,
     /// Generate summaries during ingestion
     pub generate_summaries: bool,
+    /// Default chunking strategy: "agentic" or "markdown_aware"
+    pub chunk_strategy: String,
     /// Authentication configuration
     pub auth: AuthConfig,
     /// Rate limiting configuration
@@ -271,6 +273,7 @@ impl Default for ServerConfig {
             max_upload_size: 100 * 1024 * 1024, // 100MB
             enable_cors: true,
             generate_summaries: true,
+            chunk_strategy: "agentic".to_string(),
             auth: AuthConfig::default(),
             rate_limit: RateLimitConfig::default(),
             cluster: ClusterNodeConfig::default(),

@@ -67,6 +67,15 @@ struct Args {
     #[arg(long)]
     no_summaries: bool,
 
+    /// Default chunking strategy for document ingestion
+    #[arg(
+        long,
+        env = "REASONDB_CHUNK_STRATEGY",
+        default_value = "agentic",
+        value_parser = ["agentic", "markdown_aware"]
+    )]
+    chunk_strategy: String,
+
     /// Maximum upload size in MB
     #[arg(long, default_value = "100")]
     max_upload_mb: usize,
@@ -239,10 +248,13 @@ async fn main() -> anyhow::Result<()> {
         max_upload_size: args.max_upload_mb * 1024 * 1024,
         enable_cors: true,
         generate_summaries: !args.no_summaries,
+        chunk_strategy: args.chunk_strategy.clone(),
         auth: auth_config,
         rate_limit: rate_limit_config,
         cluster: cluster_config,
     };
+
+    info!("Chunking strategy: {}", args.chunk_strategy);
 
     // ------ LLM Configuration ------
     // Priority: 1) DB-persisted settings  2) CLI/env arg seed  3) placeholder

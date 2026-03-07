@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Gear, FloppyDisk, ArrowCounterClockwise, CircleNotch, CheckCircle, WarningCircle, Plugs } from '@phosphor-icons/react'
 import { cn } from '@/lib/utils'
 import { useConnectionStore } from '@/stores/connectionStore'
-import { getClient, createClient, setClient, type LlmModelConfig, type LlmSettings as LlmSettingsType, type LlmTestStatus } from '@/lib/api'
+import { getClient, createClient, setClient, type LlmModelConfig, type LlmSettings as LlmSettingsType, type LlmTestStatus, type ChunkStrategy } from '@/lib/api'
 import { useLlmHealthStore } from '@/stores/llmHealthStore'
 import {
   Select,
@@ -11,6 +11,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/Select'
+
+const CHUNK_STRATEGIES: { value: ChunkStrategy; label: string; description: string }[] = [
+  {
+    value: 'agentic',
+    label: 'Agentic (LLM-Guided)',
+    description: 'Uses the Ingestion LLM to decide which lines belong together. Produces the most semantically coherent chunks. Falls back to Markdown-Aware if no LLM is configured.',
+  },
+  {
+    value: 'markdown_aware',
+    label: 'Markdown-Aware',
+    description: 'Splits at CommonMark structural boundaries (headings, paragraphs, code blocks). Fully deterministic — no LLM required.',
+  },
+]
+
+export const CHUNK_STRATEGY_KEY = 'reasondb:chunk_strategy'
 
 const PROVIDERS = [
   { value: 'openai', label: 'OpenAI' },
@@ -474,6 +489,9 @@ export function AgentSettings() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [chunkStrategy, setChunkStrategy] = useState<ChunkStrategy>(
+    () => (localStorage.getItem(CHUNK_STRATEGY_KEY) as ChunkStrategy | null) ?? 'agentic'
+  )
 
   const { testResult, testing, setTestResult, setTesting } = useLlmHealthStore()
 
@@ -555,6 +573,7 @@ export function AgentSettings() {
     try {
       const result = await client.updateLlmConfig(settings)
       setSettings(result)
+      localStorage.setItem(CHUNK_STRATEGY_KEY, chunkStrategy)
       setSuccess('Agent settings saved successfully')
       setTimeout(() => setSuccess(null), 3000)
       runTest()
@@ -684,6 +703,46 @@ export function AgentSettings() {
               status={testResult?.retrieval}
               testing={testing}
             />
+          </div>
+        </div>
+
+        {/* Chunking Strategy */}
+        <div className="p-4 rounded-lg border border-border bg-surface-0/30 space-y-4">
+          <h3 className="text-sm font-semibold text-text uppercase tracking-wide">
+            Ingestion Chunking Strategy
+          </h3>
+          <div className="space-y-3">
+            {CHUNK_STRATEGIES.map((s) => (
+              <label
+                key={s.value}
+                className={cn(
+                  'flex items-start gap-3 p-3 rounded-md border cursor-pointer transition-colors',
+                  chunkStrategy === s.value
+                    ? 'border-mauve bg-mauve/10'
+                    : 'border-border hover:border-overlay-1'
+                )}
+              >
+                <input
+                  type="radio"
+                  name="chunk_strategy"
+                  value={s.value}
+                  checked={chunkStrategy === s.value}
+                  onChange={() => setChunkStrategy(s.value)}
+                  className="mt-0.5 accent-mauve shrink-0"
+                />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-text">{s.label}</span>
+                    {s.value === 'agentic' && (
+                      <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-mauve/20 text-mauve">
+                        Default
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-subtext-0 mt-0.5 leading-relaxed">{s.description}</p>
+                </div>
+              </label>
+            ))}
           </div>
         </div>
       </div>
