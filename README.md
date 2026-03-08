@@ -101,7 +101,7 @@ ReasonDB solves this by letting the LLM **reason through** your documents - not 
 
 <h2>Benchmark</h2>
 
-Results on a real-world insurance document corpus (4 AIA policy documents, ~1,900 nodes, 12 queries across 6 complexity tiers). Full benchmark script: [`tutorials/data/insurance/benchmark.py`](./tutorials/data/insurance/benchmark.py).
+Results on a real-world insurance document corpus (4 policy documents, ~1,900 nodes, 12 queries across 6 complexity tiers). Full benchmark script: [`tutorials/data/insurance/benchmark.py`](./tutorials/data/insurance/benchmark.py).
 
 ### Retrieval quality vs. typical RAG
 
@@ -137,7 +137,7 @@ ReasonDB detects and follows **intra-document cross-references** during ingestio
 
 ### Insurance Policy Analyser — Live Demo
 
-The benchmark above is powered by this tutorial app. It queries four AIA insurance policy documents using `REASON` and shows the full traversal trace — which nodes the LLM visited, why it selected them, and how it synthesized the final answer.
+The benchmark above is powered by this tutorial app. It queries four insurance policy documents using `REASON` and shows the full traversal trace — which nodes the LLM visited, why it selected them, and how it synthesized the final answer.
 
 <img src="./assets/Insurance_Policy_Analyser_Demo.gif" alt="Insurance Policy Analyser Demo" width="100%">
 
