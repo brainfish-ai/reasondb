@@ -70,6 +70,15 @@ jobs:
             apps/reasondb-client/package.json \
             apps/reasondb-client/src-tauri/tauri.conf.json
 
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Update client package-lock.json
+        working-directory: apps/reasondb-client
+        run: npm install --package-lock-only --ignore-scripts
+
       - name: Install Rust stable (for Cargo.lock update)
         uses: dtolnay/rust-toolchain@stable
 
@@ -83,7 +92,8 @@ jobs:
           git add Cargo.toml Cargo.lock \
             apps/reasondb-client/src-tauri/Cargo.toml \
             apps/reasondb-client/package.json \
-            apps/reasondb-client/src-tauri/tauri.conf.json
+            apps/reasondb-client/src-tauri/tauri.conf.json \
+            apps/reasondb-client/package-lock.json
           git commit -m "chore: bump version to $NEXT"
           git tag "v$NEXT"
           git push origin main
