@@ -220,7 +220,7 @@ You can also go to **System Settings → Privacy & Security**, scroll down, and 
 #### Install with Homebrew (macOS / Linux)
 
 ```bash
-brew tap reasondb/tap
+brew tap brainfish-ai/reasondb-tap
 brew install reasondb
 ```
 
