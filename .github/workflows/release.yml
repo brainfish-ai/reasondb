@@ -179,7 +179,7 @@ jobs:
         env:
           TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
-          git clone "https://x-access-token:${TAP_TOKEN}@github.com/reasondb/homebrew-tap.git" tap
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/brainfish-ai/homebrew-reasondb-tap.git" tap
 
       - name: Generate formula
         run: |

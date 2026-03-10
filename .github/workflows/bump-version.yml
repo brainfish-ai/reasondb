@@ -60,13 +60,12 @@ jobs:
           CURRENT="${{ steps.version.outputs.current }}"
 
           sed -i "s/^version = \"$CURRENT\"/version = \"$NEXT\"/" Cargo.toml
-          sed -i "s/^version = \"$CURRENT\"/version = \"$NEXT\"/" crates/reasondb-cli/Cargo.toml
           sed -i "s/^version = \"$CURRENT\"/version = \"$NEXT\"/" apps/reasondb-client/src-tauri/Cargo.toml
           sed -i "s/\"version\": \"$CURRENT\"/\"version\": \"$NEXT\"/" apps/reasondb-client/package.json
           sed -i "s/\"version\": \"$CURRENT\"/\"version\": \"$NEXT\"/" apps/reasondb-client/src-tauri/tauri.conf.json
 
           echo "Updated files:"
-          grep -r "\"$NEXT\"\|= \"$NEXT\"" Cargo.toml crates/reasondb-cli/Cargo.toml \
+          grep -r "\"$NEXT\"\|= \"$NEXT\"" Cargo.toml \
             apps/reasondb-client/src-tauri/Cargo.toml \
             apps/reasondb-client/package.json \
             apps/reasondb-client/src-tauri/tauri.conf.json
@@ -81,7 +80,7 @@ jobs:
         if: ${{ !inputs.dry_run }}
         run: |
           NEXT="${{ steps.version.outputs.next }}"
-          git add Cargo.toml Cargo.lock crates/reasondb-cli/Cargo.toml \
+          git add Cargo.toml Cargo.lock \
             apps/reasondb-client/src-tauri/Cargo.toml \
             apps/reasondb-client/package.json \
             apps/reasondb-client/src-tauri/tauri.conf.json
