@@ -87,6 +87,110 @@ pub struct MoveDocumentRequest {
     pub table_id: String,
 }
 
+/// Partial update for node metadata fields
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UpdateNodeMetadataRequest {
+    /// Page number in the source document (optional)
+    #[schema(example = 3)]
+    pub page_number: Option<u32>,
+
+    /// Section type (e.g. "chapter", "section", "paragraph") (optional)
+    #[schema(example = "section")]
+    pub section_type: Option<String>,
+
+    /// Confidence score assigned during ingestion (optional)
+    #[schema(example = 0.95)]
+    pub confidence_score: Option<f32>,
+
+    /// Custom key-value attributes to merge into the node (optional)
+    #[schema(example = json!({"source": "manual", "reviewed": "true"}))]
+    pub attributes: Option<HashMap<String, String>>,
+
+    /// IDs of sibling nodes this node explicitly cross-references (optional)
+    #[schema(example = json!(["node_abc", "node_def"]))]
+    pub cross_ref_node_ids: Option<Vec<String>>,
+}
+
+/// Request to update a document node
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UpdateNodeRequest {
+    /// Updated title (optional)
+    #[schema(example = "Chapter 3: Neural Networks — Revised")]
+    pub title: Option<String>,
+
+    /// Updated LLM summary for tree traversal (optional)
+    #[schema(
+        example = "This chapter covers neural network fundamentals including backpropagation."
+    )]
+    pub summary: Option<String>,
+
+    /// Updated leaf content (optional, only meaningful on leaf nodes)
+    #[schema(
+        example = "Neural networks are computing systems loosely inspired by biological neural networks..."
+    )]
+    pub content: Option<String>,
+
+    /// Updated path to associated image (optional)
+    #[schema(example = "/uploads/figure-3-1.png")]
+    pub image_path: Option<String>,
+
+    /// Metadata fields to merge/update (optional)
+    pub metadata: Option<UpdateNodeMetadataRequest>,
+}
+
+/// Response for a single updated node
+#[derive(Debug, Serialize, ToSchema)]
+pub struct NodeDetail {
+    /// Unique node ID
+    #[schema(example = "node_xyz789")]
+    pub id: String,
+    /// Parent document ID
+    #[schema(example = "doc_abc123")]
+    pub document_id: String,
+    /// Node title
+    #[schema(example = "Chapter 3: Neural Networks")]
+    pub title: String,
+    /// LLM-generated summary
+    #[schema(example = "This chapter covers neural network fundamentals...")]
+    pub summary: String,
+    /// Depth in the tree (0 = root)
+    #[schema(example = 1)]
+    pub depth: u8,
+    /// Whether this is a leaf node
+    #[schema(example = false)]
+    pub is_leaf: bool,
+    /// Actual content (only present for leaf nodes)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    /// Path to associated image
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_path: Option<String>,
+    /// Parent node ID
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<String>,
+    /// Child node IDs
+    pub children_ids: Vec<String>,
+    /// Page number in source document
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_number: Option<u32>,
+    /// Section type
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub section_type: Option<String>,
+    /// Confidence score
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub confidence_score: Option<f32>,
+    /// Custom attributes
+    pub attributes: std::collections::HashMap<String, String>,
+    /// Cross-referenced sibling node IDs
+    pub cross_ref_node_ids: Vec<String>,
+    /// Creation timestamp (ISO 8601)
+    #[schema(example = "2024-01-15T10:30:00Z")]
+    pub created_at: String,
+    /// Last update timestamp (ISO 8601)
+    #[schema(example = "2024-01-15T10:35:00Z")]
+    pub updated_at: String,
+}
+
 /// Full document details
 #[derive(Debug, Serialize, ToSchema)]
 pub struct DocumentDetail {
@@ -412,6 +516,112 @@ pub async fn get_document_nodes<R: ReasoningEngine + Send + Sync + 'static>(
         .collect();
 
     Ok(Json(summaries))
+}
+
+/// Update a document node
+///
+/// Partially updates a single node identified by its document and node IDs.
+/// Only provided fields are changed. The `metadata.attributes` map is merged
+/// key-by-key (not replaced wholesale). `cross_ref_node_ids` is replaced when provided.
+#[utoipa::path(
+    patch,
+    path = "/v1/documents/{id}/nodes/{node_id}",
+    tag = "documents",
+    params(
+        ("id" = String, Path, description = "Document ID"),
+        ("node_id" = String, Path, description = "Node ID"),
+    ),
+    request_body = UpdateNodeRequest,
+    responses(
+        (status = 200, description = "Node updated", body = NodeDetail),
+        (status = 404, description = "Document or node not found", body = ErrorResponse),
+        (status = 500, description = "Storage error", body = ErrorResponse),
+    )
+)]
+pub async fn update_node<R: ReasoningEngine + Send + Sync + 'static>(
+    State(state): State<Arc<AppState<R>>>,
+    Path((doc_id, node_id)): Path<(String, String)>,
+    Json(request): Json<UpdateNodeRequest>,
+) -> ApiResult<Json<NodeDetail>> {
+    info!("Updating node {} in document {}", node_id, doc_id);
+
+    // Verify document exists
+    let _doc = state
+        .store
+        .get_document(&doc_id)
+        .map_err(ApiError::from)?
+        .ok_or_else(|| ApiError::NotFound(format!("Document not found: {}", doc_id)))?;
+
+    let mut node = state
+        .store
+        .get_node(&node_id)
+        .map_err(ApiError::from)?
+        .ok_or_else(|| ApiError::NotFound(format!("Node not found: {}", node_id)))?;
+
+    if node.document_id != doc_id {
+        return Err(ApiError::NotFound(format!(
+            "Node {} does not belong to document {}",
+            node_id, doc_id
+        )));
+    }
+
+    if let Some(title) = request.title {
+        node.title = title;
+    }
+    if let Some(summary) = request.summary {
+        node.summary = summary;
+    }
+    if let Some(content) = request.content {
+        node.content = Some(content);
+    }
+    if let Some(image_path) = request.image_path {
+        node.image_path = Some(image_path);
+    }
+
+    if let Some(meta) = request.metadata {
+        if let Some(page_number) = meta.page_number {
+            node.metadata.page_number = Some(page_number);
+        }
+        if let Some(section_type) = meta.section_type {
+            node.metadata.section_type = Some(section_type);
+        }
+        if let Some(confidence_score) = meta.confidence_score {
+            node.metadata.confidence_score = Some(confidence_score);
+        }
+        if let Some(attributes) = meta.attributes {
+            for (k, v) in attributes {
+                node.metadata.attributes.insert(k, v);
+            }
+        }
+        if let Some(cross_ref_node_ids) = meta.cross_ref_node_ids {
+            node.metadata.cross_ref_node_ids = cross_ref_node_ids;
+        }
+    }
+
+    node.updated_at = Utc::now();
+
+    state.store.update_node(&node).map_err(ApiError::from)?;
+
+    let is_leaf = node.is_leaf();
+    Ok(Json(NodeDetail {
+        id: node.id,
+        document_id: node.document_id,
+        title: node.title,
+        summary: node.summary,
+        depth: node.depth,
+        is_leaf,
+        content: node.content,
+        image_path: node.image_path,
+        parent_id: node.parent_id,
+        children_ids: node.children_ids,
+        page_number: node.metadata.page_number,
+        section_type: node.metadata.section_type,
+        confidence_score: node.metadata.confidence_score,
+        attributes: node.metadata.attributes,
+        cross_ref_node_ids: node.metadata.cross_ref_node_ids,
+        created_at: node.created_at.to_rfc3339(),
+        updated_at: node.updated_at.to_rfc3339(),
+    }))
 }
 
 /// Get document as tree structure

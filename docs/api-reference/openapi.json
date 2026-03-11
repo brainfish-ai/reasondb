@@ -572,6 +572,78 @@
       }
     },
     "/v1/documents/{id}": {
+      "patch": {
+        "summary": "Update a document",
+        "description": "Partially updates a document's title, table assignment, tags, or metadata. Only provided fields are changed. `metadata` is merged key-by-key, not replaced wholesale.",
+        "operationId": "updateDocument",
+        "tags": [
+          "documents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Document ID",
+            "schema": {
+              "type": "string",
+              "example": "doc_abc123"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDocumentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Document updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "updated": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "document_id": {
+                      "type": "string",
+                      "example": "doc_abc123"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Document not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
       "get": {
         "summary": "Get document details",
         "description": "Returns full details for a specific document including metadata and tree info.",
@@ -723,6 +795,80 @@
           },
           "404": {
             "description": "Document not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/documents/{id}/nodes/{node_id}": {
+      "patch": {
+        "summary": "Update a document node",
+        "description": "Partially updates a single node by its document and node IDs. Only provided fields are changed. `metadata.attributes` is merged key-by-key. `cross_ref_node_ids` is replaced when provided.",
+        "operationId": "updateNode",
+        "tags": [
+          "documents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Document ID",
+            "schema": {
+              "type": "string",
+              "example": "doc_abc123"
+            }
+          },
+          {
+            "name": "node_id",
+            "in": "path",
+            "required": true,
+            "description": "Node ID",
+            "schema": {
+              "type": "string",
+              "example": "node_xyz789"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateNodeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Node updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Document or node not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -1119,8 +1265,30 @@
           },
           "metadata": {
             "type": "object",
-            "description": "Metadata to merge",
+            "description": "Metadata to merge (key-by-key, not replaced wholesale)",
             "additionalProperties": true
+          },
+          "domain_vocab": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Domain-specific vocabulary and terminology used by the LLM reasoning engine to interpret documents in this table.",
+            "example": ["contract", "indemnification", "arbitration"]
+          },
+          "context": {
+            "type": "string",
+            "description": "Contextual description for LLM reasoning. Provides background about what this table contains and how documents should be interpreted.",
+            "example": "This table contains legal contracts and agreements for US jurisdictions."
+          },
+          "instructions": {
+            "type": "string",
+            "description": "Custom directives that guide how the LLM should answer questions or traverse documents within this table.",
+            "example": "Always cite clause numbers when referencing contract terms."
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Classification tags for grouping and discovery of this table.",
+            "example": ["legal", "contracts", "us"]
           }
         }
       },
@@ -1157,6 +1325,28 @@
             "type": "object",
             "description": "Custom metadata",
             "additionalProperties": true
+          },
+          "domain_vocab": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Domain-specific vocabulary for LLM reasoning",
+            "example": ["contract", "indemnification", "arbitration"]
+          },
+          "context": {
+            "type": "string",
+            "description": "Contextual description for LLM reasoning",
+            "example": "This table contains legal contracts for US jurisdictions."
+          },
+          "instructions": {
+            "type": "string",
+            "description": "Custom LLM query and reasoning directives",
+            "example": "Always cite clause numbers when referencing contract terms."
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Classification tags for this table",
+            "example": ["legal", "contracts", "us"]
           },
           "document_count": {
             "type": "integer",
@@ -2028,6 +2218,193 @@
             "format": "date-time",
             "description": "Last status update timestamp",
             "example": "2024-01-15T10:30:05Z"
+          }
+        }
+      },
+      "UpdateDocumentRequest": {
+        "type": "object",
+        "description": "Request body for updating a document. All fields are optional; only provided fields are changed.",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Updated document title",
+            "example": "NDA Agreement - Updated"
+          },
+          "table_id": {
+            "type": "string",
+            "description": "Move document to a different table",
+            "example": "tbl_archived"
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Document tags (replaces existing tags)",
+            "example": ["nda", "archived"]
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Metadata to merge (key-by-key, not replaced wholesale)",
+            "additionalProperties": true,
+            "example": { "reviewed_by": "Legal Team", "status": "archived" }
+          }
+        }
+      },
+      "UpdateNodeMetadataRequest": {
+        "type": "object",
+        "description": "Partial update for node metadata fields. All fields are optional.",
+        "properties": {
+          "page_number": {
+            "type": "integer",
+            "description": "Page number in the source document",
+            "example": 3
+          },
+          "section_type": {
+            "type": "string",
+            "description": "Section type (e.g. 'chapter', 'section', 'paragraph')",
+            "example": "section"
+          },
+          "confidence_score": {
+            "type": "number",
+            "format": "float",
+            "description": "Confidence score assigned during ingestion",
+            "example": 0.95
+          },
+          "attributes": {
+            "type": "object",
+            "description": "Custom key-value attributes to merge into the node (string values only)",
+            "additionalProperties": { "type": "string" },
+            "example": { "source": "manual", "reviewed": "true" }
+          },
+          "cross_ref_node_ids": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "IDs of sibling nodes this node explicitly cross-references (replaces existing list)",
+            "example": ["node_abc", "node_def"]
+          }
+        }
+      },
+      "UpdateNodeRequest": {
+        "type": "object",
+        "description": "Request body for updating a document node. All fields are optional; only provided fields are changed.",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Updated node title",
+            "example": "Chapter 3: Neural Networks — Revised"
+          },
+          "summary": {
+            "type": "string",
+            "description": "Updated LLM summary used during tree traversal",
+            "example": "This chapter covers neural network fundamentals including backpropagation."
+          },
+          "content": {
+            "type": "string",
+            "description": "Updated leaf content (only meaningful for leaf nodes)",
+            "example": "Neural networks are computing systems loosely inspired by biological neural networks..."
+          },
+          "image_path": {
+            "type": "string",
+            "description": "Updated path to associated image for vision-enabled reasoning",
+            "example": "/uploads/figure-3-1.png"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/UpdateNodeMetadataRequest"
+          }
+        }
+      },
+      "NodeDetail": {
+        "type": "object",
+        "description": "Full details for a single document node.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique node ID",
+            "example": "node_xyz789"
+          },
+          "document_id": {
+            "type": "string",
+            "description": "Parent document ID",
+            "example": "doc_abc123"
+          },
+          "title": {
+            "type": "string",
+            "description": "Node title",
+            "example": "Chapter 3: Neural Networks"
+          },
+          "summary": {
+            "type": "string",
+            "description": "LLM-generated summary used for tree traversal",
+            "example": "This chapter covers neural network fundamentals..."
+          },
+          "depth": {
+            "type": "integer",
+            "description": "Depth in the tree (0 = root)",
+            "example": 1
+          },
+          "is_leaf": {
+            "type": "boolean",
+            "description": "Whether this is a leaf node (no children)",
+            "example": false
+          },
+          "content": {
+            "type": "string",
+            "description": "Actual content (only present for leaf nodes)"
+          },
+          "image_path": {
+            "type": "string",
+            "description": "Path to associated image for vision-enabled reasoning",
+            "example": "/uploads/figure-3-1.png"
+          },
+          "parent_id": {
+            "type": "string",
+            "description": "Parent node ID (null for root nodes)",
+            "example": "node_root_abc"
+          },
+          "children_ids": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "IDs of child nodes",
+            "example": ["node_child1", "node_child2"]
+          },
+          "page_number": {
+            "type": "integer",
+            "description": "Page number in the source document",
+            "example": 3
+          },
+          "section_type": {
+            "type": "string",
+            "description": "Section type (e.g. 'chapter', 'section', 'paragraph')",
+            "example": "chapter"
+          },
+          "confidence_score": {
+            "type": "number",
+            "format": "float",
+            "description": "Confidence score assigned during ingestion",
+            "example": 0.95
+          },
+          "attributes": {
+            "type": "object",
+            "description": "Custom key-value attributes (string values)",
+            "additionalProperties": { "type": "string" },
+            "example": { "source": "manual" }
+          },
+          "cross_ref_node_ids": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "IDs of sibling nodes this node cross-references",
+            "example": []
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Node creation timestamp",
+            "example": "2024-01-15T10:30:00Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last update timestamp",
+            "example": "2024-01-15T10:35:00Z"
           }
         }
       }
