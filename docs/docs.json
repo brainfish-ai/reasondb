@@ -85,18 +85,18 @@
             "group": "Getting Started",
             "icon": "rocket-launch",
             "pages": [
-              "index",
-              "rql-basics"
+              "tutorials/index",
+              "tutorials/rql-basics"
             ]
           },
           {
             "group": "Use Cases",
             "icon": "lightbulb",
             "pages": [
-              "document-relationships",
-              "legal-search",
-              "knowledge-base",
-              "research-papers"
+              "tutorials/document-relationships",
+              "tutorials/legal-search",
+              "tutorials/knowledge-base",
+              "tutorials/research-papers"
             ]
           }
         ]
@@ -117,8 +117,8 @@
             "group": "Overview",
             "icon": "book-open",
             "pages": [
-              "introduction",
-              "errors"
+              "api-reference/introduction",
+              "api-reference/errors"
             ]
           }
         ]
