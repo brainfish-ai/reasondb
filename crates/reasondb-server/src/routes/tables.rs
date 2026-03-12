@@ -6,6 +6,7 @@ use axum::{
     extract::{Path, State},
     Json,
 };
+use chrono::Utc;
 use reasondb_core::{llm::ReasoningEngine, Table};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -52,6 +53,22 @@ pub struct UpdateTableRequest {
     /// Metadata to merge (optional)
     #[serde(default)]
     pub metadata: Option<HashMap<String, Value>>,
+
+    /// Domain-specific vocabulary and terminology for LLM reasoning (optional)
+    #[schema(example = json!(["contract", "indemnification", "arbitration"]))]
+    pub domain_vocab: Option<Vec<String>>,
+
+    /// Contextual description for LLM reasoning (optional)
+    #[schema(example = "This table contains legal contracts and agreements for US jurisdictions.")]
+    pub context: Option<String>,
+
+    /// Instructions for LLM query and reasoning behavior on this table (optional)
+    #[schema(example = "Always cite clause numbers when referencing contract terms.")]
+    pub instructions: Option<String>,
+
+    /// Classification tags for this table (optional)
+    #[schema(example = json!(["legal", "contracts", "us"]))]
+    pub tags: Option<Vec<String>>,
 }
 
 /// Response containing table details
@@ -71,6 +88,22 @@ pub struct TableResponse {
 
     /// Custom metadata
     pub metadata: HashMap<String, Value>,
+
+    /// Domain-specific vocabulary and terminology for LLM reasoning
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub domain_vocab: Option<Vec<String>>,
+
+    /// Contextual description for LLM reasoning
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context: Option<String>,
+
+    /// Instructions for LLM query and reasoning behavior
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<String>,
+
+    /// Classification tags for this table
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
 
     /// Number of documents in this table
     #[schema(example = 15)]
@@ -96,6 +129,10 @@ impl From<&Table> for TableResponse {
             name: table.name.clone(),
             description: table.description.clone(),
             metadata: table.metadata.clone(),
+            domain_vocab: table.domain_vocab.clone(),
+            context: table.context.clone(),
+            instructions: table.instructions.clone(),
+            tags: table.tags.clone(),
             document_count: table.document_count,
             total_nodes: table.total_nodes,
             created_at: table.created_at.to_rfc3339(),
@@ -368,6 +405,24 @@ pub async fn update_table<R: ReasoningEngine + Clone + Send + Sync + 'static>(
             table.metadata.insert(key, value);
         }
     }
+
+    if let Some(domain_vocab) = request.domain_vocab {
+        table.domain_vocab = Some(domain_vocab);
+    }
+
+    if let Some(context) = request.context {
+        table.context = Some(context);
+    }
+
+    if let Some(instructions) = request.instructions {
+        table.instructions = Some(instructions);
+    }
+
+    if let Some(tags) = request.tags {
+        table.tags = Some(tags);
+    }
+
+    table.updated_at = Utc::now();
 
     state
         .store

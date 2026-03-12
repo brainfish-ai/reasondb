@@ -106,6 +106,10 @@ fn v1_routes<R: ReasoningEngine + Clone + Send + Sync + 'static>(
             get(documents::get_document_nodes::<R>),
         )
         .route(
+            "/documents/:id/nodes/:node_id",
+            patch(documents::update_node::<R>),
+        )
+        .route(
             "/documents/:id/tree",
             get(documents::get_document_tree::<R>),
         )

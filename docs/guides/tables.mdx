@@ -46,6 +46,20 @@ Response:
 }
 ```
 
+You can also set LLM context fields at creation time:
+
+```bash
+curl -X POST http://localhost:4444/v1/tables \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "legal_contracts",
+    "description": "All legal documents and contracts",
+    "metadata": { "department": "legal" }
+  }'
+```
+
+Use `PATCH /v1/tables/:id` to add `domain_vocab`, `context`, and `instructions` after creation.
+
 ## Table Schema
 
 | Field | Type | Description |
@@ -54,6 +68,10 @@ Response:
 | `name` | string | Human-readable name (required) |
 | `description` | string | Optional description |
 | `metadata` | object | Custom key-value metadata |
+| `domain_vocab` | string[] | Domain-specific vocabulary for LLM reasoning |
+| `context` | string | Contextual description for LLM reasoning |
+| `instructions` | string | Custom LLM query/reasoning directives |
+| `tags` | string[] | Classification tags for grouping and discovery |
 | `document_count` | int | Number of documents |
 | `total_nodes` | int | Total nodes across all documents |
 | `created_at` | datetime | Creation timestamp |
@@ -86,7 +104,7 @@ Returns full table information including metadata.
 
 ## Updating Tables
 
-Update name, description, or metadata:
+Update name, description, metadata, or LLM context fields:
 
 ```bash
 curl -X PATCH http://localhost:4444/v1/tables/tbl_abc123 \
@@ -103,6 +121,32 @@ curl -X PATCH http://localhost:4444/v1/tables/tbl_abc123 \
 <Note>
 Metadata updates are merged, not replaced. New keys are added, existing keys are updated.
 </Note>
+
+### Configuring LLM Context
+
+You can provide domain-specific context to improve the quality of `REASON` queries on a table. These fields are passed to the LLM during tree traversal to help it understand the content and answer questions more accurately.
+
+```bash
+curl -X PATCH http://localhost:4444/v1/tables/tbl_abc123 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "domain_vocab": ["indemnification", "arbitration", "force majeure", "jurisdiction"],
+    "context": "This table contains US commercial contracts and NDAs. Documents follow standard legal formatting with numbered clauses.",
+    "instructions": "Always cite specific clause numbers when referencing contract terms. Distinguish between obligations of each party.",
+    "tags": ["legal", "contracts", "us"]
+  }'
+```
+
+| Field | Purpose |
+|-------|---------|
+| `domain_vocab` | Key terms the LLM should recognize as domain-specific |
+| `context` | Background about the table's content and document structure |
+| `instructions` | Behavioral directives for how the LLM should answer queries |
+| `tags` | Labels for organizing and filtering tables |
+
+<Tip>
+Setting `context` and `domain_vocab` is especially useful when your documents use specialized terminology or when you want more consistent reasoning behavior across queries.
+</Tip>
 
 ## Deleting Tables
 

@@ -37,8 +37,10 @@ use crate::routes::{documents, ingest, search};
         search::search,
         documents::list_documents,
         documents::get_document,
+        documents::update_document,
         documents::delete_document,
         documents::get_document_nodes,
+        documents::update_node,
         documents::get_document_tree,
     ),
     components(
@@ -60,7 +62,11 @@ use crate::routes::{documents, ingest, search};
             // Documents
             documents::DocumentSummary,
             documents::DocumentDetail,
+            documents::UpdateDocumentRequest,
             documents::NodeSummary,
+            documents::UpdateNodeMetadataRequest,
+            documents::UpdateNodeRequest,
+            documents::NodeDetail,
             documents::TreeNode,
             // Errors
             crate::error::ErrorResponse,
