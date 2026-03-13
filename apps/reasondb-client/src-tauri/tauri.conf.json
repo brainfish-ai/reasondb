@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "ReasonDB",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "identifier": "com.reasondb.desktop",
   "build": {
     "frontendDist": "../dist",
