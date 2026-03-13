@@ -140,7 +140,10 @@ jobs:
           workspaces: apps/reasondb-client/src-tauri -> target
 
       - name: Install frontend dependencies
-        run: npm ci --prefix apps/reasondb-client
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP"
+          npm ci --prefix "$GITHUB_WORKSPACE/apps/reasondb-client"
 
       - name: Build and release (Tauri)
         uses: tauri-apps/tauri-action@v0
