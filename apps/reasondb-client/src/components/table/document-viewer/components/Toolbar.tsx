@@ -1,3 +1,4 @@
+import { useState, useRef } from 'react'
 import {
   Table,
   Code,
@@ -24,6 +25,8 @@ interface ToolbarProps {
   onAddDocument?: () => void
 }
 
+const MIN_SPIN_MS = 600
+
 export function Toolbar({
   columns,
   tableId,
@@ -35,6 +38,16 @@ export function Toolbar({
   onSearch,
   onAddDocument,
 }: ToolbarProps) {
+  const [isSpinning, setIsSpinning] = useState(false)
+  const spinTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const handleRefresh = () => {
+    setIsSpinning(true)
+    if (spinTimer.current) clearTimeout(spinTimer.current)
+    spinTimer.current = setTimeout(() => setIsSpinning(false), MIN_SPIN_MS)
+    onRefresh()
+  }
+
   return (
     <div className="flex items-center gap-3 px-4 py-2 border-b border-border bg-mantle">
       {/* Table icon */}
@@ -85,8 +98,8 @@ export function Toolbar({
 
       {/* Actions */}
       <div className="flex items-center gap-1 shrink-0">
-        <Button size="sm" variant="ghost" onClick={onRefresh} disabled={isLoading} title="Refresh">
-          <ArrowsClockwise size={16} className={isLoading ? 'animate-spin' : ''} />
+        <Button size="sm" variant="ghost" onClick={handleRefresh} disabled={isLoading} title="Refresh">
+          <ArrowsClockwise size={16} className={isLoading || isSpinning ? 'animate-spin' : ''} />
         </Button>
 
         <Button size="sm" variant="ghost" title="Export">

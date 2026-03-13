@@ -136,6 +136,8 @@ export function TableBrowser() {
     x: number
     y: number
   } | null>(null)
+  const [isRefreshSpinning, setIsRefreshSpinning] = useState(false)
+  const refreshSpinTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
   const activeConnection = connections.find(c => c.id === activeConnectionId)
@@ -244,6 +246,13 @@ export function TableBrowser() {
     }
   }, [activeConnection, setLoadingTables, setTables, setTablesError])
 
+  const handleRefreshTables = useCallback(() => {
+    setIsRefreshSpinning(true)
+    if (refreshSpinTimer.current) clearTimeout(refreshSpinTimer.current)
+    refreshSpinTimer.current = setTimeout(() => setIsRefreshSpinning(false), 600)
+    fetchTables()
+  }, [fetchTables])
+
   useEffect(() => {
     if (activeConnectionId && activeConnection) {
       fetchTables()
@@ -333,11 +342,11 @@ export function TableBrowser() {
             size="icon"
             variant="ghost"
             className="h-6 w-6"
-            onClick={fetchTables}
+            onClick={handleRefreshTables}
             title="Refresh tables"
             disabled={isLoadingTables}
           >
-            <ArrowClockwise size={14} className={isLoadingTables ? 'animate-spin' : ''} />
+            <ArrowClockwise size={14} className={isLoadingTables || isRefreshSpinning ? 'animate-spin' : ''} />
           </Button>
           <Button
             size="icon"

@@ -20,22 +20,34 @@ apt-get install -y docker-ce docker-ce-cli containerd.io
 systemctl enable --now docker
 
 # ── Format and mount the EBS data volume ─────────────────────────────────────
-# Wait for /dev/xvdf to be available (can take a few seconds after attach)
-for i in $(seq 1 12); do
-  [ -b /dev/xvdf ] && break
+# Nitro instances expose the volume as /dev/nvme1n1; older instances use /dev/xvdf.
+# Wait up to 120 s for either name to appear.
+EBS_DEV=""
+for i in $(seq 1 24); do
+  if [ -b /dev/nvme1n1 ]; then
+    EBS_DEV=/dev/nvme1n1
+    break
+  elif [ -b /dev/xvdf ]; then
+    EBS_DEV=/dev/xvdf
+    break
+  fi
   sleep 5
 done
 
-if ! blkid /dev/xvdf | grep -q ext4; then
-  mkfs.ext4 /dev/xvdf
+if [ -z "$EBS_DEV" ]; then
+  echo "WARNING: EBS data volume not found after 120s — storing data on root volume" >&2
+else
+  if ! blkid "$EBS_DEV" | grep -q ext4; then
+    mkfs.ext4 "$EBS_DEV"
+  fi
+
+  mkdir -p /data
+  mount "$EBS_DEV" /data
+
+  # Persist the mount across reboots
+  BLKID=$(blkid -s UUID -o value "$EBS_DEV")
+  echo "UUID=$BLKID /data ext4 defaults,nofail 0 2" >> /etc/fstab
 fi
-
-mkdir -p /data
-mount /dev/xvdf /data
-
-# Persist the mount across reboots
-BLKID=$(blkid -s UUID -o value /dev/xvdf)
-echo "UUID=$BLKID /data ext4 defaults,nofail 0 2" >> /etc/fstab
 
 # ── Start ReasonDB ────────────────────────────────────────────────────────────
 docker pull ${reasondb_image}

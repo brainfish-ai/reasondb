@@ -89,11 +89,17 @@ export function Sidebar() {
   })()
 
   const openSettingsTab = () => {
-    const existing = tabs.find((t) => t.type === 'settings')
+    const existing = tabs.find(
+      (t) => t.type === 'settings' && t.connectionId === activeConnectionId
+    )
     if (existing) {
       setActiveTab(existing.id)
     } else {
-      addTab({ title: 'Agent Settings', type: 'settings' })
+      addTab({
+        title: 'Agent Settings',
+        type: 'settings',
+        connectionId: activeConnectionId ?? undefined,
+      })
     }
   }
 

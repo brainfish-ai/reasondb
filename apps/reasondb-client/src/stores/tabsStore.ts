@@ -9,6 +9,7 @@ export interface Tab {
   type: 'query' | 'table' | 'settings'
   tableId?: string
   query?: string
+  connectionId?: string
 }
 
 interface TabsState {
@@ -17,6 +18,9 @@ interface TabsState {
   
   addTab: (tab: Omit<Tab, 'id'>) => string
   closeTab: (id: string) => void
+  closeOtherTabs: (id: string) => void
+  closeTabsToRight: (id: string) => void
+  closeTabsToLeft: (id: string) => void
   setActiveTab: (id: string | null) => void
   updateTab: (id: string, updates: Partial<Tab>) => void
   updateTabQuery: (id: string, query: string) => void
@@ -67,6 +71,44 @@ export const useTabsStore = create<TabsState>()(
             }
           }
           
+          return { tabs: newTabs, activeTabId: newActiveId }
+        })
+      },
+
+      closeOtherTabs: (id) => {
+        set((state) => {
+          const tab = state.tabs.find((t) => t.id === id)
+          if (!tab) return state
+          // Keep only tabs from other connections + the target tab
+          const newTabs = state.tabs.filter(
+            (t) => t.id === id || t.connectionId !== tab.connectionId
+          )
+          return { tabs: newTabs, activeTabId: id }
+        })
+      },
+
+      closeTabsToRight: (id) => {
+        set((state) => {
+          const tab = state.tabs.find((t) => t.id === id)
+          if (!tab) return state
+          const connectionTabs = state.tabs.filter((t) => t.connectionId === tab.connectionId)
+          const idx = connectionTabs.findIndex((t) => t.id === id)
+          const toRemove = new Set(connectionTabs.slice(idx + 1).map((t) => t.id))
+          const newTabs = state.tabs.filter((t) => !toRemove.has(t.id))
+          const newActiveId = toRemove.has(state.activeTabId ?? '') ? id : state.activeTabId
+          return { tabs: newTabs, activeTabId: newActiveId }
+        })
+      },
+
+      closeTabsToLeft: (id) => {
+        set((state) => {
+          const tab = state.tabs.find((t) => t.id === id)
+          if (!tab) return state
+          const connectionTabs = state.tabs.filter((t) => t.connectionId === tab.connectionId)
+          const idx = connectionTabs.findIndex((t) => t.id === id)
+          const toRemove = new Set(connectionTabs.slice(0, idx).map((t) => t.id))
+          const newTabs = state.tabs.filter((t) => !toRemove.has(t.id))
+          const newActiveId = toRemove.has(state.activeTabId ?? '') ? id : state.activeTabId
           return { tabs: newTabs, activeTabId: newActiveId }
         })
       },

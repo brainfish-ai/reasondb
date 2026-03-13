@@ -1,8 +1,9 @@
 # Copy this file to terraform.tfvars and fill in the values.
 # Never commit terraform.tfvars — it contains secrets.
 
-# AWS region
-region = "us-east-1"
+# AWS region and CLI profile (set to your 'aws configure sso' profile name)
+region      = "us-east-1"
+aws_profile = "default"
 
 # EC2 instance type (t3.medium = 2 vCPU / 4 GB RAM, ~$30/mo)
 instance_type = "t3.medium"

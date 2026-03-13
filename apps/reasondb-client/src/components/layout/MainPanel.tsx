@@ -37,8 +37,15 @@ function LazyFallback() {
   )
 }
 
+interface TabContextMenu {
+  tabId: string
+  x: number
+  y: number
+}
+
 export function MainPanel() {
   const [resultView, setResultView] = useState<'table' | 'json'>('table')
+  const [tabContextMenu, setTabContextMenu] = useState<TabContextMenu | null>(null)
   const { results, activeResultIndex } = useQueryStore()
   const activeResult = results.length > 0 ? (results[activeResultIndex] ?? results[0]) : null
   const totalStats = results.length > 0
@@ -50,15 +57,19 @@ export function MainPanel() {
   const { selectedTableId, tables, selectTable } = useTableStore()
   const { openConnectionForm, showQueryHistory, showSavedQueries, setShowQueryHistory, setShowSavedQueries } = useUiStore()
   const { activeConnectionId, connections, setActiveConnection } = useConnectionStore()
-  const { tabs, activeTabId, addTab, closeTab: closeTabStore, setActiveTab } = useTabsStore()
+  const { tabs: allTabs, activeTabId, addTab, closeTab: closeTabStore, closeOtherTabs, closeTabsToRight, closeTabsToLeft, setActiveTab } = useTabsStore()
   const { setCurrentQuery } = useQueryStore()
   const tabListRef = useRef<HTMLDivElement>(null)
+
+  // Only show tabs belonging to the active connection
+  const tabs = allTabs.filter((t) => t.connectionId === activeConnectionId)
 
   const addNewTab = () => {
     addTab({
       title: `Query ${tabs.length + 1}`,
       type: 'query',
       query: '',
+      connectionId: activeConnectionId ?? undefined,
     })
   }
 
@@ -76,8 +87,20 @@ export function MainPanel() {
       title: table.name,
       type: 'table',
       tableId,
+      connectionId: activeConnectionId ?? undefined,
     })
   }
+
+  const handleTabContextMenu = (e: React.MouseEvent, tabId: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setTabContextMenu({ tabId, x: e.clientX, y: e.clientY })
+  }
+
+  const closeTabContextMenu = () => setTabContextMenu(null)
+
+  const contextMenuTab = tabContextMenu ? tabs.find((t) => t.id === tabContextMenu.tabId) : null
+  const contextMenuTabIndex = contextMenuTab ? tabs.indexOf(contextMenuTab) : -1
 
   useEffect(() => {
     if (selectedTableId) {
@@ -85,6 +108,17 @@ export function MainPanel() {
       selectTable(null)
     }
   }, [selectedTableId])
+
+  useEffect(() => {
+    if (!tabContextMenu) return
+    const handler = () => closeTabContextMenu()
+    window.addEventListener('click', handler)
+    window.addEventListener('contextmenu', handler)
+    return () => {
+      window.removeEventListener('click', handler)
+      window.removeEventListener('contextmenu', handler)
+    }
+  }, [tabContextMenu])
 
   const handleCloseTab = (id: string, e: React.MouseEvent | React.KeyboardEvent) => {
     e.stopPropagation()
@@ -175,6 +209,7 @@ export function MainPanel() {
                 aria-controls={`tabpanel-${tab.id}`}
                 tabIndex={isActive ? 0 : -1}
                 onClick={() => setActiveTab(tab.id)}
+                onContextMenu={(e) => handleTabContextMenu(e, tab.id)}
                 className={cn(
                   'group relative flex items-center h-[40px] px-3 text-sm cursor-pointer select-none',
                   'transition-colors duration-150',
@@ -363,6 +398,75 @@ export function MainPanel() {
               </div>
             </Panel>
           </Group>
+        </div>
+      )}
+
+      {/* Tab right-click context menu */}
+      {tabContextMenu && contextMenuTab && (
+        <div
+          role="menu"
+          aria-label="Tab options"
+          style={{ top: tabContextMenu.y, left: tabContextMenu.x }}
+          className={cn(
+            'fixed z-50 min-w-[180px] py-1 rounded-lg shadow-xl',
+            'bg-mantle border border-border text-sm',
+            'focus:outline-none'
+          )}
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <button
+            role="menuitem"
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-subtext-1 hover:bg-surface-0 hover:text-text transition-colors"
+            onClick={() => {
+              closeTabStore(tabContextMenu.tabId)
+              closeTabContextMenu()
+            }}
+          >
+            <X size={13} weight="bold" className="text-overlay-1" aria-hidden="true" />
+            Close Tab
+          </button>
+
+          <button
+            role="menuitem"
+            disabled={tabs.length <= 1}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-subtext-1 hover:bg-surface-0 hover:text-text transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            onClick={() => {
+              closeOtherTabs(tabContextMenu.tabId)
+              closeTabContextMenu()
+            }}
+          >
+            <X size={13} weight="bold" className="text-overlay-1" aria-hidden="true" />
+            Close Other Tabs
+          </button>
+
+          <div className="my-1 border-t border-border" role="separator" />
+
+          <button
+            role="menuitem"
+            disabled={contextMenuTabIndex >= tabs.length - 1}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-subtext-1 hover:bg-surface-0 hover:text-text transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            onClick={() => {
+              closeTabsToRight(tabContextMenu.tabId)
+              closeTabContextMenu()
+            }}
+          >
+            <X size={13} weight="bold" className="text-overlay-1" aria-hidden="true" />
+            Close Tabs to the Right
+          </button>
+
+          <button
+            role="menuitem"
+            disabled={contextMenuTabIndex <= 0}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-subtext-1 hover:bg-surface-0 hover:text-text transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            onClick={() => {
+              closeTabsToLeft(tabContextMenu.tabId)
+              closeTabContextMenu()
+            }}
+          >
+            <X size={13} weight="bold" className="text-overlay-1" aria-hidden="true" />
+            Close Tabs to the Left
+          </button>
         </div>
       )}
 

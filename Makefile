@@ -35,19 +35,19 @@ docker-watch:
 # ── ReasonDB Client ──────────────────────────────────────
 
 client-install:
-	cd $(CLIENT_DIR) && npm install
+	cd $(CLIENT_DIR) && yarn install
 
 client-dev:
-	cd $(CLIENT_DIR) && npm run dev
+	cd $(CLIENT_DIR) && yarn dev
 
 client-build:
-	cd $(CLIENT_DIR) && npm run build
+	cd $(CLIENT_DIR) && yarn build
 
 client-app:
-	cd $(CLIENT_DIR) && npm run tauri dev
+	cd $(CLIENT_DIR) && yarn tauri dev
 
 client-app-build:
-	cd $(CLIENT_DIR) && npm run tauri build
+	cd $(CLIENT_DIR) && yarn tauri build
 
 # ── Dev Setup ────────────────────────────────────────────
 

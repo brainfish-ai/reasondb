@@ -56,3 +56,10 @@ my-video/
 .yarn/cache
 .yarn/install-state.gz
 yarn-error.log
+
+# Terraform — never commit secrets or local state
+deploy/**/terraform.tfvars
+deploy/**/.terraform/
+deploy/**/terraform.tfstate
+deploy/**/terraform.tfstate.backup
+deploy/**/.terraform.lock.hcl

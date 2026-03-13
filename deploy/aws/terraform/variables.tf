@@ -4,6 +4,12 @@ variable "region" {
   default     = "us-east-1"
 }
 
+variable "aws_profile" {
+  description = "AWS CLI profile to use (e.g. an SSO profile configured via 'aws configure sso')"
+  type        = string
+  default     = "default"
+}
+
 variable "instance_type" {
   description = "EC2 instance type (t3.medium recommended for testing)"
   type        = string

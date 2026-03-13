@@ -71,7 +71,7 @@ pub use reasondb_core::ratelimit::RateLimitConfig;
 pub use routes::create_routes;
 pub use state::{AppState, AuthConfig, ClusterNodeConfig, RealAppState, ServerConfig};
 
-use axum::Router;
+use axum::{extract::DefaultBodyLimit, Router};
 use reasondb_core::{
     auth::ApiKeyStore,
     llm::{
@@ -127,7 +127,11 @@ pub fn create_server<R: ReasoningEngine + Clone + Send + Sync + 'static>(
 
     // Add middleware
     app = app.layer(TraceLayer::new_for_http());
+    // RequestBodyLimitLayer caps the total request body at the tower/HTTP level.
+    // DefaultBodyLimit overrides axum's per-extractor 2 MB default so that
+    // Multipart file uploads up to max_upload_size are accepted.
     app = app.layer(RequestBodyLimitLayer::new(state.config.max_upload_size));
+    app = app.layer(DefaultBodyLimit::max(state.config.max_upload_size));
 
     if state.config.enable_cors {
         app = app.layer(
