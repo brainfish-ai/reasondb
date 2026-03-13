@@ -76,8 +76,15 @@ jobs:
           node-version: "20"
 
       - name: Update client package-lock.json
-        working-directory: apps/reasondb-client
-        run: npm install --package-lock-only --ignore-scripts
+        run: |
+          PKGDIR="${RUNNER_TEMP}/npm-lockonly"
+          mkdir -p "$PKGDIR"
+          cp apps/reasondb-client/package.json "$PKGDIR/"
+          if [ -f apps/reasondb-client/package-lock.json ]; then
+            cp apps/reasondb-client/package-lock.json "$PKGDIR/"
+          fi
+          npm install --package-lock-only --ignore-scripts --prefix "$PKGDIR"
+          cp "$PKGDIR/package-lock.json" apps/reasondb-client/package-lock.json
 
       - name: Install Rust stable (for Cargo.lock update)
         uses: dtolnay/rust-toolchain@stable
