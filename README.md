@@ -47,6 +47,10 @@
 
 <br>
 
+<img src="./assets/banner.png" alt="Similarity is not relevance. ReasonDB replaces broken RAG & vector search." width="100%">
+
+<br>
+
 <img src="./assets/ReasonDB_Client_Demo.gif" alt="ReasonDB Client Demo" width="100%">
 
 <br>
