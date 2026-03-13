@@ -142,15 +142,15 @@ jobs:
       - name: Build @reasondb/rql-editor workspace package
         shell: bash
         run: |
-          cd "$RUNNER_TEMP"
-          npm install --prefix "$GITHUB_WORKSPACE/packages/rql-editor" --ignore-scripts
-          npm run build --prefix "$GITHUB_WORKSPACE/packages/rql-editor"
+          cp -r "$GITHUB_WORKSPACE/packages/rql-editor" "$RUNNER_TEMP/rql-editor"
+          cd "$RUNNER_TEMP/rql-editor"
+          npm install --ignore-scripts
+          npm run build
+          cp -r "$RUNNER_TEMP/rql-editor/dist" "$GITHUB_WORKSPACE/packages/rql-editor/dist"
 
       - name: Install frontend dependencies
-        shell: bash
-        run: |
-          cd "$RUNNER_TEMP"
-          npm ci --prefix "$GITHUB_WORKSPACE/apps/reasondb-client"
+        working-directory: apps/reasondb-client
+        run: npm ci
 
       - name: Build and release (Tauri)
         uses: tauri-apps/tauri-action@v0
