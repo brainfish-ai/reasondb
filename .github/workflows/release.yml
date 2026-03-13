@@ -143,7 +143,7 @@ jobs:
         shell: bash
         run: |
           cd "$RUNNER_TEMP"
-          npm ci --prefix "$GITHUB_WORKSPACE/packages/rql-editor"
+          npm install --prefix "$GITHUB_WORKSPACE/packages/rql-editor" --ignore-scripts
           npm run build --prefix "$GITHUB_WORKSPACE/packages/rql-editor"
 
       - name: Install frontend dependencies
