@@ -28,5 +28,11 @@ llm_api_key  = "sk-..."
 # Optional: custom base URL (e.g. for Ollama or a proxy)
 # llm_base_url = "http://localhost:11434/v1"
 
-# Docker image (use a specific version tag in production, e.g. "ajainvivek/reasondb:0.1.0")
-reasondb_image = "ajainvivek/reasondb:latest"
+# Docker image (use a specific version tag in production, e.g. "brainfishai/reasondb:0.5.7")
+reasondb_image = "brainfishai/reasondb:latest"
+
+# ── Authentication ─────────────────────────────────────────────────────────────
+# Enable API key auth (recommended for any non-local deployment)
+auth_enabled = true
+# Master admin key — generate with: python3 -c "import secrets; print('rdb_master_' + secrets.token_hex(24))"
+master_key = "rdb_master_..."

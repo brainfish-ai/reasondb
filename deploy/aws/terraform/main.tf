@@ -103,6 +103,8 @@ resource "aws_instance" "reasondb" {
     llm_model      = var.llm_model
     llm_base_url   = var.llm_base_url
     reasondb_image = var.reasondb_image
+    auth_enabled   = var.auth_enabled
+    master_key     = var.master_key
   })
 
   tags = { Name = "${var.name_prefix}-instance" }
