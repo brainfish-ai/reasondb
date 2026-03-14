@@ -68,4 +68,6 @@ docker run -d \
   -e REASONDB_RATE_LIMIT_RPH="5000" \
   -e REASONDB_RATE_LIMIT_BURST="30" \
   -e REASONDB_WORKER_COUNT="4" \
+  -e REASONDB_AUTH_ENABLED="${auth_enabled}" \
+  -e REASONDB_MASTER_KEY="${master_key}" \
   ${reasondb_image}

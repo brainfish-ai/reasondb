@@ -4914,6 +4914,7 @@ name = "reasondb-server"
 version = "0.5.7"
 dependencies = [
  "anyhow",
+ "async-trait",
  "axum",
  "axum-test",
  "bincode",

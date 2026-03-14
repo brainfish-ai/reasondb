@@ -28,6 +28,7 @@ tower = "0.4"
 tower-http = { version = "0.5", features = ["cors", "trace", "limit"] }
 
 # Async
+async-trait = "0.1"
 tokio.workspace = true
 tokio-stream = "0.1"
 futures.workspace = true

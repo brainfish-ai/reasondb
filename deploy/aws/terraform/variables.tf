@@ -68,3 +68,16 @@ variable "name_prefix" {
   type        = string
   default     = "reasondb-testing"
 }
+
+variable "auth_enabled" {
+  description = "Enable API key authentication (recommended for production)"
+  type        = bool
+  default     = false
+}
+
+variable "master_key" {
+  description = "Master admin key for the ReasonDB instance (required when auth_enabled = true)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}

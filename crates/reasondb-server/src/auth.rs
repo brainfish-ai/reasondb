@@ -5,13 +5,19 @@
 //! - API key authentication via `X-API-Key: <key>` header
 //! - Optional authentication (for public endpoints)
 
+use async_trait::async_trait;
 use axum::{
+    extract::{FromRequestParts, Request, State},
     http::{header, request::Parts, StatusCode},
+    middleware::Next,
     response::{IntoResponse, Response},
     Json,
 };
 use reasondb_core::{ApiKey, KeyPrefix, Permission, Permissions};
 use serde::Serialize;
+use std::sync::Arc;
+
+use crate::state::AppState;
 
 /// Authenticated API key (extracted from request)
 #[derive(Debug, Clone)]
@@ -173,4 +179,107 @@ pub fn extract_api_key(parts: &Parts) -> Option<String> {
     }
 
     None
+}
+
+/// Axum middleware that enforces API key authentication on all routes when
+/// `REASONDB_AUTH_ENABLED=true`.
+///
+/// Public routes (`/health`, `/metrics`, `/swagger-ui`, `/api-docs`) bypass
+/// auth so monitoring and documentation remain accessible without a key.
+pub async fn auth_middleware<
+    R: reasondb_core::llm::ReasoningEngine + Clone + Send + Sync + 'static,
+>(
+    State(state): State<Arc<AppState<R>>>,
+    request: Request,
+    next: Next,
+) -> Response {
+    // Auth disabled — pass through
+    if !state.config.auth.enabled {
+        return next.run(request).await;
+    }
+
+    // Public paths that never require auth
+    let path = request.uri().path().to_owned();
+    if path == "/health"
+        || path == "/metrics"
+        || path.starts_with("/swagger-ui")
+        || path.starts_with("/api-docs")
+    {
+        return next.run(request).await;
+    }
+
+    // Extract API key from headers before consuming the request
+    let raw_key = {
+        let headers = request.headers();
+        // Try Authorization: Bearer <key>
+        let from_auth = headers
+            .get(header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.strip_prefix("Bearer ").map(|s| s.trim().to_string()));
+        // Fall back to X-API-Key
+        let from_x_key = headers
+            .get("X-API-Key")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.trim().to_string());
+        from_auth.or(from_x_key)
+    };
+
+    let raw_key = match raw_key {
+        Some(k) => k,
+        None => return AuthError::MissingKey.into_response(),
+    };
+
+    // Validate against master key
+    if let Some(ref master_key) = state.config.auth.master_key {
+        if raw_key == *master_key {
+            return next.run(request).await;
+        }
+    }
+
+    // Validate against stored API keys
+    match state.api_key_store.authenticate(&raw_key) {
+        Ok(Some(key)) if key.is_active => next.run(request).await,
+        Ok(Some(_)) => AuthError::RevokedKey.into_response(),
+        Ok(None) => AuthError::InvalidKey.into_response(),
+        Err(e) => AuthError::Internal(e.to_string()).into_response(),
+    }
+}
+
+/// `FromRequestParts` impl so handlers can optionally extract an
+/// `AuthenticatedKey` without the middleware (used by auth management routes).
+#[async_trait]
+impl<R> FromRequestParts<Arc<AppState<R>>> for AuthenticatedKey
+where
+    R: reasondb_core::llm::ReasoningEngine + Clone + Send + Sync + 'static,
+{
+    type Rejection = AuthError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &Arc<AppState<R>>,
+    ) -> Result<Self, Self::Rejection> {
+        if !state.config.auth.enabled {
+            return Ok(AuthenticatedKey::anonymous());
+        }
+
+        let raw_key = extract_api_key(parts).ok_or(AuthError::MissingKey)?;
+
+        if let Some(ref master_key) = state.config.auth.master_key {
+            if raw_key == *master_key {
+                return Ok(AuthenticatedKey::master());
+            }
+        }
+
+        let key = state
+            .api_key_store
+            .authenticate(&raw_key)
+            .map_err(|e| AuthError::Internal(e.to_string()))?
+            .ok_or(AuthError::InvalidKey)?;
+
+        if !key.is_active {
+            return Err(AuthError::RevokedKey);
+        }
+
+        Ok(AuthenticatedKey { key })
+    }
 }
