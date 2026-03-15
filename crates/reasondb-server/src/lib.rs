@@ -61,6 +61,7 @@ pub mod replication;
 pub mod routes;
 pub mod state;
 
+pub use auth::auth_middleware;
 pub use error::{ApiError, ApiResult, ErrorResponse};
 pub use metrics::{init_metrics, metrics_handler, metrics_middleware};
 #[cfg(feature = "telemetry")]
@@ -107,6 +108,12 @@ pub fn create_server<R: ReasoningEngine + Clone + Send + Sync + 'static>(
 
     // Add Prometheus metrics endpoint
     app = app.route("/metrics", get(metrics::metrics_handler));
+
+    // Add API key authentication middleware (enforces auth when REASONDB_AUTH_ENABLED=true)
+    app = app.layer(axum::middleware::from_fn_with_state(
+        state.clone(),
+        auth_middleware,
+    ));
 
     // Add rate limiting middleware
     if state.config.rate_limit.enabled {

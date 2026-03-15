@@ -23,8 +23,14 @@ variable "volume_size_gb" {
 }
 
 variable "ssh_public_key" {
-  description = "SSH public key material (contents of ~/.ssh/id_rsa.pub or similar)"
+  description = "SSH public key material (contents of ~/.ssh/id_ed25519.pub or similar)"
   type        = string
+}
+
+variable "ssh_private_key_path" {
+  description = "Path to the SSH private key file used by the container updater provisioner (e.g. ~/.ssh/id_ed25519)"
+  type        = string
+  default     = "~/.ssh/id_ed25519"
 }
 
 variable "allowed_cidr" {
@@ -67,4 +73,17 @@ variable "name_prefix" {
   description = "Prefix applied to all resource names"
   type        = string
   default     = "reasondb-testing"
+}
+
+variable "auth_enabled" {
+  description = "Enable API key authentication (recommended for production)"
+  type        = bool
+  default     = false
+}
+
+variable "master_key" {
+  description = "Master admin key for the ReasonDB instance (required when auth_enabled = true)"
+  type        = string
+  sensitive   = true
+  default     = ""
 }
